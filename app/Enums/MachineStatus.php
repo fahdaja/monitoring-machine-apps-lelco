@@ -1,0 +1,16 @@
+<?php
+
+namespace App\Enums;
+
+enum MachineStatus: string
+{
+    case DOWN = 'DOWN';
+    case RUNNING = 'RUNNING';
+    case UNDER_REPAIR = 'UNDER_REPAIR';
+    case WAITING_SPAREPART = 'WAITING_SPAREPART';
+    case WAITING_L3 = 'WAITING_L3';
+    case WAITING_VENDOR = 'WAITING_VENDOR';
+    case WAITING_VERIFICATION = 'WAITING_VERIFICATION';
+    case PLANNED_MAINTENANCE = 'PLANNED_MAINTENANCE';
+    case INACTIVE = 'INACTIVE';
+}
