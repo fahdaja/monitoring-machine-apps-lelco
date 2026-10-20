@@ -19,6 +19,9 @@ return new class extends Migration
             $table->string('process_type');
             $table->string('category');
             $table->enum('level', ['L1', 'L2', 'L3', 'L4', 'L5']);
+            $table->string('version');
+            $table->boolean('auto_save')->default(true);
+            $table->boolean('allow_back')->default(true);
             $table->string('department');
             $table->integer('priority');
             $table->string('is_active')->nullable();

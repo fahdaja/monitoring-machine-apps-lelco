@@ -1,181 +1,31 @@
-import React, { useState, useRef } from "react";
 import FormLayout from "@/layouts/form-layout";
 import ZoomOutModal from "@/components/common/ZoomOutModal";
-
-interface Option {
-    option_id: string;
-    label: string;
-    value: string;
-    question_id: string;
-    display_order: number;
-}
-
-interface Question {
-    question_id: string;
-    section_id: string;
-    text_question: string;
-    question_type: string;
-    options: Option[];
-}
-
-interface Section {
-    section_id: string;
-    section_code: string;
-    section_title: string;
-    status?: string;
-    questions: Question[];
-}
-
-interface FormTemplate {
-    form_id: string;
-    form_name: string;
-    sections: Section[];
-}
-
-interface InspectionTask {
-    task_id: string;
-    status: string;
-    schedule_date: string;
-    machine: {
-        machine_id: string;
-        machine_name: string;
-    };
-    form: FormTemplate;
-}
-
-interface InspectionsFormProps {
-    tasks?: InspectionTask[];
-}
-
-interface SectionAnswer {
-    status: "OK" | "NG" | null;
-    note: string;
-    photos: File[];
-}
+import { Section, InspectionsFormProps } from "@/types/inspection";
+import { useInspectionForm } from "@/hooks/use-inspection-form";
 
 export default function InspectionForm({ tasks }: InspectionsFormProps) {
-    const [isImageZoomed, setIsImageZoomed] = useState(false);
-    const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
-    const [maxCompletedIndex, setMaxCompletedIndex] = useState(-1);
-    const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-    // Ref untuk mendeteksi elemen container utama agar bisa di-scroll otomatis
-    const errorRef = useRef<HTMLDivElement>(null);
-
     const currentTask = tasks?.[0];
-    const sections: Section[] = currentTask?.form?.sections || [
-        { section_id: '1', section_code: 'L1-01', section_title: 'Hopper body', status: 'Belum dikerjakan', questions: [] },
-        { section_id: '2', section_code: 'L1-02', section_title: 'Feeder screw', status: 'Belum dikerjakan', questions: [] },
-        { section_id: '3', section_code: 'L1-03', section_title: 'Gearbox motor', status: 'Belum dikerjakan', questions: [] },
-        { section_id: '4', section_code: 'L1-04', section_title: 'Heater barrel', status: 'Belum dikerjakan', questions: [] },
-        { section_id: '5', section_code: 'L1-05', section_title: 'Cooling ring', status: 'Belum dikerjakan', questions: [] },
-        { section_id: '6', section_code: 'L1-06', section_title: 'Electrical panel', status: 'Belum dikerjakan', questions: [] },
-    ];
+    const sections: Section[] = currentTask?.form?.sections || [];
 
-    const [answers, setAnswers] = useState<Record<number, SectionAnswer>>({});
-
-    const currentSection = sections[currentSectionIndex] || sections[0];
-    const isFirstSection = currentSectionIndex === 0;
-    const isLastSection = currentSectionIndex === sections.length - 1;
-
-    const currentAnswer = answers[currentSectionIndex] || { status: null, note: '', photos: [] };
-
-    const completedCount = maxCompletedIndex + 1;
-    const progressPercentage = Math.round((completedCount / sections.length) * 100);
-
-    const handleSelectStatus = (status: "OK" | "NG") => {
-        setAnswers(prev => ({
-            ...prev,
-            [currentSectionIndex]: {
-                ...currentAnswer,
-                status: status
-            }
-        }));
-        setErrorMessage(null);
-    };
-
-    const handleNoteChange = (noteText: string) => {
-        setAnswers(prev => ({
-            ...prev,
-            [currentSectionIndex]: {
-                ...currentAnswer,
-                note: noteText
-            }
-        }));
-        if (noteText.trim() !== '') setErrorMessage(null);
-    };
-
-    const handleAddPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            setAnswers(prev => ({
-                ...prev,
-                [currentSectionIndex]: {
-                    ...currentAnswer,
-                    photos: [...currentAnswer.photos, file]
-                }
-            }));
-            setErrorMessage(null);
-        }
-        e.target.value = '';
-    };
-
-    const handleRemovePhoto = (photoIndex: number) => {
-        setAnswers(prev => ({
-            ...prev,
-            [currentSectionIndex]: {
-                ...currentAnswer,
-                photos: currentAnswer.photos.filter((_, idx) => idx !== photoIndex)
-            }
-        }));
-    };
-
-    const handlePrev = () => {
-        if (!isFirstSection) {
-            setCurrentSectionIndex((prev) => prev - 1);
-            setErrorMessage(null);
-        }
-    };
-
-    const handleNext = () => {
-        // 1. Validasi Status OK/NG
-        if (currentAnswer.status === null) {
-            triggerError("Pilih status pemeriksaan terlebih dahulu (OK atau NG).");
-            return;
-        }
-
-        // 2. Validasi Catatan jika NG
-        if (currentAnswer.status === 'NG' && currentAnswer.note.trim() === '') {
-            triggerError("Catatan / Notes wajib diisi karena memilih status NG.");
-            return;
-        }
-
-        // 3. Validasi Foto Evidence Wajib
-        if (currentAnswer.photos.length === 0) {
-            triggerError("Anda wajib mengunggah minimal 1 foto evidence hasil pemeriksaan sebelum melanjutkan.");
-            return;
-        }
-
-        setErrorMessage(null);
-
-        if (currentSectionIndex > maxCompletedIndex) {
-            setMaxCompletedIndex(currentSectionIndex);
-        }
-
-        if (!isLastSection) {
-            setCurrentSectionIndex((prev) => prev + 1);
-        } else {
-            alert('Semua section inspeksi telah selesai dan lengkap! Siap disimpan.');
-        }
-    };
-
-    // Fungsi bantu untuk menampilkan error sekaligus menggeser layar (auto-scroll) ke atas
-    const triggerError = (msg: string) => {
-        setErrorMessage(msg);
-        if (errorRef.current) {
-            errorRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-    };
+    const {
+        isImageZoomed, setIsImageZoomed,
+        currentSectionIndex, setCurrentSectionIndex,
+        errorMessage, setErrorMessage,
+        errorRef,
+        currentSection,
+        isFirstSection, isLastSection,
+        currentQuestion,
+        currentAnswer,
+        completedCount,
+        progressPercentage,
+        handleValueChoice,
+        handleNoteChange,
+        handleAddPhoto,
+        handleRemovePhoto,
+        handlePrev,
+        handleNext,
+        maxCompletedIndex
+    } = useInspectionForm(sections);
 
     return (
         <FormLayout
@@ -345,15 +195,16 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                                 </button>
                             </div>
                         </div>
+                            {currentQuestion?.input_type === 'CHOICE' && (
                         <div className="flex gap-4 mt-6 justify-center">
                             {/* Tombol OK */}
                             <button
                                 type="button"
-                                onClick={() => handleSelectStatus('OK')}
+                                onClick={() => handleValueChoice('OK')}
                                 className={`
                                     flex-1 py-3.5 px-6 rounded-xl font-bold text-base flex items-center justify-center gap-2 border-2 
                                     transition-all duration-200 ease-out cursor-pointer active:scale-95 select-none
-                                    ${currentAnswer.status === 'OK'
+                                    ${currentAnswer.value === 'OK'
                                         ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg shadow-emerald-500/30 scale-[1.02]'
                                         : 'bg-white border-slate-200 text-slate-700 hover:border-emerald-400 hover:bg-emerald-50/50 hover:text-emerald-700 hover:scale-[1.02] shadow-sm'
                                     }
@@ -364,11 +215,11 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                             {/* Tombol NG (Not Good) */}
                             <button
                                 type="button"
-                                onClick={() => handleSelectStatus('NG')}
+                                onClick={() => handleValueChoice('NG')}
                                 className={`
                                     flex-1 py-3.5 px-6 rounded-xl font-bold text-base flex items-center justify-center gap-2 border-2 
                                     transition-all duration-200 ease-out cursor-pointer active:scale-95 select-none
-                                    ${currentAnswer.status === 'NG'
+                                    ${currentAnswer.value === 'NG'
                                         ? 'bg-rose-500 border-rose-500 text-white shadow-lg shadow-rose-500/30 scale-[1.02]'
                                         : 'bg-white border-slate-200 text-slate-700 hover:border-rose-400 hover:bg-rose-50/50 hover:text-rose-700 hover:scale-[1.02] shadow-sm'
                                     }
@@ -377,9 +228,12 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                                 <span>NG</span>
                             </button>
                         </div>
+                        )}
+
+                        
 
                         {/* CONDITIONAL RENDERING: Catatan NG */}
-                        {currentAnswer.status === "NG" && (
+                        {currentAnswer.value === "NG" && (
                             <div className="mb-6 p-4 bg-slate-50/50 border border-slate-200 rounded-xl animate-fadeIn mt-4">
                                 <label className="block text-xs font-bold mb-2 uppercase tracking-wider">
                                     <p>Catatan / Notes {currentSection.section_code} (Wajib diisi) <span className="text-red-600 text-md">*</span></p>

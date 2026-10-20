@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use App\Http\Controllers\MachineController;
+use App\Http\Controllers\FormController;
 
 // Preview Tampilan Halaman Login
 Route::get('/login', function () {
@@ -107,3 +108,7 @@ Route::get('/inspection-tasks', function () {
         ],
     ]);
 })->name('tasks.index');
+
+Route::get('/forms', [FormController::class, 'index'])->name('forms.index');
+Route::get('/forms/create', [FormController::class, 'create'])->name('forms.create');
+Route::post('/forms', [FormController::class, 'store'])->name('forms.store');

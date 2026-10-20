@@ -13,9 +13,9 @@ return new class extends Migration
     {
         Schema::create('submissions', function (Blueprint $table) {
             $table->string('submission_id')->primary();
-            $table->string('machine_id');
-            $table->string('form_id');
-            $table->jsonb('answers_json');
+            $table->string('machine_id')->nullable();
+            $table->string('form_id')->nullable();
+            $table->jsonb('answers_json')->nullable(); // parameters: value, unit, data_type
             // relasi
             $table->foreign('machine_id')->references('machine_id')->on('machines')->onDelete('cascade');
             $table->foreign('form_id')->references('form_id')->on('forms')->onDelete('cascade');
