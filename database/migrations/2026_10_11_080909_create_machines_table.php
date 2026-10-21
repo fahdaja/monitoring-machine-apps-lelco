@@ -32,12 +32,8 @@ return new class extends Migration
             // spesifikasi mesin
             $table->jsonb('specifications')->nullable();
             
-            // audit
-            $table->string('notes', 255)->nullable();
             $table->timestamp('created_at')->useCurrent();
-            $table->string('created_by', 100)->nullable();
             $table->timestamp('updated_at')->useCurrent();
-            $table->string('updated_by', 100)->nullable();
             
             // relasi ke tabel users
             $table->foreign('created_by')->references('user_id')->on('users')->onDelete('cascade');
