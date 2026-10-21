@@ -16,8 +16,6 @@ return new class extends Migration
             $table->string('form_name');
             $table->string('description');
             $table->string('machine_id');
-            $table->boolean('is_active')->nullable();
-            $table->()
             $table->date('created_at');
             $table->date('updated_at');
 
