@@ -25,10 +25,8 @@ return new class extends Migration
             $table->string('location', 255)->nullable();
             $table->string('department', 100)->nullable();
             $table->string('area', 100)->nullable();
-            $table->string('pic_department', 100)->nullable();
-            $table->enum('criticality', ['CRITICAL','HIGH', 'MEDIUM', 'LOW'])->default('MEDIUM');  
+            $table->string('pic_department', 100)->nullable();  
             $table->enum('machine_status', ['DOWN', 'RUNNING', 'UNDER_REPAIR', 'WAITING_SPAREPART','WAITING_L3', 'WAITING_VENDOR', 'WAITING_VERIFICATION', 'PLANNED_MAINTENANCE', 'INACTIVE'])->default('INACTIVE');
-            $table->boolean('active_status')->default(false);
             $table->date('commission_date')->nullable();
 
             // spesifikasi mesin

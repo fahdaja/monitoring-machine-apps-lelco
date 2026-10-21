@@ -15,7 +15,7 @@ return new class extends Migration
             $table->string('submission_id')->primary();
             $table->string('machine_id')->nullable();
             $table->string('form_id')->nullable();
-            $table->jsonb('answers_json')->nullable(); // parameters: value, unit, data_type
+            $table->jsonb('answers_json')->nullable(); 
             // relasi
             $table->foreign('machine_id')->references('machine_id')->on('machines')->onDelete('cascade');
             $table->foreign('form_id')->references('form_id')->on('forms')->onDelete('cascade');

@@ -18,7 +18,6 @@ return new class extends Migration
             $table->string('problem_category');
             $table->text('problem_descriptions');
             $table->enum('priority', ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'])->default('MEDIUM');
-            $table->enum('current_level', ['L1', 'L2', 'L3', 'L4']);
             $table->enum('status', [
                 'OPEN', 
                 'IN_PROGRESS', 

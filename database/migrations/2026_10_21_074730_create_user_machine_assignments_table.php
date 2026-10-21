@@ -12,8 +12,16 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('user_machine_assignments', function (Blueprint $table) {
-            $table->id();
-            $table->timestamps();
+            $table->string('assignment_id')->primary();
+            $table->string('user_id');
+            $table->string('machine_id');
+            $table->enum('assigntment_type', ['PRIMARY', 'BACKUP', 'SUPPORT', 'VENDOR'])
+            $table->date('valid_from');
+            $table->date('valid_until');
+
+            // relasi
+            $table->foreign('user_id')->references('user_id')->on('users')->onDelete('cascade');
+            $table->foreign('machine_id')->references('machine_id')->on('machines')->onDelete('cascade');
         });
     }
 
