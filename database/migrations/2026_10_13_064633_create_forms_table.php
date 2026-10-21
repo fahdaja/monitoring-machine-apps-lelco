@@ -14,18 +14,9 @@ return new class extends Migration
         Schema::create('forms', function (Blueprint $table) {
             $table->string('form_id')->primary();
             $table->string('form_name');
-            $table->string('machine_id');
-            $table->string('machine_type');
-            $table->string('process_type');
-            $table->string('category');
-            $table->enum('level', ['L1', 'L2', 'L3', 'L4', 'L5']);
-            $table->string('version');
-            $table->boolean('auto_save')->default(true);
-            $table->boolean('allow_back')->default(true);
-            $table->string('department');
-            $table->integer('priority');
-            $table->string('is_active')->nullable();
             $table->string('description');
+            $table->string('machine_id');
+            $table->boolean('is_active')->nullable();
             $table->date('created_at');
             $table->date('updated_at');
 
