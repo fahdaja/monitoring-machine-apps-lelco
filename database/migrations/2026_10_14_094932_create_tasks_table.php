@@ -21,7 +21,7 @@ return new class extends Migration
             $table->string('assigned_user_id')->nullable();
             $table->date('started_at');
             $table->date('completed_at');
-            $table->enum('source_type', ['AUTO_REPORT', 'MANUAL_REPORT'])
+            $table->enum('source_type', ['AUTO_REPORT', 'MANUAL_REPORT']);
             $table->date('created_at');
             $table->date('updated_at');
             $table->string('notes');

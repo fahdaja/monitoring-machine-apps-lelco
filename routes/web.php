@@ -47,6 +47,7 @@ Route::get('/dashboard', function () {
 
 
 Route::get('/machines', [MachineController::class, 'index'])->name('machines.index');
+Route::get('/machines/create', [MachineController::class, 'create'])->name('machines.create');
 Route::get('/machines/{machineId}', [MachineController::class, 'show'])->name('machines.show');
 
 Route::get('/breakdowns',function(){
@@ -110,10 +111,9 @@ Route::get('/inspection-tasks', function () {
     ]);
 })->name('tasks.index');
 
-Route::get('/management-forms', [FormController::class, 'index'])->name('management-forms.index');
-Route::get('/management-forms/create', [FormController::class, 'create'])->name('management-forms.create');
-Route::post('/management-forms', [FormController::class, 'store'])->name('management-forms.store');
+Route::get('forms', [FormController::class, 'index'])->name('forms.index');
+Route::get('/forms/create', [FormController::class, 'create'])->name('forms.create');
 
-Route::get('/management-users', [UserController::class, 'index'])->name('management-users.index');
-Route::get('/management-users/create', [UserController::class, 'create'])->name('management-users.create');
-Route::post('/management-users', [UserController::class, 'store'])->name('management-users.store');
+Route::get('/users', [UserController::class, 'index'])->name('management-users.index');
+Route::get('/users/create', [UserController::class, 'create'])->name('management-users.create');
+Route::post('/users', [UserController::class, 'store'])->name('management-users.store');

@@ -35,9 +35,6 @@ return new class extends Migration
             $table->timestamp('created_at')->useCurrent();
             $table->timestamp('updated_at')->useCurrent();
             
-            // relasi ke tabel users
-            $table->foreign('created_by')->references('user_id')->on('users')->onDelete('cascade');
-            $table->foreign('updated_by')->references('user_id')->on('users')->onDelete('cascade');
         });
     }
 

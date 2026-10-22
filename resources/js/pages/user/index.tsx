@@ -11,13 +11,13 @@ export default function UserIndex({ users = [] }) {
                 {/* Header Section */}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>
-                        <h1 className="text-xl font-black text-slate-900">Manajemen User</h1>
+                        <h1 className="text-2xl font-black text-slate-900">Manajemen User</h1>
                         <p className="text-xs text-slate-500 font-medium">
                             Kelola akun pengguna, hak akses, dan peran dalam sistem monitoring mesin.
                         </p>
                     </div>
                     <Link
-                        href="/management-users/create"
+                        href="/users/create"
                         className="inline-flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-colors shadow-sm"
                     >
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -70,7 +70,7 @@ export default function UserIndex({ users = [] }) {
                                             <td className="py-4 px-6 text-right">
                                                 <div className="flex items-center justify-end gap-2">
                                                     <Link
-                                                        href={`/management-users/${user.id}/edit`}
+                                                        href={`/users/${user.id}/edit`}
                                                         className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold transition-colors"
                                                     >
                                                         Edit

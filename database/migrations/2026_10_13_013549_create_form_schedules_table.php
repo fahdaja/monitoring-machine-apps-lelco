@@ -14,11 +14,13 @@ return new class extends Migration
         Schema::create('form_schedules', function (Blueprint $table) {
             $table->string('schedule_id')->primary();
             $table->string('form_id')->nullable();
-            $table->string('schedule_name')
+            $table->string('schedule_name');
             $table->enum('frequency_type', ['DAILY', 'WEEKLY', 'MONTHLY'])->default('DAILY');
             $table->string('days_of_week')->nullable();
             $table->string('days_of_month')->nullable();
-            $table->date('start_date');
+            $table->date('due_window_date')->nullable();
+            $table->time('due_window_time')->nullable();
+            $table->date('start_date')->nullable();
             $table->boolean('is_active')->default(true);
 
             // relasi

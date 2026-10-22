@@ -17,6 +17,7 @@ return new class extends Migration
             $table->string('section_id');
             $table->string('question_code');
             $table->text('question_text');
+            $table->string('question_image')->nullable();
             $table->enum('input_type', ['TEXT' , 'TEXTAREA' , 'SELECT' , 'CHECKBOX' , 'DROPDOWN' , 'FILE' , 'DATE' , 'TIME']);
             $table->string('media_url')->nullable();
             $table->string('media_type')->nullable();

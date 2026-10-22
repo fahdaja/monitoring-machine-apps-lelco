@@ -32,7 +32,6 @@ class MachineController extends Controller
                     'department'    => $machine->department,
                     'status'        => $machine->machine_status, 
                     'subType'       => $machine->sub_type,
-                    'criticality'   => $machine->criticality,
                     'brand'         => $machine->specifications['brand'] ?? null,
                     'model'         => $machine->specifications['model'] ?? null,
                 ];
@@ -94,19 +93,24 @@ class MachineController extends Controller
                 'picDepartment'     => $machine->pic_department,
                 'criticality'       => $machine->criticality,
                 'status'            => $machine->machine_status, // Sesuaikan nama ke 'status'
-                'isActive'          => $machine->active_status,  // Sesuaikan nama ke 'isActive'
                 'commissionDate'    => $machine->commission_date ? $machine->commission_date->format('Y-m-d') : null,
                 'qrId'              => $machine->qr_id,
-                'notes'             => $machine->notes,
             ],
             'breakdowns'  => $breakdowns,
             'inspections' => [],
         ]);
     }
 
+    
+
     /**
      * Mendaftarkan Mesin Baru (Admin / Role MANAGE_MASTER).
      */
+    public function create(): Response
+    {
+        return Inertia::render('machines/create');
+    }
+
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
@@ -125,8 +129,8 @@ class MachineController extends Controller
             'location'           => 'required|string',
             'pic_department'     => 'nullable|string',
             'commission_date'    => 'nullable|date',
-            'criticality'        => 'required|in:LOW,MEDIUM,HIGH,CRITICAL',
-            'notes'              => 'nullable|string',
+            'status'             => 'nullable|string',
+            'description'
         ]);
 
         // Auto-generate Machine ID jika tidak diisi
@@ -160,14 +164,12 @@ class MachineController extends Controller
             'department'      => $validated['department'] ?? null,
             'area'            => $validated['area'] ?? null,
             'pic_department'  => $validated['pic_department'] ?? null,
-            'criticality'     => $validated['criticality'],
             'machine_status'  => 'RUNNING',
             'active_status'   => true,
             'commission_date' => $validated['commission_date'] ?? null,
             'specifications'  => $specifications,
-            'notes'           => $validated['notes'] ?? null,
-            'created_by'      => auth()->id(),
-            'updated_by'      => auth()->id(),
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         return redirect()->back()->with('success', 'Mesin baru dan QR berhasil terdaftar.');

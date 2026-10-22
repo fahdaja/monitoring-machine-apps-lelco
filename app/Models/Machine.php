@@ -33,17 +33,11 @@ class Machine extends Model
         'area',
         'location',
         'pic_department',
-        'criticality',
         'machine_status',
-        'active_status',
         'commission_date',
 
-        // audit
-        'notes',
         'created_at',
-        'created_by',
         'updated_at',
-        'updated_by',
     ];
 
     protected $casts = [
@@ -55,20 +49,6 @@ class Machine extends Model
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
-
-    /**
-     * Relasi ke user
-     */
-
-    public function createdBy(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'created_by', 'user_id');
-    }
-
-    public function updatedBy(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'updated_by', 'user_id');
-    }
 
     /**
      * relasi one to one dengan qr code

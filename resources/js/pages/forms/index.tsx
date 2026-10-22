@@ -32,7 +32,7 @@ export default function FormIndex({ forms, machines }: Props) {
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
-        post('/forms', {
+        post('/forms/create', {
             onSuccess: () => {
                 reset();
                 setIsModalOpen(false);
@@ -45,17 +45,17 @@ export default function FormIndex({ forms, machines }: Props) {
             <Head title="Manajemen Form Inspeksi" />
 
             <div className="space-y-6">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ">
                     <div>
-                        <h1 className="text-xl font-black text-slate-900">Manajemen Template Form</h1>
+                        <h1 className="text-2xl font-extrabold text-slate-900">Manajemen Template Form</h1>
                         <p className="text-xs text-slate-500 mt-1">Buat form pengecekan yang terikat dengan mesin spesifik.</p>
                     </div>
-                    <button
-                        onClick={() => setIsModalOpen(true)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-colors shadow-sm flex items-center gap-2"
+                    <Link
+                        href="/forms/create"
+                        className="bg-slate-900 hover:bg-slate-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-colors shadow-sm flex items-center gap-2"
                     >
                         + Buat Form Baru
-                    </button>
+                    </Link>
                 </div>
 
                 {/* Tabel Daftar Form */}
