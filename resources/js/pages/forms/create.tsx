@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Head, Link, useForm } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
-import { PlusCircle, Copy, Trash2, Layers, Image, Video, HelpCircle, ShieldCheck, SlidersHorizontal, CheckCircle2, AlertTriangle, FileText, Settings2 } from 'lucide-react';
+import { PlusCircle, Copy, Trash2, Layers, Image, Video, HelpCircle, ShieldCheck, SlidersHorizontal, CheckCircle2, AlertTriangle, FileText, Settings2, Eye, ArrowRight, CornerDownRight } from 'lucide-react';
 
 interface Machine {
     machine_id: string;
@@ -12,27 +12,25 @@ interface Machine {
 interface OptionItem {
     option_text: string;
     is_normal: boolean;
+    goto_section_id?: string;
 }
 
 interface QuestionItem {
     question_text: string;
-    question_image: string | null;
+    question_image?: string | null;
     input_type: 'TEXT' | 'TEXTAREA' | 'SELECT' | 'CHECKBOX' | 'DROPDOWN' | 'FILE' | 'DATE' | 'TIME';
     is_required: boolean;
-    show_help_text: boolean;
-    help_text: string;
-    show_standard_text: boolean;
-    standard_text: string;
+    show_help_text?: boolean;
+    help_text?: string;
+    show_standard_text?: boolean;
+    standard_text?: string;
     options: OptionItem[];
-    enable_rules: boolean;
-    require_evidence: boolean;
-    allow_notes: boolean;
     auto_ticket: boolean;
 }
 
 interface SectionItem {
-    section_title: string;
-    section_description: string;
+    section_title?: string;
+    section_description?: string;
     questions: QuestionItem[];
 }
 
@@ -63,6 +61,12 @@ export default function FormCreate({ machines }: Props) {
 
     const [activeSectionIndex, setActiveSectionIndex] = useState(0);
     const [activeFocus, setActiveFocus] = useState<string | number>('HEADER');
+    
+    // State untuk mode Preview
+    const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+    const [previewSectionId, setPreviewSectionId] = useState<number>(0);
+    const [previewAnswers, setPreviewAnswers] = useState<Record<number, any>>({});
+    const [previewHistory, setPreviewHistory] = useState<number[]>([]);
 
     const addSection = () => {
         const updatedSections = [
@@ -74,16 +78,16 @@ export default function FormCreate({ machines }: Props) {
                     {
                         question_text: '',
                         question_image: null,
-                        input_type: 'TEXT',
+                        input_type: 'SELECT',
                         is_required: true,
                         show_help_text: false,
                         help_text: '',
                         show_standard_text: false,
                         standard_text: '',
-                        options: [{ option_text: 'Opsi 1', is_normal: true }, { option_text: 'Opsi 2', is_normal: false }],
-                        enable_rules: false,
-                        require_evidence: false,
-                        allow_notes: true,
+                        options: [
+                            { option_text: 'Normal (OK)', is_normal: true, goto_section_id: '' }, 
+                            { option_text: 'Rusak / Perlu Servis (NG)', is_normal: false, goto_section_id: '' }
+                        ],
                         auto_ticket: false,
                     }
                 ],
@@ -101,16 +105,16 @@ export default function FormCreate({ machines }: Props) {
         const newQuestion: QuestionItem = {
             question_text: '',
             question_image: null,
-            input_type: 'TEXT',
+            input_type: 'SELECT',
             is_required: true,
             show_help_text: false,
             help_text: '',
             show_standard_text: false,
             standard_text: '',
-            options: [{ option_text: 'Opsi 1', is_normal: true }, { option_text: 'Opsi 2', is_normal: false }],
-            enable_rules: false,
-            require_evidence: false,
-            allow_notes: true,
+            options: [
+                { option_text: 'Opsi 1', is_normal: true, goto_section_id: '' }, 
+                { option_text: 'Opsi 2', is_normal: false, goto_section_id: '' }
+            ],
             auto_ticket: false,
         };
 
@@ -199,7 +203,7 @@ export default function FormCreate({ machines }: Props) {
     const addOption = (sIndex: number, qIndex: number) => {
         const updatedSections = [...data.sections];
         const options = updatedSections[sIndex].questions[qIndex].options;
-        options.push({ option_text: `Opsi ${options.length + 1}`, is_normal: false });
+        options.push({ option_text: `Opsi ${options.length + 1}`, is_normal: false, goto_section_id: '' });
         setData('sections', updatedSections);
     };
 
@@ -221,6 +225,46 @@ export default function FormCreate({ machines }: Props) {
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
         post('/forms');
+    };
+
+    // Logika Navigasi Preview dengan Jump Section
+    const handlePreviewNext = () => {
+        const currentSection = data.sections[previewSectionId];
+        let targetIndex: number | null = null;
+
+        // Cek apakah ada opsi pertanyaan pilihan ganda yang memiliki aturan goto_section_id
+        if (currentSection) {
+            for (const q of currentSection.questions) {
+                if (q.input_type === 'SELECT') {
+                    const selectedOptIndex = previewAnswers[q.question_text]; // atau ID opsi
+                    const selectedOpt = q.options[selectedOptIndex];
+                    if (selectedOpt && selectedOpt.goto_section_id !== '' && selectedOpt.goto_section_id !== undefined) {
+                        targetIndex = Number(selectedOpt.goto_section_id);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Default ke section berikutnya jika tidak ada aturan jump
+        if (targetIndex === null || isNaN(targetIndex)) {
+            targetIndex = previewSectionId + 1;
+        }
+
+        if (targetIndex < data.sections.length) {
+            setPreviewHistory(prev => [...prev, previewSectionId]);
+            setPreviewSectionId(targetIndex);
+        } else {
+            alert("Pratinjau Selesai! Ini adalah akhir dari formulir.");
+        }
+    };
+
+    const handlePreviewBack = () => {
+        if (previewHistory.length > 0) {
+            const lastSection = previewHistory[previewHistory.length - 1];
+            setPreviewHistory(prev => prev.slice(0, -1));
+            setPreviewSectionId(lastSection);
+        }
     };
 
     const renderToolbar = () => {
@@ -249,12 +293,21 @@ export default function FormCreate({ machines }: Props) {
                         Rancang parameter checklist inspeksi dan validasi operasional mesin pabrik.
                     </p>
                 </div>
-                <Link
-                    href="/forms"
-                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all shadow-xs w-fit"
-                >
-                    &larr; Kembali ke Daftar Form
-                </Link>
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => { setPreviewSectionId(0); setPreviewHistory([]); setPreviewAnswers({}); setIsPreviewOpen(true); }}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-all shadow-xs"
+                    >
+                        <Eye className="w-4 h-4" /> Pratinjau Form & Alur (Preview)
+                    </button>
+                    <Link
+                        href="/forms"
+                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all shadow-xs"
+                    >
+                        &larr; Kembali
+                    </Link>
+                </div>
             </div>
 
             <div className="max-w-4xl mx-auto space-y-6 pb-28 relative">
@@ -281,7 +334,7 @@ export default function FormCreate({ machines }: Props) {
                                                 value={data.form_title}
                                                 onChange={e => setData('form_title', e.target.value)}
                                                 placeholder="Contoh: Checklist Harian Mesin Injeksi"
-                                                className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 font-bold bg-slate-50/50 transition-all text-slate-900"
+                                                className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-emerald-600 font-bold bg-slate-50/50 transition-all text-slate-900"
                                             />
                                         </div>
 
@@ -305,16 +358,15 @@ export default function FormCreate({ machines }: Props) {
                                                     value={data.machine_type}
                                                     onChange={e => setData('machine_type', e.target.value)}
                                                     className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs outline-none focus:border-emerald-600 font-bold text-slate-800 bg-slate-50/50"
-                                                    >
+                                                >
                                                     <option value="">-- Pilih Mesin Terkait --</option>
                                                     {machines.map((m) => (
                                                         <option key={m.machine_id} value={m.machine_id}>{m.machine_type}</option>
                                                     ))}
                                                 </select>
                                             </div>
-                            
 
-                                            <div className="grid grid-cols-3 gap-2 ">
+                                            <div className="grid grid-cols-3 gap-2">
                                                 <div className="col-span-2">
                                                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Frekuensi</label>
                                                     <div className="flex gap-1">
@@ -348,10 +400,9 @@ export default function FormCreate({ machines }: Props) {
                                                     />
                                                 </div>
                                             </div>
-                                            </div>
-
                                         </div>
                                     </div>
+                                </div>
                             ) : (
                                 /* KARTU HEADER SECTION LANJUTAN */
                                 <div 
@@ -426,7 +477,7 @@ export default function FormCreate({ machines }: Props) {
                                             </select>
                                         </div>
 
-                                        {/* Help Text Input (Opsional aktif) */}
+                                        {/* Help Text Input */}
                                         {q.show_help_text && (
                                             <div className="flex items-center gap-2 pt-1">
                                                 <input
@@ -440,7 +491,7 @@ export default function FormCreate({ machines }: Props) {
                                             </div>
                                         )}
 
-                                        {/* Standard Text Input (Opsional aktif) */}
+                                        {/* Standard Text Input */}
                                         {q.show_standard_text && (
                                             <div className="flex items-center gap-2 pt-1">
                                                 <input
@@ -454,41 +505,67 @@ export default function FormCreate({ machines }: Props) {
                                             </div>
                                         )}
 
-                                        {/* Opsi Pilihan Ganda / Checkbox / Dropdown + Status OK/NG */}
-                                        {(q.input_type === 'SELECT' || q.input_type === 'CHECKBOX' || q.input_type === 'DROPDOWN') && (
-                                            <div className="space-y-2.5 pt-2 bg-slate-50/60 p-4 rounded-xl border border-slate-100 text-xs">
-                                                <span className="block font-bold text-slate-600 uppercase tracking-wider text-[10px] mb-2">Konfigurasi Opsi & Status Normal:</span>
+                                        {/* Konfigurasi Opsi & Jump Section (KHUSUS PILIHAN GANDA / SELECT / DROPDOWN) */}
+                                        {(q.input_type === 'SELECT' || q.input_type === 'DROPDOWN' || q.input_type === 'CHECKBOX') && (
+                                            <div className="space-y-3 pt-2 bg-slate-50/60 p-4 rounded-xl border border-slate-100 text-xs">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="block font-bold text-slate-600 uppercase tracking-wider text-[10px]">Konfigurasi Opsi & Aturan Lompat (Jump Section):</span>
+                                                </div>
+
                                                 {q.options.map((opt, oIndex) => (
-                                                    <div key={oIndex} className="flex items-center gap-2.5">
-                                                        <span className="text-slate-400 font-bold w-4">{oIndex + 1}.</span>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleOptionChange(sIndex, qIndex, oIndex, 'is_normal', !opt.is_normal)}
-                                                            title="Klik untuk mengubah status OK / NG"
-                                                            className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-colors flex items-center gap-1 shrink-0 ${
-                                                                opt.is_normal 
-                                                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-xs' 
-                                                                    : 'bg-rose-100 text-rose-800 border border-rose-200 shadow-xs'
-                                                            }`}
-                                                        >
-                                                            {opt.is_normal ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
-                                                            {opt.is_normal ? 'OK' : 'NG'}
-                                                        </button>
+                                                    <div key={oIndex} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+                                                        <div className="flex items-center gap-2 flex-1">
+                                                            <span className="text-slate-400 font-bold w-4">{oIndex + 1}.</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleOptionChange(sIndex, qIndex, oIndex, 'is_normal', !opt.is_normal)}
+                                                                className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-colors flex items-center gap-1 shrink-0 ${
+                                                                    opt.is_normal 
+                                                                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' 
+                                                                        : 'bg-rose-100 text-rose-800 border border-rose-200'
+                                                                }`}
+                                                            >
+                                                                {opt.is_normal ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+                                                                {opt.is_normal ? 'OK' : 'NG'}
+                                                            </button>
 
-                                                        <input
-                                                            type="text"
-                                                            value={opt.option_text}
-                                                            onChange={e => handleOptionChange(sIndex, qIndex, oIndex, 'option_text', e.target.value)}
-                                                            placeholder={`Opsi ${oIndex + 1}`}
-                                                            className="flex-1 border border-slate-200 rounded-xl px-3 py-1.5 bg-white text-slate-800 outline-none focus:border-emerald-600 font-medium text-xs"
-                                                        />
+                                                            <input
+                                                                type="text"
+                                                                value={opt.option_text}
+                                                                onChange={e => handleOptionChange(sIndex, qIndex, oIndex, 'option_text', e.target.value)}
+                                                                placeholder={`Opsi ${oIndex + 1}`}
+                                                                className="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 bg-slate-50 text-slate-800 outline-none focus:border-emerald-600 font-medium text-xs"
+                                                            />
+                                                        </div>
 
-                                                        {q.options.length > 1 && (
-                                                            <button type="button" onClick={() => removeOption(sIndex, qIndex, oIndex)} className="text-slate-400 hover:text-rose-600 font-bold px-2 py-1">&times;</button>
+                                                        {/* Pilihan Jump Section */}
+                                                        {q.input_type === 'SELECT' && (
+                                                            <div className="flex items-center gap-2 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                                                            <div className="flex items-center gap-1 text-[11px] text-slate-500 font-bold shrink-0">
+                                                                <CornerDownRight className="w-3.5 h-3.5 text-emerald-600" /> Lompat ke:
+                                                            </div>
+                                                            <select
+                                                                value={opt.goto_section_id ?? ''}
+                                                                onChange={e => handleOptionChange(sIndex, qIndex, oIndex, 'goto_section_id', e.target.value)}
+                                                                className="border border-emerald-200 bg-emerald-50/40 rounded-lg px-2.5 py-1.5 text-xs font-bold text-emerald-900 outline-none focus:border-emerald-600 w-full sm:w-40"
+                                                            >
+                                                                <option value="">(Lanjut Default)</option>
+                                                                {data.sections.map((sec, targetIdx) => (
+                                                                    <option key={targetIdx} value={targetIdx}>
+                                                                        Bagian {targetIdx + 1}: {sec.section_title || 'Tanpa Judul'}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+
+                                                            {q.options.length > 1 && (
+                                                                <button type="button" onClick={() => removeOption(sIndex, qIndex, oIndex)} className="text-slate-400 hover:text-rose-600 font-bold px-2 py-1">&times;</button>
+                                                            )}
+                                                        </div>
                                                         )}
                                                     </div>
                                                 ))}
-                                                <div className="pt-2 pl-6">
+
+                                                <div className="pt-1">
                                                     <button type="button" onClick={() => addOption(sIndex, qIndex)} className="text-emerald-700 font-extrabold hover:underline text-xs flex items-center gap-1">
                                                         <PlusCircle className="w-3.5 h-3.5" /> Tambah Opsi Pilihan
                                                     </button>
@@ -539,6 +616,101 @@ export default function FormCreate({ machines }: Props) {
                     </div>
                 </form>
             </div>
+
+            {/* MODAL PRATINJAU FORM (PREVIEW & JUMP SECTION SIMULATOR) */}
+            {isPreviewOpen && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+                    <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-slate-100">
+                        {/* Header Modal */}
+                        <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <span className="bg-emerald-600 text-white text-[10px] font-black uppercase px-2 py-0.5 rounded">Preview Mode</span>
+                                <h3 className="text-sm font-bold truncate max-w-md">{data.form_title}</h3>
+                            </div>
+                            <button onClick={() => setIsPreviewOpen(false)} className="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
+                        </div>
+
+                        {/* Body Preview */}
+                        <div className="p-6 overflow-y-auto space-y-6 flex-1 bg-slate-50/50">
+                            {data.sections[previewSectionId] ? (
+                                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-6">
+                                    <div className="border-b border-slate-100 pb-3">
+                                        <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest bg-emerald-50 px-2.5 py-1 rounded-md">
+                                            Bagian {previewSectionId + 1} dari {data.sections.length}
+                                        </span>
+                                        <h2 className="text-lg font-bold text-slate-900 mt-2">{data.sections[previewSectionId].section_title}</h2>
+                                        {data.sections[previewSectionId].section_description && (
+                                            <p className="text-xs text-slate-500 mt-1">{data.sections[previewSectionId].section_description}</p>
+                                        )}
+                                    </div>
+
+                                    {/* List Pertanyaan di Section Ini */}
+                                    <div className="space-y-4">
+                                        {data.sections[previewSectionId].questions.map((q, idx) => (
+                                            <div key={idx} className="space-y-2 p-4 bg-slate-50/60 rounded-xl border border-slate-100">
+                                                <label className="block text-xs font-bold text-slate-800">
+                                                    {idx + 1}. {q.question_text || '(Pertanyaan belum diisi)'}
+                                                    {q.is_required && <span className="text-rose-600 ml-1">*</span>}
+                                                </label>
+
+                                                {/* Render Opsi Pilihan Ganda dengan Jump Section Indicator */}
+                                                {(q.input_type === 'SELECT' || q.input_type === 'CHECKBOX' || q.input_type === 'DROPDOWN') && (
+                                                    <div className="space-y-2 pt-1">
+                                                        {q.options.map((opt, optIdx) => (
+                                                            <label key={optIdx} className="flex items-center justify-between p-2.5 bg-white border border-slate-200 rounded-lg cursor-pointer hover:border-emerald-500 transition-all text-xs font-medium">
+                                                                <div className="flex items-center gap-2">
+                                                                    <input
+                                                                        type="radio"
+                                                                        name={`preview_q_${idx}`}
+                                                                        checked={previewAnswers[q.question_text] === optIdx}
+                                                                        onChange={() => setPreviewAnswers(prev => ({ ...prev, [q.question_text]: optIdx }))}
+                                                                        className="text-emerald-600 focus:ring-emerald-500"
+                                                                    />
+                                                                    <span className="text-slate-700">{opt.option_text}</span>
+                                                                </div>
+                                                                {opt.goto_section_id !== '' && opt.goto_section_id !== undefined && (
+                                                                    <span className="text-[10px] bg-amber-50 text-amber-800 font-bold px-2 py-0.5 rounded border border-amber-200 flex items-center gap-1">
+                                                                        ⚡ Lompat ke Bagian {Number(opt.goto_section_id) + 1}
+                                                                    </span>
+                                                                )}
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {q.input_type === 'TEXT' && (
+                                                    <input type="text" placeholder="Jawaban singkat..." className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white" disabled />
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="text-center py-10 text-slate-500 text-xs">Section tidak ditemukan.</div>
+                            )}
+                        </div>
+
+                        {/* Footer Modal Preview */}
+                        <div className="bg-white px-6 py-4 border-t border-slate-200 flex items-center justify-between">
+                            <button
+                                type="button"
+                                onClick={handlePreviewBack}
+                                disabled={previewHistory.length === 0}
+                                className="px-4 py-2 rounded-xl text-xs font-bold border border-slate-200 text-slate-600 disabled:opacity-40 hover:bg-slate-50 transition-all"
+                            >
+                                &larr; Kembali
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handlePreviewNext}
+                                className="px-6 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition-all shadow-xs flex items-center gap-1.5"
+                            >
+                                Selanjutnya <ArrowRight className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </AppLayout>
     );
 }

@@ -15,7 +15,7 @@ return new class extends Migration
             $table->string('assignment_id')->primary();
             $table->string('user_id');
             $table->string('machine_id');
-            $table->enum('assigntment_type', ['PRIMARY', 'BACKUP', 'SUPPORT', 'VENDOR'])
+            $table->enum('assigntment_type', ['PRIMARY', 'BACKUP', 'SUPPORT', 'VENDOR'])->nullable();
             $table->date('valid_from');
             $table->date('valid_until');
 

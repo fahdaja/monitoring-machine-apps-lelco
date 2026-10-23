@@ -18,7 +18,7 @@ return new class extends Migration
             $table->string('option_value')->nullable();
             $table->integer('sort_order')->default(0);
 
-            $table->string('next_question_id')->nullable();
+            $table->string('goto_section_id')->nullable();
 
             // opsional info tambahan untuk membantu user
             $table->boolean('allowed_help_text')->default(false);

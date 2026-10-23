@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('permissions', function (Blueprint $table) {
             $table->string('role_id');
-            $table->enum('permission', ['VIEW_ALL', 'MANAGE_MASTER', 'INSPECTION_MASTER', 'BREAKDOWN_MASTER' 'VIEW_DASHBOARD', 'L1_INSPECTION', 'L2_INSPECTION', 'L3_INSPECTION', 'L4_INSPECTION', 'REPORT_BREAKDOWN', 'HANDLE_BREAKDOWN', 'VERIFY_BREAKDOWN', 'CLOSE_BREAKDOWN'])
+            $table->enum('permission', ["VIEW_ALL", "MANAGE_MASTER", "INSPECTION_MASTER", "BREAKDOWN_MASTER", "VIEW_DASHBOARD", "L1_INSPECTION", "L2_INSPECTION", "L3_INSPECTION", "L4_INSPECTION", "REPORT_BREAKDOWN", "HANDLE_BREAKDOWN", "VERIFY_BREAKDOWN", "CLOSE_BREAKDOWN"])->nullable();
         });
     }
 
