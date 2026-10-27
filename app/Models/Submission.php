@@ -16,6 +16,7 @@ class Submission extends Model{
         'submission_id',
         'machine_id',
         'form_id',
+        'user_id',
         'answers_json',
     ];
 
