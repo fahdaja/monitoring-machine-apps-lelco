@@ -12,8 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('form_schedules', function (Blueprint $table) {
-            $table->string('schedule_id')->primary();
-            $table->string('form_id')->nullable();
+            $table->id();
+            $table->string('schedule_code')->unique()->nullable(false); 
             $table->string('schedule_name');
             $table->enum('frequency_type', ['DAILY', 'WEEKLY', 'MONTHLY'])->default('DAILY');
             $table->string('days_of_week')->nullable();
@@ -24,8 +24,8 @@ return new class extends Migration
             $table->boolean('is_active')->default(true);
 
             // relasi
-            $table->foreign('machine_id')->references('machine_id')->on('machines')->onDelete('cascade');
-            
+            $table->foreignId('machine_id')->constrained('machines')->onDelete('cascade');
+            $table->foreignId('form_id')->constrained('forms')->onDelete('cascade');
         });
     }
 

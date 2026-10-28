@@ -12,13 +12,13 @@ class BreakdownTicket extends Model
     use HasFactory;
 
     protected $table = 'breakdown_tickets';
-    protected $primaryKey = 'ticket_id';
+    protected $primaryKey = 'id';
     public $incrementing = false;
-    protected $keyType = 'string';
+
 
     protected $fillable = [ 
         // ticket information
-        'ticket_id',
+        'id',
         'machine_id',
         'problem_category',
         'problem_description',

@@ -10,19 +10,18 @@ class UserController extends Controller
 {
     public function index()
     {
-        // Ambil semua user (sesuaikan kolom dengan database Anda)
-        $users = User::select('user_id', 'username', 'email', 'full_name', 'department', 'role', 'is_active')
-            ->where('username', '!=', 'admin') // Sembunyikan admin dari list
+        $users = User::select('id', 'user_code', 'username', 'email', 'full_name', 'department', 'role', 'phone_number', 'is_active')
+            ->orderBy('id', 'asc')
             ->get();
 
-        return Inertia::render('user/index', [
+        return Inertia::render('users/index', [
             'users' => $users,
         ]);
     }
 
     public function create()
     {
-        return Inertia::render('user/create', [
+        return Inertia::render('users/create', [
             'departments' => [
                 'HRD', 
                 'Finance', 

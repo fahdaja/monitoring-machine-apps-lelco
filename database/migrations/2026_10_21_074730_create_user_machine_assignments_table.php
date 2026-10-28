@@ -12,16 +12,15 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('user_machine_assignments', function (Blueprint $table) {
-            $table->string('assignment_id')->primary();
-            $table->string('user_id');
-            $table->string('machine_id');
+            $table->id();
+            $table->string('assignment_code')->unique()->nullable(false); 
             $table->enum('assigntment_type', ['PRIMARY', 'BACKUP', 'SUPPORT', 'VENDOR'])->nullable();
             $table->date('valid_from');
             $table->date('valid_until');
 
             // relasi
-            $table->foreign('user_id')->references('user_id')->on('users')->onDelete('cascade');
-            $table->foreign('machine_id')->references('machine_id')->on('machines')->onDelete('cascade');
+            $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
+            $table->foreignId('machine_id')->constrained('machines')->onDelete('cascade');
         });
     }
 

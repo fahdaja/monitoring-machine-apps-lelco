@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 
+interface User {
+    id: number;
+    full_name: string;
+    role: string;
+}
 
 // Type definitions
 interface MachineItem {
     id: number;
-    machineId: string;
     machineCode?: string;
     machineName: string;
     category: string;
@@ -26,12 +30,23 @@ interface MachineIndexProps {
     machines?: MachineItem[];
 }
 
+interface pageProps {
+    auth: {
+        user: User
+    }
+    [key: string]: any;
+}
+
 
 export default function MachineIndex({ machines }: MachineIndexProps) {
     const [search, setSearch] = useState('');
     const [filterStatus, setFilterStatus] = useState<string>('ALL');
     const [filterMachineType, setFilterMachineType] = useState<string>('ALL');
 
+    const { auth } = usePage<pageProps>().props;
+
+    const userRole = auth?.user?.role?.toUpperCase();
+    const isAdmin = userRole === 'ADMIN';
     // Gunakan data dari backend, fallback ke mock data
     const allMachines = machines ?? [];
 
@@ -40,7 +55,6 @@ export default function MachineIndex({ machines }: MachineIndexProps) {
         const matchSearch =
             search === '' ||
             m.machineName.toLowerCase().includes(search.toLowerCase()) ||
-            m.machineId.toLowerCase().includes(search.toLowerCase()) ||
             (m.machineCode && m.machineCode.toLowerCase().includes(search.toLowerCase())) ||
             m.location.toLowerCase().includes(search.toLowerCase()) ||
             (m.department && m.department.toLowerCase().includes(search.toLowerCase()));
@@ -112,14 +126,20 @@ export default function MachineIndex({ machines }: MachineIndexProps) {
             {/* Page Header */}
             <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight">
-                        Manajemen Mesin
-                    </h1>
+                    {isAdmin ? (
+                        <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight">
+                            Manajemen Mesin
+                        </h1>
+                    ) : (
+                        <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight">
+                            Machine Profile
+                        </h1>
+                    )}
                     <p className="text-sm text-slate-500 mt-1">
-                        Daftar seluruh mesin yang terdaftar di sistem digitalisasi pabrik.
+                        {isAdmin ? 'Daftar seluruh mesin yang terdaftar di sistem digitalisasi pabrik.' : 'Informasi lengkap mengenai mesin yang menjadi aset operasional perusahaan.'}
                     </p>
                 </div>
-                {/* Tombol Tambah Mesin Baru */}
+                {isAdmin ? (
                 <Link
                     href="/machines/create"
                     className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm shrink-0"
@@ -129,6 +149,11 @@ export default function MachineIndex({ machines }: MachineIndexProps) {
                     </svg>
                     Tambah Mesin Baru
                 </Link>
+                ) : null}
+
+
+
+
             </div>
 
             {/* Status Summary Chips */}
@@ -194,7 +219,7 @@ export default function MachineIndex({ machines }: MachineIndexProps) {
                                 <div className="min-w-0">
                                     <div className="flex items-center gap-2 mb-1">
                                         <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
-                                            {m.machineId}
+                                            {m.id}
                                         </span>
                                         {m.machineCode && (
                                             <span className="text-[10px] font-mono text-slate-400">
@@ -245,21 +270,10 @@ export default function MachineIndex({ machines }: MachineIndexProps) {
                                 )}
                             </div>
 
-                            {/* Criticality + Brand */}
-                            <div className="flex items-center justify-between mb-4">
-                                <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${getCriticalityBadge(m.criticality)}`}>
-                                    Criticality: {m.criticality}
-                                </span>
-                                {m.brand && (
-                                    <span className="text-[11px] text-slate-400 font-medium">
-                                        {m.brand} {m.model ? `· ${m.model}` : ''}
-                                    </span>
-                                )}
-                            </div>
 
                             {/* Action Button */}
                             <Link
-                                href={`/machines/${m.machineId}`}
+                                href={`/machines/${m.id}`}
                                 className="block w-full text-center py-2.5 px-3 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors shadow-sm"
                             >
                                 Lihat Detail Mesin

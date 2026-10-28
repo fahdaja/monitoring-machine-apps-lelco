@@ -12,16 +12,14 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('submissions', function (Blueprint $table) {
-            $table->string('submission_id')->primary();
-            $table->string('machine_id')->nullable();
-            $table->string('form_id')->nullable();
-            $table->string('user_id')->nullable();
+            $table->id();
+            $table->string('submission_code')->unique()->nullable(false); 
             $table->jsonb('answers_json')->nullable(); 
             $table->timestamps('created_at')->nullable();
             // relasi
-            $table->foreign('machine_id')->references('machine_id')->on('machines')->onDelete('cascade');
-            $table->foreign('form_id')->references('form_id')->on('forms')->onDelete('cascade');
-            $table->foreign('user_id')->references('user_id')->on('users')->onDelete('cascade');
+            $table->foreignId('machine_id')->constrained('machines')->onDelete('cascade');
+            $table->foreignId('form_id')->constrained('forms')->onDelete('cascade');
+            $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
         });
     }
 

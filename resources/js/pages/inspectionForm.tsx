@@ -27,6 +27,7 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
         maxCompletedIndex
     } = useInspectionForm(sections);
 
+    console.log(currentSection)
     return (
         <FormLayout
             footer={
@@ -133,7 +134,7 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                                         </span>
                                         <div className="text-xs flex flex-col gap-1">
                                             <span className="truncate font-bold text-slate-800">
-                                                {sec.section_code} <span>•</span> {sec.section_title}
+                                                {sec.section_code} <span>•</span> {sec?.section_title}
                                             </span>
                                             <p className="font-normal text-slate-500">{sec.section_code}</p>
                                             <span className={statusColor}>
@@ -152,8 +153,9 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                     <div ref={errorRef} />
 
                     <div className="bg-slate-200 py-3 border-b border-slate-300 px-4 rounded-t-lg shrink-0">
-                        <p className="text-xs font-normal text-slate-500">{currentSection.section_code} • Section {currentSectionIndex + 1} dari {sections.length}</p>
-                        <h1 className="font-bold text-slate-800">{currentSection.section_code} <span>•</span> {currentSection.section_title}</h1>
+        
+                        <p className="text-xs font-normal text-slate-500">{currentSection?.section_code} • Section {currentSectionIndex + 1} dari {sections.length}</p>
+                        <h1 className="font-bold text-slate-800">{currentSection?.section_code} <span>•</span> {currentSection?.section_title}</h1>
                         <p className="text-xs text-slate-600 mt-1">C - Clean
                             Pastikan Hopper Body bersih dari debu, bijih material yang tercecer, minyak, dan benda asing.
                             Metode: Pemeriksaan Visual / Touch</p>
@@ -170,16 +172,16 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                             </div>
                         )}
 
-                        <h1 className="font-bold text-slate-800 text-xl">Apakah {currentSection.section_title} bersih dari debu, ceceran bijih material, minyak, dan benda asing?</h1>
+                        <h1 className="font-bold text-slate-800 text-xl">Apakah {currentSection?.section_title} bersih dari debu, ceceran bijih material, minyak, dan benda asing?</h1>
                         <p className="text-slate-600">Metode: Pemeriksaan Visual / Touch</p>
                         <div className="mt-5 rounded-xl border border-slate-300 p-4 bg-slate-100">
-                            <span className="px-3 py-3"> Standar: Pastikan {currentSection.section_title} bersih dari debu, ceceran bijih material, minyak, dan benda asing</span>
+                            <span className="px-3 py-3"> Standar: Pastikan {currentSection?.section_title} bersih dari debu, ceceran bijih material, minyak, dan benda asing</span>
                         </div>
                         <div className="mt-4 relative bg-slate-100 rounded-lg border border-slate-300 overflow-hidden group">
                             <div className="bg-white m-4 rounded-lg">
                                 <img
                                     src="/images/IMG-20261019-WA0001.jpg"
-                                    alt={currentSection.section_title}
+                                    alt={currentSection?.section_title}
                                     className="w-full max-h-120 object-contain rounded-lg cursor-pointer"
                                     onClick={() => setIsImageZoomed(true)}
                                 />
@@ -236,7 +238,7 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                         {currentAnswer.value === "NG" && (
                             <div className="mb-6 p-4 bg-slate-50/50 border border-slate-200 rounded-xl animate-fadeIn mt-4">
                                 <label className="block text-xs font-bold mb-2 uppercase tracking-wider">
-                                    <p>Catatan / Notes {currentSection.section_code} (Wajib diisi) <span className="text-red-600 text-md">*</span></p>
+                                    <p>Catatan / Notes {currentSection?.section_code} (Wajib diisi) <span className="text-red-600 text-md">*</span></p>
                                 </label>
                                 <textarea
                                     rows={3}
@@ -250,7 +252,7 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
 
                         <div className="mt-4 border-slate-200 shadow-md border-1 mt-8"></div>
                         <div className="mt-4">
-                            <h1 className="text-xl font-bold text-slate-800">Upload Evidence - {currentSection.section_code} {currentSection.section_title} <span className="text-red-500">*</span></h1>
+                            <h1 className="text-xl font-bold text-slate-800">Upload Evidence - {currentSection?.section_code} {currentSection?.section_title} <span className="text-red-500">*</span></h1>
                             <p className="text-slate-500 text-md mt-4">Wajib upload foto hasil pemeriksaan aktual</p>
                         </div>
                         <div className="flex mt-4 gap-3 bg-slate-100 p-4 rounded-xl">
@@ -307,8 +309,8 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                 isOpen={isImageZoomed}
                 onClose={() => setIsImageZoomed(false)}
                 imageSrc="/images/IMG-20261019-WA0001.jpg"
-                altText={currentSection.section_title}
-                title={`${currentSection.section_title} Zoom Out`}
+                altText={currentSection?.section_title}
+                title={`${currentSection?.section_title} Zoom Out`}
             />
         </FormLayout>
     );

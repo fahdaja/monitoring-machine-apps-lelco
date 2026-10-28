@@ -12,13 +12,13 @@ class Machine extends Model
     use HasFactory;
 
     protected $table = 'machines';
-    protected $primaryKey = 'machine_id';
+    protected $primaryKey = 'id';
     public $incrementing = false;
 
     protected $fillable = [
         // nama dan tipe
-        'machine_id',
-        'qr_id',
+        'id',
+        'user_id',
         'machine_code',
         'machine_name',
         'machine_type',
@@ -44,8 +44,6 @@ class Machine extends Model
         'specifications' => 'array',
         'commission_date' => 'date',
         'machine_status' => MachineStatus::class,
-        'criticality' => CriticalityStatus::class,
-        'active_status' => 'integer',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];

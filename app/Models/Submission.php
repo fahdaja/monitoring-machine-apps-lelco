@@ -9,11 +9,12 @@ class Submission extends Model{
     use HasFactory;
     
     protected $table = 'submissions';
-    protected $primaryKey = 'submission_id';
+    protected $primaryKey = 'id';
     public $incrementing = false;
     
     protected $fillable = [
-        'submission_id',
+        'id',
+        'submission_code',
         'machine_id',
         'form_id',
         'user_id',

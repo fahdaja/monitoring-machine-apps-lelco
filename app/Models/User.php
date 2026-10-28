@@ -3,18 +3,19 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 
-class User extends Model {
+
+class User extends Authenticatable {
     use HasFactory;
 
     protected $table = 'users';
-    protected $primaryKey = 'user_id';
-    protected $keyType = 'string';
+    protected $primaryKey = 'id';
     public $incrementing = false;
 
     protected $fillable = [
-        'user_id',
+        'id',
+        'user_code',
         'username',
         'password',
         'full_name',
@@ -30,7 +31,7 @@ class User extends Model {
 
     protected $casts = [
         'is_active' => 'boolean',
-        'role' => 'enum',
+        'role' => 'string',
         'last_login_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',

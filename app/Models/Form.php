@@ -10,12 +10,12 @@ class Form extends Model
     use HasFactory;
 
     protected $table = 'forms';
-    protected $primaryKey = 'form_id';
-    protected $keyType = 'string';
+    protected $primaryKey = 'id';
     public $incrementing = false;
 
     protected $fillable = [
-        'form_id',
+        'id',
+        'form_code',
         'machine_id',
         'form_name',
         'description',

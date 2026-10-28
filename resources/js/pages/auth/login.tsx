@@ -1,14 +1,14 @@
 import React, { useState, FormEvent, useEffect } from 'react';
 import { Head, useForm } from '@inertiajs/react';
 
-interface UserOption {
-    username: string;
-    fullName: string;
+interface User {
+    id: number;
+    full_name: string;
     role: string;
 }
 
 interface LoginProps {
-    users?: UserOption[];
+    users?: User[];
     companyName?: string;
     appName?: string;
     tagline?: string;
@@ -26,17 +26,13 @@ export default function Login({
 
     // Inertia Form State
     const { data, setData, post, processing, errors } = useForm({
-        username: '',
+        id: 0,
+        full_name: '',
+        role: '',
         password: '',
     });
 
-    // Default Fallback Dummy User jika props dari backend belum dikirim
-    const userList: UserOption[] = users.length > 0 ? users : [
-        { username: 'operator1', fullName: 'Budi Santoso', role: 'Operator Production' },
-        { username: 'technician1', fullName: 'Muhammad Fahd', role: 'Maintenance Technician' },
-        { username: 'admin1', fullName: 'Super Admin', role: 'System Administrator' },
-    ];
-
+    const userList: User[] = users
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
         post('/login');
@@ -98,15 +94,23 @@ export default function Login({
                             <div className="relative w-full">
                                 <select
                                     id="username"
-                                    value={data.username}
-                                    onChange={(e) => setData('username', e.target.value)}
+                                    value={data.id}
+                                    onChange={(e) => {
+                                        const selectedId = Number(e.target.value);
+                                        const selectedUser = userList.find((u) => u.id === selectedId);
+                                        setData({
+                                            id: selectedId,
+                                            full_name: selectedUser?.full_name ?? '',
+                                            role: selectedUser?.role ?? '',
+                                        });
+                                    }}
                                     className="w-full h-12 border border-[#dce4ee] rounded-xl pl-3 pr-10 bg-white text-[#10233d] text-sm outline-none focus:border-[#12385f] focus:ring-4 focus:ring-[#12385f]/10 transition-all cursor-pointer appearance-none"
                                     required
                                 >
                                     <option value="">Pilih petugas...</option>
                                     {userList.map((u) => (
-                                        <option key={u.username} value={u.username}>
-                                            {u.fullName} &nbsp;-&nbsp; {u.role}
+                                        <option key={u.id} value={u.id}>
+                                            {u.full_name} &nbsp;-&nbsp; {u.role}
                                         </option>
                                     ))}
                                 </select>
@@ -119,8 +123,8 @@ export default function Login({
                                 </div>
                             </div>
 
-                            {errors.username && (
-                                <p className="text-xs text-rose-600 mt-1 font-semibold">{errors.username}</p>
+                            {errors.full_name && (
+                                <p className="text-xs text-rose-600 mt-1 font-semibold">{errors.full_name}</p>
                             )}
                         </div>
 

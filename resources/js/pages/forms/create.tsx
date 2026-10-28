@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
-import { PlusCircle, Copy, Trash2, Layers, Image, Video, HelpCircle, ShieldCheck, SlidersHorizontal, CheckCircle2, AlertTriangle, FileText, Settings2, Eye, ArrowRight, CornerDownRight, Upload } from 'lucide-react';
+import { PlusCircle, Copy, Trash2, Layers, Image, Video, HelpCircle, ShieldCheck, SlidersHorizontal, CheckCircle2, AlertTriangle, FileText, Settings2, Eye, ArrowRight, CornerDownRight, Upload, Calendar } from 'lucide-react';
 
 interface Machine {
     machine_id: string;
@@ -29,6 +29,8 @@ interface QuestionItem {
     validation_error_message?: string;
     allowed_file_type?: ('IMAGE' | 'VIDEO' | string)[];
     max_file_size?: '1MB' | '5MB' | '10MB' | string;
+    date_value: string;
+    time_value: string;
     options: OptionItem[];
     auto_ticket: boolean;
 }
@@ -45,7 +47,10 @@ interface Props {
     machines: Machine[];
 }
 
+
+
 export default function FormCreate({ machines }: Props) {
+
     const { data, setData, post, processing, errors } = useForm({
         form_title: 'Formulir Pemantauan Tanpa Judul',
         form_description: 'deskripsi optional',
@@ -70,10 +75,10 @@ export default function FormCreate({ machines }: Props) {
     });
 
     const FILE_SIZE_OPTIONS = [
-    '1MB',
-    '5MB',
-    '10MB',
-];
+        '1MB',
+        '5MB',
+        '10MB',
+    ];
     const [activeSectionIndex, setActiveSectionIndex] = useState(0);
     const [activeFocus, setActiveFocus] = useState<string | number>('HEADER');
 
@@ -96,7 +101,7 @@ export default function FormCreate({ machines }: Props) {
                         question_text: '',
                         placeholder: '',
                         input_type: 'SELECT',
-                        is_required: true,
+                        is_required: false,
                         show_help_text: false,
                         help_text: '',
                         show_standard_text: false,
@@ -106,6 +111,8 @@ export default function FormCreate({ machines }: Props) {
                         validation_error_message: '',
                         allowed_file_type: ['IMAGE', 'VIDEO'],
                         max_file_size: '10MB',
+                        date_value: '',
+                        time_value: '',
                         options: [
                             { option_text: 'Normal (OK)', is_normal: true, goto_section_id: '' },
                             { option_text: 'Rusak / Perlu Servis (NG)', is_normal: false, goto_section_id: '' }
@@ -128,7 +135,7 @@ export default function FormCreate({ machines }: Props) {
             question_text: '',
             placeholder: '',
             input_type: 'SELECT',
-            is_required: true,
+            is_required: false,
             show_help_text: false,
             help_text: '',
             show_standard_text: false,
@@ -136,8 +143,10 @@ export default function FormCreate({ machines }: Props) {
             has_validation: false,
             expected_answer: '',
             validation_error_message: '',
-            allowed_file_type: ['IMAGE', 'VIDEO'],    
+            allowed_file_type: ['IMAGE', 'VIDEO'],
             max_file_size: '10MB',
+            date_value: '',
+            time_value: '',
             options: [
                 { option_text: 'Opsi 1', is_normal: true, goto_section_id: '' },
                 { option_text: 'Opsi 2', is_normal: false, goto_section_id: '' }
@@ -358,7 +367,7 @@ export default function FormCreate({ machines }: Props) {
                                             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Judul Formulir</label>
                                             <textarea
                                                 value={data.form_title}
-                                                onChange={e => {setData('form_title', e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px';}}
+                                                onChange={e => { setData('form_title', e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
                                                 placeholder="Contoh: Checklist Harian Mesin Injeksi"
                                                 rows={1}
                                                 className="w-full border-b border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-600 font-bold bg-slate-50/50 transition-all resize-none text-slate-900 overflow-hidden"
@@ -369,7 +378,7 @@ export default function FormCreate({ machines }: Props) {
                                             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Deskripsi (Opsional)</label>
                                             <textarea
                                                 value={data.form_description}
-                                                onChange={e => {setData('form_description', e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px';}}
+                                                onChange={e => { setData('form_description', e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
                                                 placeholder="Petunjuk pengisian form untuk teknisi..."
                                                 rows={1}
                                                 className="w-full border-b border-slate-200  p-3 text-xs outline-none focus:border-emerald-600 bg-slate-50/50 font-medium resize-none overflow-hidden"
@@ -499,6 +508,8 @@ export default function FormCreate({ machines }: Props) {
                                                 <option value="CHECKBOX">Kotak Centang</option>
                                                 <option value="DROPDOWN">Drop-down</option>
                                                 <option value="FILE">Upload File</option>
+                                                <option value="DATE">Tanggal</option>
+                                                <option value="TIME">Waktu</option>
                                             </select>
                                         </div>
 
@@ -738,6 +749,30 @@ export default function FormCreate({ machines }: Props) {
                                             </div>
                                         )}
 
+                                        {q.input_type === 'DATE' && (
+                                            <div className='flex items-center justify-between w-50 mt-5 mb-5 px-3 py-2 border-b border-slate-200 bg-slate-50/70 rounded-md select-none'>
+                                                <span className="text-[10px] font-bold text-slate-500">
+                                                    {q.date_value || 'Bulan, hari, tahun'}
+                                                </span>
+                                                {/* Ikon Kalender Kustom ala Google Forms */}
+                                                <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                </svg>
+                                            </div>
+                                        )}
+
+                                        {q.input_type === 'TIME' && (
+                                            <div className='flex items-center justify-between w-50 mt-5 mb-5 px-3 py-2 border-b border-slate-200 bg-slate-50/70 rounded-md select-none'>
+                                                <span className="text-[10px] font-bold text-slate-500">
+                                                    {q.time_value || 'Waktu'}
+                                                </span>
+                                                {/* Ikon Jam Kustom ala Google Forms */}
+                                                <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                </svg>
+                                            </div>
+                                        )}
+
                                         {/* Footer Kartu Pertanyaan */}
                                         <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs">
                                             <label className="flex items-center gap-2 font-bold text-slate-700 cursor-pointer">
@@ -891,7 +926,7 @@ export default function FormCreate({ machines }: Props) {
                                                                     />
                                                                     <span className="text-slate-700">{opt.option_text}</span>
                                                                 </div>
-                                                                {opt.goto_section_id !== '' && opt.goto_section_id !== undefined &&  (
+                                                                {opt.goto_section_id !== '' && opt.goto_section_id !== undefined && (
                                                                     <span className="text-[10px] bg-amber-50 text-amber-800 font-bold px-2 py-0.5 rounded border border-amber-200 flex items-center gap-1">
                                                                         ⚡ Lompat ke Bagian {Number(opt.goto_section_id) + 1}
                                                                     </span>
@@ -930,7 +965,7 @@ export default function FormCreate({ machines }: Props) {
                                                                         // Validasi Tipe File yang Diizinkan
                                                                         const isImage = file.type.startsWith('image/');
                                                                         const isVideo = file.type.startsWith('video/');
-                                                                        const isAllowed = 
+                                                                        const isAllowed =
                                                                             (isImage && q.allowed_file_type?.includes('IMAGE')) ||
                                                                             (isVideo && q.allowed_file_type?.includes('VIDEO'));
 

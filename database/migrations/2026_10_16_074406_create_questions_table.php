@@ -12,10 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('questions', function (Blueprint $table) {
-            $table->string('question_id')->primary();
-            $table->string('form_id');
-            $table->string('section_id');
-            $table->string('question_code');
+            $table->id();
+            $table->string('question_code')->unique()->nullable(false); 
             $table->text('question_text');
             $table->string('question_image')->nullable();
             $table->enum('input_type', ['TEXT' , 'TEXTAREA' , 'SELECT' , 'CHECKBOX' , 'DROPDOWN' , 'FILE' , 'DATE' , 'TIME']);
@@ -24,8 +22,8 @@ return new class extends Migration
             $table->string('media_title')->nullable();
 
             // relasi
-            $table->foreign('form_id')->references('form_id')->on('forms')->onDelete('cascade');
-            $table->foreign('section_id')->references('section_id')->on('sections')->onDelete('cascade');
+            $table->foreignId('form_id')->constrained('forms')->onDelete('cascade');
+            $table->foreignId('section_id')->constrained('sections')->onDelete('cascade');
         });
     }
 

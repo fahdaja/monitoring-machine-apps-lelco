@@ -10,12 +10,11 @@ class Question extends Model
     use HasFactory;
 
     protected $table = 'questions';
-    protected $primaryKey = 'question_id';
-    protected $keyType = 'string';
+    protected $primaryKey = 'id';
     public $incrementing = false;
 
     protected $fillable = [
-        'question_id',
+        'id',
         'form_id',
         'section_id',
         'question_code',

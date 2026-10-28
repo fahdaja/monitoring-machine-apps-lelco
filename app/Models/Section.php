@@ -10,12 +10,11 @@ class Section extends Model
     use HasFactory;
 
     protected $table = 'sections';
-    protected $primaryKey = 'section_id';
-    protected $keyType = 'string';
+    protected $primaryKey = 'id';
     public $incrementing = false;
 
     protected $fillable = [
-        'section_id',
+        'id',
         'form_id',
         'section_code',
         'section_title',

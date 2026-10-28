@@ -17,29 +17,7 @@ class MachineController extends Controller
      */
     public function index(Request $request): Response
     {
-        $machines = Machine::where('active_status', true)
-            ->latest('created_at')
-            ->get()
-            ->map(function ($machine) {
-                return [    
-                    'id'            => $machine->machine_id,
-                    'machineId'     => $machine->machine_id,
-                    'machineCode'   => $machine->machine_code,
-                    'machineName'   => $machine->machine_name,
-                    'machineType'   => $machine->machine_type,
-                    'category'      => $machine->category,
-                    'location'      => $machine->location,
-                    'department'    => $machine->department,
-                    'status'        => $machine->machine_status, 
-                    'subType'       => $machine->sub_type,
-                    'brand'         => $machine->specifications['brand'] ?? null,
-                    'model'         => $machine->specifications['model'] ?? null,
-                ];
-            });
-
-        return Inertia::render('machines/index', [
-            'machines' => $machines,
-        ]);
+        return Inertia::render('machines/index' );
     }
 
     /**

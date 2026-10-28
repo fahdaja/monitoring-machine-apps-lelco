@@ -12,15 +12,14 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('sections', function (Blueprint $table) {
-            $table->string('section_id')->primary();
-            $table->string('form_id');
-            $table->string('section_code');
+            $table->id();
+            $table->string('section_code')->unique()->nullable(false); 
             $table->string('section_title');
             $table->text('section_description');
             $table->integer('section_order');
 
             // relasi
-            $table->foreign('form_id')->references('form_id')->on('forms')->onDelete('cascade');
+            $table->foreignId('form_id')->constrained('forms')->onDelete('cascade');
             
         });
     }

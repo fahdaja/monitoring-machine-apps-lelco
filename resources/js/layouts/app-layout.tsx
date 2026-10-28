@@ -6,9 +6,22 @@ interface AppLayoutProps {
     children: ReactNode;
 }
 
+interface User {
+    id: number;
+    role: string;
+    full_name: string;
+}
+
+interface PageProps {
+    auth: {
+        user: User;
+    };
+    flash: any;
+}
+
 export default function AppLayout({ children }: AppLayoutProps) {
-    const pageProps = usePage().props as any;
-    const user = pageProps?.auth?.user || { name: 'Muhammad Fahd', role: 'Maintenance Admin' };
+    const pageProps = usePage<PageProps>().props ;
+    const user = pageProps?.auth?.user;
     const flash = pageProps?.flash || {};
 
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -52,6 +65,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
             label: 'Manajemen User',
             url: '/users',
             matchPrefix: '/users',
+            adminOnly: true,
             icon: (
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
@@ -62,6 +76,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
             label: 'Manajemen Mesin',
             url: '/machines',
             matchPrefix: '/machines',
+            isMachineMenu: true,
             icon: (
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -73,6 +88,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
             label: 'Manajemen Formulir',
             url: '/forms',
             matchPrefix: '/forms',
+            adminOnly: true,
             icon: (
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -100,6 +116,18 @@ export default function AppLayout({ children }: AppLayoutProps) {
             ),
         },
     ];
+    
+    const filterNavbar = navItems.filter((item) => {
+        if (item.adminOnly){
+            return user.role === 'ADMIN'
+        }
+        return true
+    }).map((item: any) => {
+        if(item.isMachineMenu && user.role !== 'ADMIN'){
+            return { ...item, label: 'Machine Profile'}
+        }
+        return item
+    })
 
     const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
 
@@ -136,10 +164,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 <div className="flex items-center gap-3">
                     <div className="hidden sm:flex items-center gap-2.5 bg-slate-800 border border-slate-700/80 px-3 py-1.5 rounded-xl">
                         <div className="w-7 h-7 rounded-lg bg-blue-500/20 text-blue-400 font-bold text-xs flex items-center justify-center border border-blue-400/30">
-                            {user.name.charAt(0)}
+                            {user.full_name?.charAt(0)}
                         </div>
                         <div className="text-left leading-tight">
-                            <span className="block text-xs font-bold text-slate-200">{user.name}</span>
+                            <span className="block text-xs font-bold text-slate-200">{user.full_name}</span>
                             <span className="block text-[10px] text-slate-400 font-medium">{user.role}</span>
                         </div>
                     </div>
@@ -180,7 +208,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     </div>
 
                     <nav className="flex-1 space-y-1.5">
-                        {navItems.map((item, idx) => {
+                        {filterNavbar.map((item, idx) => {
                             const isActive = currentPath.startsWith(item.matchPrefix);
                             const isExpanded = sidebarOpen || sidebarPinned || isMobile;
 

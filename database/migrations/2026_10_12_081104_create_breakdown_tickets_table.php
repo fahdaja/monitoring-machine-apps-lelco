@@ -12,9 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('breakdown_tickets', function (Blueprint $table) {
-            
-            $table->string('ticket_id')->primary(); 
-            $table->string('machine_id');
+            $table->id();
+            $table->string('ticket_code')->unique()->nullable(false); 
             $table->string('problem_category');
             $table->text('problem_descriptions');
             $table->enum('priority', ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'])->default('MEDIUM');
@@ -29,10 +28,8 @@ return new class extends Migration
                 
                 // pelapor 
                 $table->timestamp('reported_at')->useCurrent();
-                $table->string('reported_by');
                 
                 // teknisi yang menangani
-                $table->string('assigned_to')->nullable();
                 $table->timestamp('started_at')->useCurrent();
                 $table->timestamp('closed_at')->useCurrent();
                 
@@ -41,19 +38,16 @@ return new class extends Migration
                 $table->text('corrective_action')->nullable();
                 
                 // task di verifikasi oleh siapa
-                $table->string('verified_by')->nullable();
-                // $table->string('source_task_id')->nullable();
-                // $table->foreign('source_task_id')->references('task_id')->on('tasks')->onDelete('cascade');
                 $table->timestamp('verified_at')->useCurrent();
                 $table->text('verification_notes')->nullable();
                 
                 // relasi ke tabel users
-                $table->foreign('reported_by')->references('user_id')->on('users')->onDelete('cascade');
-                $table->foreign('verified_by')->references('user_id')->on('users')->onDelete('cascade');
-                $table->foreign('assigned_to')->references('user_id')->on('users')->onDelete('cascade');
+                $table->foreignId('reported_by')->references('id')->on('users')->onDelete('cascade');
+                $table->foreignId('verified_by')->references('id')->on('users')->onDelete('cascade');
+                $table->foreignId('assigned_to')->references('id')->on('users')->onDelete('cascade');
 
                 // relasi ke tabel machines
-                $table->foreign('machine_id')->references('machine_id')->on('machines')->onDelete('cascade');
+                $table->foreignId('machine_id')->constrained('machines')->onDelete('cascade');
             });
     }
 

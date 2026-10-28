@@ -13,10 +13,11 @@ return new class extends Migration
     {
         Schema::create('machines', function (Blueprint $table) {
             // nama dan tipe mesin
-            $table->string('machine_id', 50)->primary();
+            $table->id();
             $table->string('machine_code', 50)->unique();
             $table->string('machine_name', 255);
-            $table->string('qr_id', 100)->unique();
+            $table->string('qr_image_path')->nullable();
+            $table->string('qr_value')->nullable();
             $table->string('category', 100)->nullable();
             $table->string('machine_type')->nullable();
             $table->string('sub_type')->nullable();
@@ -34,6 +35,10 @@ return new class extends Migration
             
             $table->timestamp('created_at')->useCurrent();
             $table->timestamp('updated_at')->useCurrent();
+            
+            // relasi
+            $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
+            
             
         });
     }

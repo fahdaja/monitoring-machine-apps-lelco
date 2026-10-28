@@ -12,15 +12,15 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('forms', function (Blueprint $table) {
-            $table->string('form_id')->primary();
+            $table->id();
+            $table->string('form_code')->unique()->nullable(false); 
             $table->string('form_name');
             $table->string('description');
-            $table->string('machine_id');
             $table->date('created_at');
             $table->date('updated_at');
 
             // relasi
-            $table->foreign('machine_id')->references('machine_id')->on('machines')->onDelete('cascade');
+            $table->foreignId('machine_id')->constrained('machines')->onDelete('cascade');
             
         });
     }

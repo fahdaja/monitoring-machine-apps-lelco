@@ -12,14 +12,14 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('question_answers', function (Blueprint $table) {
-            $table->string('questions_answer_id')->primary();
-            $table->string('submission_id');
-            $table->string('question_id');
+            $table->id();
+            $table->string('answer_code')->unique()->nullable(false); 
             $table->jsonb('answer_value')->nullable();
-            // relasi
-            $table->foreign('submission_id')->references('submission_id')->on('submissions')->onDelete('cascade');
-            $table->foreign('question_id')->references('question_id')->on('questions')->onDelete('cascade');
             $table->timestamps();
+
+            // relasi
+            $table->foreignId('submission_id')->constrained('submissions')->onDelete('cascade');
+            $table->foreignId('question_id')->constrained('questions')->onDelete('cascade');
         });
     }
 

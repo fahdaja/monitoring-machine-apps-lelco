@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 
 interface Machine {
@@ -21,7 +21,24 @@ interface Props {
     machines: Machine[];
 }
 
+interface User {
+    id: number;
+    full_name: string;
+    role: string;
+}
+
+interface pageProps {
+    auth: {
+        user: User
+    }
+    [key: string]: any;
+}
+
 export default function FormIndex({ forms, machines }: Props) {
+    const { auth } = usePage<pageProps>().props;
+        const userRole = auth?.user?.role?.toUpperCase();
+        const isAdmin = userRole === 'ADMIN';
+
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     const { data, setData, post, processing, errors, reset } = useForm({
@@ -50,12 +67,14 @@ export default function FormIndex({ forms, machines }: Props) {
                         <h1 className="text-2xl font-extrabold text-slate-900">Manajemen Template Form</h1>
                         <p className="text-xs text-slate-500 mt-1">Buat form pengecekan yang terikat dengan mesin spesifik.</p>
                     </div>
-                    <Link
-                        href="/forms/create"
-                        className="bg-slate-900 hover:bg-slate-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-colors shadow-sm flex items-center gap-2"
-                    >
-                        + Buat Form Baru
-                    </Link>
+                    {isAdmin && (
+                        <Link
+                            href="/forms/create"
+                            className="bg-slate-900 hover:bg-slate-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-colors shadow-sm flex items-center gap-2"
+                        >
+                            + Buat Form Baru
+                        </Link>
+                    )}
                 </div>
 
                 {/* Tabel Daftar Form */}

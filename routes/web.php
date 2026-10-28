@@ -6,20 +6,12 @@ use Inertia\Inertia;
 use App\Http\Controllers\MachineController;
 use App\Http\Controllers\FormController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\AuthController;
 
-// Preview Tampilan Halaman Login
-Route::get('/login', function () {
-    return Inertia::render('auth/login', [
-        'companyName' => 'PT. Lelco Trindo Nusantara',
-        'appName' => 'Machine Digitalization',
-        'tagline' => 'Machine Digitalization System',
-        'users' => [
-            ['username' => 'budi', 'fullName' => 'Budi Santoso', 'role' => 'Operator Stamping'],
-            ['username' => 'fahd', 'fullName' => 'Muhammad Fahd', 'role' => 'Maintenance Technician'],
-            ['username' => 'admin', 'fullName' => 'Administrator', 'role' => 'Super Admin'],
-        ],
-    ]);
-});
+// Auth Routes
+Route::get('/login', [AuthController::class, 'create']);
+Route::post('/login', [AuthController::class, 'store']);
+Route::post('/logout', [AuthController::class, 'destroy']);
 
 Route::get('/inspection-form',function(){
     return inertia('inspectionForm');
@@ -43,11 +35,11 @@ Route::get('/dashboard', function () {
         ],
         'syncedAt' => now()->format('H:i:s'),
     ]);
-})->name('dashboard');
+})->middleware(['auth', 'role:ADMIN,OPERATOR,MAINTENANCE_L2']);
 
 
 Route::get('/machines', [MachineController::class, 'index'])->name('machines.index');
-Route::get('/machines/create', [MachineController::class, 'create'])->name('machines.create');
+Route::get('/machines/create', [MachineController::class, 'create'])->middleware(['auth', 'role:ADMIN']);
 Route::get('/machines/{machineId}', [MachineController::class, 'show'])->name('machines.show');
 
 Route::get('/breakdowns',function(){
@@ -111,9 +103,9 @@ Route::get('/inspection-tasks', function () {
     ]);
 })->name('tasks.index');
 
-Route::get('forms', [FormController::class, 'index'])->name('forms.index');
-Route::get('/forms/create', [FormController::class, 'create'])->name('forms.create');
+Route::get('forms', [FormController::class, 'index'])->middleware(['auth', 'role:ADMIN']);
+Route::get('/forms/create', [FormController::class, 'create'])->middleware(['auth', 'role:ADMIN']);
 
-Route::get('/users', [UserController::class, 'index'])->name('management-users.index');
-Route::get('/users/create', [UserController::class, 'create'])->name('management-users.create');
-Route::post('/users', [UserController::class, 'store'])->name('management-users.store');
+Route::get('/users', [UserController::class, 'index'])->middleware(['auth', 'role:ADMIN,OPERATOR']);
+Route::get('/users/create', [UserController::class, 'create'])->middleware(['auth', 'role:ADMIN']);
+Route::post('/users', [UserController::class, 'store'])->name('users.store');
