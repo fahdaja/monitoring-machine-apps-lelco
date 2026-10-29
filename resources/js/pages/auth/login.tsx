@@ -4,7 +4,14 @@ import { Head, useForm } from '@inertiajs/react';
 interface User {
     id: number;
     full_name: string;
-    role: string;
+    role: {
+        id: number;
+        name: string;
+    };
+    department: {
+        id: number;
+        name: string;
+    };
 }
 
 interface LoginProps {
@@ -101,7 +108,7 @@ export default function Login({
                                         setData({
                                             id: selectedId,
                                             full_name: selectedUser?.full_name ?? '',
-                                            role: selectedUser?.role ?? '',
+                                            role: selectedUser?.role?.name ?? '',
                                         });
                                     }}
                                     className="w-full h-12 border border-[#dce4ee] rounded-xl pl-3 pr-10 bg-white text-[#10233d] text-sm outline-none focus:border-[#12385f] focus:ring-4 focus:ring-[#12385f]/10 transition-all cursor-pointer appearance-none"
@@ -110,7 +117,7 @@ export default function Login({
                                     <option value="">Pilih petugas...</option>
                                     {userList.map((u) => (
                                         <option key={u.id} value={u.id}>
-                                            {u.full_name} &nbsp;-&nbsp; {u.role}
+                                            {u.full_name} &nbsp;-&nbsp; {u.role?.name}
                                         </option>
                                     ))}
                                 </select>

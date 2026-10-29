@@ -37,9 +37,7 @@ Route::get('/dashboard', function () {
     ]);
 })->middleware(['auth', 'role:ADMIN,OPERATOR,MAINTENANCE_L2']);
 
-
 Route::get('/machines', [MachineController::class, 'index'])->name('machines.index');
-Route::get('/machines/create', [MachineController::class, 'create'])->middleware(['auth', 'role:ADMIN']);
 Route::get('/machines/{machineId}', [MachineController::class, 'show'])->name('machines.show');
 
 Route::get('/breakdowns',function(){
@@ -106,6 +104,12 @@ Route::get('/inspection-tasks', function () {
 Route::get('forms', [FormController::class, 'index'])->middleware(['auth', 'role:ADMIN']);
 Route::get('/forms/create', [FormController::class, 'create'])->middleware(['auth', 'role:ADMIN']);
 
-Route::get('/users', [UserController::class, 'index'])->middleware(['auth', 'role:ADMIN,OPERATOR']);
-Route::get('/users/create', [UserController::class, 'create'])->middleware(['auth', 'role:ADMIN']);
-Route::post('/users', [UserController::class, 'store'])->name('users.store');
+Route::get('/machines/create', [MachineController::class, 'create'])->name('machines.create');
+Route::middleware(['auth', 'role:ADMIN'])->group(function () {
+    Route::get('/users', [UserController::class, 'index'])->name('users.index'); // <-- Wajib ada name ini
+    Route::get('/users/create', [UserController::class, 'create'])->name('users.create');
+    Route::post('/users/create', [UserController::class, 'store'])->name('users.store');
+    Route::get('/users/{id}/edit', [UserController::class, 'edit'])->name('users.edit');
+    Route::put('/users/{id}', [UserController::class, 'update'])->name('users.update');
+    Route::delete('/users/{id}', [UserController::class, 'destroy'])->name('users.destroy');
+});

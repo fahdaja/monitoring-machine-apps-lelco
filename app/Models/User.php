@@ -32,11 +32,20 @@ class User extends Authenticatable {
     protected $casts = [
         'is_active' => 'boolean',
         'role' => 'string',
+        'department' => 'string',
         'last_login_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
 
     
-        
+    public function roles()
+    {
+        return $this->belongsTo(Role::class, 'id');
+    }
+
+    public function departments()
+    {
+        return $this->belongsTo(Department::class, 'id');
+    }
 }

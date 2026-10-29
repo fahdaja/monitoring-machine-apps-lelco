@@ -1,6 +1,7 @@
 import React from 'react';
-import { Head, Link, usePage } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
+import { toast } from 'sonner';
 
 interface User {
     id: number;
@@ -32,6 +33,41 @@ export default function UserIndex({ users = [], user }: UserIndexProps) {
     const pageProps = usePage().props as any;
     const currentUser = user || pageProps?.auth?.user;
     const isAdmin = currentUser?.role?.toUpperCase() === 'ADMIN';
+
+    // Pindahkan fungsi handleDelete ke DALAM komponen agar bisa mengakses data user yang diklik
+    const handleDelete = (targetUser: User) => {
+        // Cek jika user yang mau dihapus adalah ADMIN
+        if (targetUser.role?.toUpperCase() === 'ADMIN') {
+            toast.error('Gagal Dihapus!', {
+                description: 'Akun dengan role ADMIN dilindungi dari penghapusan.',
+            });
+            return;
+        }
+
+        // Konfirmasi sebelum menghapus
+        toast.warning('Konfirmasi Hapus', {
+            description: `Yakin ingin menghapus user ${targetUser.username}?`,
+            action: {
+                label: 'Ya, Hapus',
+                onClick: () => {
+                    // 3. Contoh Penggunaan toast.promise untuk proses asinkronus ke server
+                    const deletePromise = new Promise((resolve, reject) => {
+                        router.delete(`/users/${targetUser.id}`, {
+                            preserveScroll: true,
+                            onSuccess: () => resolve(true),
+                            onError: () => reject(false),
+                        });
+                    });
+
+                    toast.promise(deletePromise, {
+                        loading: 'Sedang menghapus user dari sistem...',
+                        success: 'User berhasil dihapus secara permanen!',
+                        error: 'Gagal menghapus user, silakan coba lagi.',
+                    });
+                },
+            },
+        });
+    };
 
     return (
         <AppLayout>
@@ -121,13 +157,19 @@ export default function UserIndex({ users = [], user }: UserIndexProps) {
                                                     >
                                                         Edit
                                                     </Link>
+                                                    <button
+                                                        onClick={() => handleDelete(item)} // Mengirim seluruh objek 'item' ke fungsi
+                                                        className="px-3 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-xs font-bold hover:bg-rose-100 transition-all cursor-pointer"
+                                                    >
+                                                        Hapus
+                                                    </button>
                                                 </div>
                                             </td>
                                         </tr>
                                     ))
                                 ) : (
                                     <tr>
-                                        <td colSpan={7} className="py-12 text-center text-slate-400">
+                                        <td colSpan={8} className="py-12 text-center text-slate-400">
                                             Belum ada data user yang terdaftar.
                                         </td>
                                     </tr>

@@ -1,20 +1,45 @@
 import React from 'react';
 import { Head, Link, useForm } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
+import { toast } from 'sonner';
 
-export default function UserCreate() {
+interface RoleItem {
+    id: number;
+    name: string;
+}
+
+interface DepartmentItem {
+    id: number;
+    name: string;
+}
+
+interface UserCreateProps{
+    roles: RoleItem[];
+    departments: DepartmentItem[];
+}
+
+export default function UserCreate({ roles = [], departments = [] }: UserCreateProps) {
     const { data, setData, post, processing, errors } = useForm({
         name: '',
+        username: '',
+        full_name: '',
         email: '',
-        role: 'Operator',
-        departemen: '',
-        phone: '',
+        role: '',
+        department: '',
+        phone_number: '',
         password: '',
     });
 
-    const handleSubmit = (e) => {
+    const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        post('/users/create');
+        post('/users/create', {
+            onSuccess: () => {
+                toast.success('User berhasil ditambahkan!');
+            },
+            onError: () => {
+                toast.error('Gagal menambahkan user!');
+            },
+        });
     };
 
     return (
@@ -45,25 +70,25 @@ export default function UserCreate() {
                             <label className="block text-xs font-bold text-slate-700 mb-1">Username</label>
                             <input
                                 type="text"
-                                value={data.name}
-                                onChange={(e) => setData('name', e.target.value)}
+                                value={data.username}
+                                onChange={(e) => setData('username', e.target.value)}
                                 className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
                                 placeholder="Contoh: Budi Santoso"
                                 required
                             />
-                            {errors.name && <span className="text-[10px] text-rose-500 font-bold mt-1 block">{errors.name}</span>}
+                            {errors.username && <span className="text-[10px] text-rose-500 font-bold mt-1 block">{errors.username}</span>}
                         </div>
                         <div>
                             <label className="block text-xs font-bold text-slate-700 mb-1">Nama Lengkap</label>
                             <input
                                 type="text"
-                                value={data.name}
-                                onChange={(e) => setData('name', e.target.value)}
+                                value={data.full_name}
+                                onChange={(e) => setData('full_name', e.target.value)}
                                 className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
                                 placeholder="Contoh: Budi Santoso"
                                 required
                             />
-                            {errors.name && <span className="text-[10px] text-rose-500 font-bold mt-1 block">{errors.name}</span>}
+                            {errors.full_name && <span className="text-[10px] text-rose-500 font-bold mt-1 block">{errors.full_name}</span>}
                         </div>
 
                         <div>
@@ -87,38 +112,37 @@ export default function UserCreate() {
                                 className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
                             >
                                 <option value="">Pilih Role</option>
-                                <option value="Supervisor">Supervisor</option>
-                                <option value="Operator">Operator</option>
-                                <option value="Maintenance_L2">Maintenance_L2</option>
-                                <option value="Engineering_L3">Engineering_L3</option>
-                                <option value="Vendor_L4">Vendor_L4</option>
+                                {roles.map((role) => (
+                                    <option key={role.id} value={role.name}>
+                                        {role.name}
+                                    </option>
+                                ))}
                             </select>
                             {errors.role && <span className="text-[10px] text-rose-500 font-bold mt-1 block">{errors.role}</span>}
                         </div>
                         <div>
                             <label className="block text-xs font-bold text-slate-700 mb-1">Departemen</label>
                             <select
-                                value={data.departemen}
-                                onChange={(e) => setData('departemen', e.target.value)}
+                                value={data.department}
+                                onChange={(e) => setData('department', e.target.value)}
                                 className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
                             >
                                 <option value="">Pilih Departemen</option>
-                                <option value="Produksi">Produksi</option>
-                                <option value="Maintenance">Maintenance</option>
-                                <option value="Quality">Quality</option>
-                                <option value="Logistik">Logistik</option>
-                                <option value="Engineering">Engineering</option>
-                                <option value="Vendor">Vendor</option>
+                                {departments.map((department) => (
+                                    <option key={department.id} value={department.name}>
+                                        {department.name}
+                                    </option>
+                                ))}
                             </select>
-                            {errors.departemen && <span className="text-[10px] text-rose-500 font-bold mt-1 block">{errors.departemen}</span>}
+                            {errors.department && <span className="text-[10px] text-rose-500 font-bold mt-1 block">{errors.department}</span>}
                         </div>
 
                           <div>
                             <label className="block text-xs font-bold text-slate-700 mb-1">Nomor Telepon</label>
                             <input
                                 type="text"
-                                value={data.phone}
-                                onChange={(e) => setData('phone', e.target.value)}
+                                value={data.phone_number}
+                                onChange={(e) => setData('phone_number', e.target.value)}
                                 className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
                                 placeholder="Contoh: Budi Santoso"
                                 required

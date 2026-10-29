@@ -22,14 +22,25 @@ class MachineController extends Controller
 
     /**
      * Menampilkan Detail Profil Mesin Spesifik.
+    */
+    /**
+     * Mendaftarkan Mesin Baru (Admin / Role MANAGE_MASTER).
      */
-    public function show(string $machineId): Response
+    public function create()
     {
-        $machine = Machine::where('machine_id', $machineId)->firstOrFail();
+        
+        return Inertia::render('machines/create');
+    }
+
+    public function show(Request $request, $id): Response
+    {
+
+
+        $machine = Machine::where($id)->firstOrFail();
 
         // Ambil riwayat breakdown aktif dan histori penanganan
         $breakdowns = BreakdownTicket::with(['reporter', 'technician'])
-            ->where('machine_id', $machineId)
+            ->where($id)
             ->latest('reported_at')
             ->get()
             ->map(function ($ticket) {
@@ -47,11 +58,11 @@ class MachineController extends Controller
                     'correctiveAction' => $ticket->corrective_action,
                 ];
             });
+            
 
         return Inertia::render('machines/show', [
             'machine' => [
                 'id'                => $machine->machine_id,
-                'machineId'         => $machine->machine_id,
                 'machineCode'       => $machine->machine_code,
                 'machineName'       => $machine->machine_name,
                 'machineType'       => $machine->machine_type,
@@ -81,20 +92,13 @@ class MachineController extends Controller
 
     
 
-    /**
-     * Mendaftarkan Mesin Baru (Admin / Role MANAGE_MASTER).
-     */
-    public function create(): Response
-    {
-        return Inertia::render('machines/create');
-    }
-
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'machine_id'         => 'nullable|string|unique:machines,machine_id',
             'machine_code'       => 'nullable|string|unique:machines,machine_code',
             'machine_name'       => 'required|string|max:255',
+            'qr_image_path' => 'nullable|string',
+            'qr_value' => 'nullable|string',
             'category'           => 'required|string',
             'machine_type'       => 'required|string',
             'sub_type'           => 'nullable|string',
@@ -108,33 +112,32 @@ class MachineController extends Controller
             'pic_department'     => 'nullable|string',
             'commission_date'    => 'nullable|date',
             'status'             => 'nullable|string',
-            'description'
+
+            'specifications'     => 'nullable|array',
+            'specifications.*.key'   => 'required|string',
+            'specifications.*.label' => 'required|string',
+            'specifications.*.value' => 'required|string',
         ]);
 
-        // Auto-generate Machine ID jika tidak diisi
-        if (empty($validated['machine_id'])) {
-            $totalCount = Machine::count();
-            $validated['machine_id'] = 'MCH-' . str_pad($totalCount + 1, 3, '0', STR_PAD_LEFT);
-        }
+        // Auto-generate Machine code acak 
+    $machineType = substr(strtoupper($validated['machine_type']),0,2);
 
-        if (empty($validated['machine_code'])) {
-            $validated['machine_code'] = $validated['machine_id'];
-        }
+    $randomNumber = str_pad(rand(1,999),2, '0', STR_PAD_LEFT);
 
-        // Bungkus atribut spesifikasi ke dalam array JSON
-        $specifications = [
-            'brand'              => $request->input('brand'),
-            'model'              => $request->input('model'),
-            'serial_number'      => $request->input('serial_number'),
-            'manufacturing_year' => $request->input('manufacturing_year'),
-        ];
+    $machineCode = "MC{$machineType}00{$randomNumber}";
+
+    while(Machine::where('machine_code', $machineCode)->exists()){
+        $randomNumber = str_pad(rand(1,999),2, '0', STR_PAD_LEFT);
+        $machineCode = "MC{$machineType}00{$randomNumber}";
+    }
+
 
         // Buat record baru dengan nama kolom yang sesuai dengan skema DB
         Machine::create([
-            'machine_id'      => $validated['machine_id'],
             'machine_code'    => $validated['machine_code'],
             'machine_name'    => $validated['machine_name'],
-            'qr_id'           => 'QR-' . strtoupper(Str::random(8)),
+            'qr_value'      => $validated['qr_value'],
+            'qr_image_path' => $validated['qr_image_path'],
             'category'        => $validated['category'],
             'machine_type'    => $validated['machine_type'],
             'sub_type'        => $validated['sub_type'] ?? null,
@@ -145,7 +148,7 @@ class MachineController extends Controller
             'machine_status'  => 'RUNNING',
             'active_status'   => true,
             'commission_date' => $validated['commission_date'] ?? null,
-            'specifications'  => $specifications,
+            'specifications'  => $validated['specifications'] ?? [],
             'created_at' => now(),
             'updated_at' => now(),
         ]);

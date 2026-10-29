@@ -1,7 +1,13 @@
 import React from 'react';
 import { Head, Link, useForm } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
-import { Cpu, ArrowLeft, Save, ShieldCheck, MapPin, Layers } from 'lucide-react';
+import { Cpu, ArrowLeft, Save, ShieldCheck, MapPin, Plus, Trash2 } from 'lucide-react';
+
+interface SpecItem {
+    key: string;
+    label: string;
+    value: string;
+}
 
 export default function MachineCreate() {
     const { data, setData, post, processing, errors } = useForm({
@@ -19,8 +25,31 @@ export default function MachineCreate() {
         pic_department: '',
         status: 'RUNNING',
         commission_date: '',
-        description: '',
+        specifications: [] as SpecItem[],
     });
+
+    const addField = () => {
+        setData('specifications', [
+            ...data.specifications,
+            { key: '', label: '', value: '' }
+        ]);
+    };
+
+    const removeField = (index: number) => {
+        const updated = data.specifications.filter((_, i) => i !== index);
+        setData('specifications', updated);
+    };
+
+    const handleSpecChange = (index: number, field: keyof SpecItem, value: string) => {
+        const updated = [...data.specifications];
+        updated[index][field] = value;
+        
+        if (field === 'label') {
+            updated[index].key = value.toLowerCase().replace(/\s+/g, '_');
+        }
+
+        setData('specifications', updated);
+    };
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -130,10 +159,10 @@ export default function MachineCreate() {
                     </div>
                 </div>
 
-                {/* KARTU 2: SPESIFIKASI TEKNIS */}
+                {/* KARTU 2: SPESIFIKASI PABRIKAN & TAMBAHAN FIELD */}
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8 space-y-6">
                     <div className="flex items-center gap-2 pb-4 border-b border-slate-100 text-slate-900 font-bold text-sm">
-                        <ShieldCheck className="w-4 h-4 text-emerald-600" /> Spesifikasi Pabrikan
+                        <ShieldCheck className="w-4 h-4 text-emerald-600" /> Spesifikasi Mesin
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -160,7 +189,7 @@ export default function MachineCreate() {
                         </div>
 
                         <div>
-                            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Nomor Seri (*SN*)</label>
+                            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Nomor Seri (SN)</label>
                             <input
                                 type="text"
                                 value={data.serial_number}
@@ -180,6 +209,52 @@ export default function MachineCreate() {
                                 className="w-full border border-slate-200 rounded-xl px-4 py-3 text-xs outline-none focus:border-emerald-600 bg-slate-50/50 font-medium"
                             />
                         </div>
+
+                        {/* --- LIST FIELD TAMBAHAN YANG MUNCUL OTOMATIS --- */}
+                        {data.specifications.map((spec, index) => (
+                            <div key={index} className="relative  flex flex-col justify-between space-y-2">
+                                <button
+                                    type="button"
+                                    onClick={() => removeField(index)}
+                                    className="absolute top-1.2 right-1 text-rose-400 hover:text-rose-600 p-1 transition-colors"
+                                    title="Hapus field"
+                                >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+
+                                <div>
+                                    <input
+                                        type="text"
+                                        placeholder="Nama Field (Cth: Voltase)"
+                                        value={spec.label}
+                                        onChange={(e) => handleSpecChange(index, 'label', e.target.value)}
+                                        className="w-full bg-transparent text-[11px] font-bold text-slate-600 uppercase outline-none border-b border-dashed border-slate-300 pb-1 pr-6"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <input
+                                        type="text"
+                                        placeholder="Nilai (Cth: 380V)"
+                                        value={spec.value}
+                                        onChange={(e) => handleSpecChange(index, 'value', e.target.value)}
+                                        className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-emerald-600 font-medium"
+                                        required
+                                    />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* --- TOMBOL TAMBAHKAN FIELD SPESIFIKASI --- */}
+                    <div className="pt-2">
+                        <button
+                            type="button"
+                            onClick={addField}
+                            className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200 shadow-xs cursor-pointer"
+                        >
+                            <Plus className="w-4 h-4" /> Tambahkan field spesifikasi
+                        </button>
                     </div>
                 </div>
 
@@ -247,17 +322,6 @@ export default function MachineCreate() {
                             />
                         </div>
                     </div>
-
-                    <div className="pt-2">
-                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Catatan / Keterangan Mesin</label>
-                        <textarea
-                            value={data.description}
-                            onChange={e => setData('description', e.target.value)}
-                            placeholder="Catatan kondisi awal atau riwayat singkat instalasi..."
-                            rows={3}
-                            className="w-full border border-slate-200 rounded-xl p-4 text-xs outline-none focus:border-emerald-600 bg-slate-50/50 font-medium resize-none"
-                        />
-                    </div>
                 </div>
 
                 {/* TOMBOL AKSI SUBMIT */}
@@ -271,9 +335,9 @@ export default function MachineCreate() {
                     <button
                         type="submit"
                         disabled={processing}
-                        className="px-7 py-3 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-700 text-white transition-all shadow-md flex items-center gap-2"
+                        className="px-7 py-3 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-700 text-white transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
                     >
-                        <Save className="w-4 h-4" /> Simpan Data Mesin
+                        <Save className="w-4 h-4" /> {processing ? 'Menyimpan...' : 'Simpan Data Mesin'}
                     </button>
                 </div>
 

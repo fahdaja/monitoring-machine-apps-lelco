@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Head, Link, useForm, usePage } from '@inertiajs/react';
+import { Head, Link, useForm } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
-import { PlusCircle, Copy, Trash2, Layers, Image, Video, HelpCircle, ShieldCheck, SlidersHorizontal, CheckCircle2, AlertTriangle, FileText, Settings2, Eye, ArrowRight, CornerDownRight, Upload, Calendar } from 'lucide-react';
+import { PlusCircle, Copy, Trash2, Layers, Image, Video, HelpCircle, ShieldCheck, SlidersHorizontal, CheckCircle2, AlertTriangle, FileText, Eye, ArrowRight, CornerDownRight, Upload } from 'lucide-react';
 
 interface Machine {
     machine_id: string;
@@ -33,6 +33,8 @@ interface QuestionItem {
     time_value: string;
     options: OptionItem[];
     auto_ticket: boolean;
+    question_image?: File | null;
+    question_image_url?: string;
 }
 
 interface SectionItem {
@@ -47,11 +49,8 @@ interface Props {
     machines: Machine[];
 }
 
-
-
 export default function FormCreate({ machines }: Props) {
-
-    const { data, setData, post, processing, errors } = useForm({
+    const { data, setData, post, processing } = useForm({
         form_title: 'Formulir Pemantauan Tanpa Judul',
         form_description: 'deskripsi optional',
         machine_id: '',
@@ -100,7 +99,7 @@ export default function FormCreate({ machines }: Props) {
                     {
                         question_text: '',
                         placeholder: '',
-                        input_type: 'SELECT',
+                        input_type: 'SELECT' as const,
                         is_required: false,
                         show_help_text: false,
                         help_text: '',
@@ -118,6 +117,8 @@ export default function FormCreate({ machines }: Props) {
                             { option_text: 'Rusak / Perlu Servis (NG)', is_normal: false, goto_section_id: '' }
                         ],
                         auto_ticket: false,
+                        question_image: null,
+                        question_image_url: '',
                     }
                 ],
             },
@@ -152,6 +153,8 @@ export default function FormCreate({ machines }: Props) {
                 { option_text: 'Opsi 2', is_normal: false, goto_section_id: '' }
             ],
             auto_ticket: false,
+            question_image: null,
+            question_image_url: '',
         };
 
         if (typeof activeFocus === 'number' && activeFocus < updatedSections[targetIndex].questions.length) {
@@ -236,6 +239,34 @@ export default function FormCreate({ machines }: Props) {
         setData('sections', updatedSections);
     };
 
+    const handleQuestionImageUpload = (sIndex: number, qIndex: number, e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            if (!file.type.startsWith('image/')) {
+                alert('File yang diunggah harus berupa gambar!');
+                return;
+            }
+            const previewUrl = URL.createObjectURL(file);
+            const updatedSections = [...data.sections];
+            updatedSections[sIndex].questions[qIndex] = {
+                ...updatedSections[sIndex].questions[qIndex],
+                question_image: file,
+                question_image_url: previewUrl,
+            };
+            setData('sections', updatedSections);
+        }
+    };
+
+    const removeQuestionImage = (sIndex: number, qIndex: number) => {
+        const updatedSections = [...data.sections];
+        updatedSections[sIndex].questions[qIndex] = {
+            ...updatedSections[sIndex].questions[qIndex],
+            question_image: null,
+            question_image_url: '',
+        };
+        setData('sections', updatedSections);
+    };
+
     const addOption = (sIndex: number, qIndex: number) => {
         const updatedSections = [...data.sections];
         const options = updatedSections[sIndex].questions[qIndex].options;
@@ -263,16 +294,14 @@ export default function FormCreate({ machines }: Props) {
         post('/forms');
     };
 
-    // Logika Navigasi Preview dengan Jump Section
     const handlePreviewNext = () => {
         const currentSection = data.sections[previewSectionId];
         let targetIndex: number | null = null;
 
-        // Cek apakah ada opsi pertanyaan pilihan ganda yang memiliki aturan goto_section_id
         if (currentSection) {
             for (const q of currentSection.questions) {
                 if (q.input_type === 'SELECT') {
-                    const selectedOptIndex = previewAnswers[q.question_text]; // atau ID opsi
+                    const selectedOptIndex = previewAnswers[q.question_text];
                     const selectedOpt = q.options[selectedOptIndex];
                     if (selectedOpt && selectedOpt.goto_section_id !== '' && selectedOpt.goto_section_id !== undefined) {
                         targetIndex = Number(selectedOpt.goto_section_id);
@@ -282,7 +311,6 @@ export default function FormCreate({ machines }: Props) {
             }
         }
 
-        // Default ke section berikutnya jika tidak ada aturan jump
         if (targetIndex === null || isNaN(targetIndex)) {
             targetIndex = previewSectionId + 1;
         }
@@ -310,7 +338,19 @@ export default function FormCreate({ machines }: Props) {
                 <button type="button" onClick={addQuestionToActiveSection} title="Tambah Pertanyaan" className="p-2 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"><PlusCircle className="w-4 h-4" /></button>
                 <button type="button" onClick={toggleHelpTextActive} title="Help Text" className={`p-2 rounded-lg transition-colors ${isQuestionActive ? 'text-slate-600 hover:text-emerald-600 hover:bg-emerald-50' : 'text-slate-300 cursor-not-allowed'}`}><HelpCircle className="w-4 h-4" /></button>
                 <button type="button" onClick={toggleStandardTextActive} title="Standard Text" className={`p-2 rounded-lg transition-colors ${isQuestionActive ? 'text-slate-600 hover:text-emerald-600 hover:bg-emerald-50' : 'text-slate-300 cursor-not-allowed'}`}><ShieldCheck className="w-4 h-4" /></button>
-                <button type="button" title="Gambar" className="p-2 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"><Image className="w-4 h-4" /></button>
+                <button 
+                    type="button" 
+                    title="Sisipkan Gambar Soal" 
+                    onClick={() => {
+                        if (isQuestionActive) {
+                            const fileInput = document.getElementById(`question-img-upload-${activeSectionIndex}-${activeFocus}`) as HTMLInputElement;
+                            fileInput?.click();
+                        }
+                    }} 
+                    className={`p-2 rounded-lg transition-colors ${isQuestionActive ? 'text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 cursor-pointer' : 'text-slate-300 cursor-not-allowed'}`}
+                >
+                    <Image className="w-4 h-4" />
+                </button>
                 <button type="button" title="Video" className="p-2 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"><Video className="w-4 h-4" /></button>
                 <button type="button" onClick={addSection} title="Bagian Baru" className="p-2 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"><Layers className="w-4 h-4" /></button>
             </div>
@@ -381,7 +421,7 @@ export default function FormCreate({ machines }: Props) {
                                                 onChange={e => { setData('form_description', e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
                                                 placeholder="Petunjuk pengisian form untuk teknisi..."
                                                 rows={1}
-                                                className="w-full border-b border-slate-200  p-3 text-xs outline-none focus:border-emerald-600 bg-slate-50/50 font-medium resize-none overflow-hidden"
+                                                className="w-full border-b border-slate-200 p-3 text-xs outline-none focus:border-emerald-600 bg-slate-50/50 font-medium resize-none overflow-hidden"
                                             />
                                         </div>
 
@@ -497,6 +537,7 @@ export default function FormCreate({ machines }: Props) {
                                                 placeholder={`Pertanyaan ${qIndex + 1}`}
                                                 className="flex-1 border border-slate-200 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-emerald-600 font-semibold text-slate-900 bg-slate-50/50 transition-all"
                                             />
+                                            
                                             <select
                                                 value={q.input_type}
                                                 onChange={e => handleQuestionChange(sIndex, qIndex, 'input_type', e.target.value)}
@@ -512,6 +553,7 @@ export default function FormCreate({ machines }: Props) {
                                                 <option value="TIME">Waktu</option>
                                             </select>
                                         </div>
+
 
                                         {/* Help Text Input */}
                                         {q.show_help_text && (
@@ -541,7 +583,34 @@ export default function FormCreate({ machines }: Props) {
                                             </div>
                                         )}
 
-                                        {/* khusus kolumn jawaban singkat */}
+                                        {/* --- FITUR: SISIPKAN GAMBAR PADA PERTANYAAN --- */}
+                                        <div className="">
+                                            <input 
+                                                type="file" 
+                                                id={`question-img-upload-${sIndex}-${qIndex}`}
+                                                accept="image/*" 
+                                                className="hidden" 
+                                                onChange={(e) => handleQuestionImageUpload(sIndex, qIndex, e)} 
+                                            />
+                                            {q.question_image_url && (
+                                                <div className="relative inline-block group">
+                                                    <img 
+                                                        src={q.question_image_url} 
+                                                        alt="Ilustrasi Pertanyaan" 
+                                                        className="h-auto w-auto object-cover rounded-xl border border-slate-200 shadow-xs" 
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeQuestionImage(sIndex, qIndex)}
+                                                        className="absolute top-2 right-2 bg-slate-900/80 hover:bg-rose-600 text-white w-6 h-6 rounded-lg text-xs font-bold transition-colors shadow-sm flex items-center justify-center"
+                                                        title="Hapus Gambar"
+                                                    >
+                                                        &times;
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {/* khusus kolom jawaban singkat */}
                                         {(q.input_type === 'TEXT') && (
                                             <div>
                                                 <div className="flex items-center gap-2 pt-1">
@@ -556,7 +625,7 @@ export default function FormCreate({ machines }: Props) {
                                                 </div>
                                             </div>
                                         )}
-                                        {/* khusus kolumn jawaban panjang */}
+                                        {/* khusus kolom jawaban panjang */}
                                         {(q.input_type === 'TEXTAREA') && (
                                             <div>
                                                 <div className="flex items-center gap-2 pt-1">
@@ -588,11 +657,9 @@ export default function FormCreate({ machines }: Props) {
                                                     </label>
                                                 </div>
 
-                                                {/* Form Pengaturan Validasi jika Aktif */}
                                                 {q.has_validation && (
                                                     <div className="space-y-3 pt-2 border-t border-slate-200/60">
                                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                                            {/* Jawaban yang Diinginkan */}
                                                             <div>
                                                                 <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
                                                                     Jawaban yang Diinginkan
@@ -605,8 +672,6 @@ export default function FormCreate({ machines }: Props) {
                                                                     className="w-full border border-slate-200 bg-white rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-600 shadow-2xs"
                                                                 />
                                                             </div>
-
-                                                            {/* Pesan Error Kustom */}
                                                             <div>
                                                                 <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
                                                                     Pesan Error Kustom (Jika Berbeda)
@@ -625,7 +690,7 @@ export default function FormCreate({ machines }: Props) {
                                             </div>
                                         )}
 
-                                        {/* Konfigurasi Opsi & Jump Section (KHUSUS PILIHAN GANDA / SELECT / DROPDOWN) */}
+                                        {/* Konfigurasi Opsi & Jump Section (KHUSUS SELECT / DROPDOWN / CHECKBOX) */}
                                         {(q.input_type === 'SELECT' || q.input_type === 'DROPDOWN' || q.input_type === 'CHECKBOX') && (
                                             <div className="space-y-3 pt-2 bg-slate-50/60 p-4 rounded-xl border border-slate-100 text-xs">
                                                 <div className="flex items-center justify-between">
@@ -642,7 +707,7 @@ export default function FormCreate({ machines }: Props) {
                                                                 className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-colors flex items-center gap-1 shrink-0 ${opt.is_normal
                                                                     ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                                                                     : 'bg-rose-100 text-rose-800 border border-rose-200'
-                                                                    }`}
+                                                                }`}
                                                             >
                                                                 {opt.is_normal ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
                                                                 {opt.is_normal ? 'OK' : 'NG'}
@@ -657,7 +722,6 @@ export default function FormCreate({ machines }: Props) {
                                                             />
                                                         </div>
 
-                                                        {/* Pilihan Jump Section */}
                                                         {q.input_type === 'SELECT' && (
                                                             <div className="flex items-center gap-2 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                                                                 <div className="flex items-center gap-1 text-[11px] text-slate-500 font-bold shrink-0">
@@ -754,7 +818,6 @@ export default function FormCreate({ machines }: Props) {
                                                 <span className="text-[10px] font-bold text-slate-500">
                                                     {q.date_value || 'Bulan, hari, tahun'}
                                                 </span>
-                                                {/* Ikon Kalender Kustom ala Google Forms */}
                                                 <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                                 </svg>
@@ -766,7 +829,6 @@ export default function FormCreate({ machines }: Props) {
                                                 <span className="text-[10px] font-bold text-slate-500">
                                                     {q.time_value || 'Waktu'}
                                                 </span>
-                                                {/* Ikon Jam Kustom ala Google Forms */}
                                                 <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                                                 </svg>
@@ -831,12 +893,9 @@ export default function FormCreate({ machines }: Props) {
 
                         {/* Body Preview */}
                         <div className="p-6 overflow-y-auto space-y-6 flex-1 bg-slate-50/50">
-                            {/* KARTU UTAMA: Judul & Deskripsi Form (Hanya tampil di Bagian 1 / Awal Pratinjau) */}
                             {previewSectionId === 0 && (
                                 <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white p-6 rounded-2xl shadow-md space-y-2.5 border-t-4 border-emerald-500">
                                     <div className="flex items-start justify-between gap-4">
-
-                                        {/* Sisi Kiri: Judul & Deskripsi */}
                                         <div className="space-y-2 flex-1 min-w-0">
                                             <h1 className="text-2xl font-black tracking-tight text-white break-words">
                                                 {data.form_title || 'Formulir Pemantauan Tanpa Judul'}
@@ -851,20 +910,15 @@ export default function FormCreate({ machines }: Props) {
                                                 </p>
                                             )}
                                         </div>
-
-                                        {/* Sisi Kanan: Badge Frekuensi */}
                                         <div className="shrink-0">
                                             <span className="bg-emerald-600 rounded-full px-3 py-1 text-[10px] text-white font-bold uppercase tracking-wider shadow-xs inline-block">
                                                 Frekuensi: {data.frequency_type}
                                             </span>
                                         </div>
-
                                     </div>
-
                                 </div>
                             )}
 
-                            {/* Kartu Section & Pertanyaan (Hanya tampil jika ada pertanyaan atau berada di Bagian 2 ke atas) */}
                             {data.sections[previewSectionId] && (previewSectionId > 0 || data.sections[previewSectionId].questions.length > 0) ? (
                                 <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-6">
                                     {previewSectionId > 0 && (
@@ -876,23 +930,32 @@ export default function FormCreate({ machines }: Props) {
                                         </div>
                                     )}
 
-
-
                                     {/* List Pertanyaan di Section Ini */}
                                     <div className="space-y-4">
                                         {data.sections[previewSectionId].questions.map((q, idx) => (
-                                            <div key={idx} className="space-y-2 p-4 bg-slate-50/60 rounded-xl border border-slate-100">
+                                            <div key={idx} className="space-y-3 p-4 bg-slate-50/60 rounded-xl border border-slate-100">
                                                 <label className="block text-xs font-bold text-slate-800">
                                                     {idx + 1}. {q.question_text || '(Pertanyaan belum diisi)'}
                                                     {q.is_required && <span className="text-rose-600 ml-1">*</span>}
                                                 </label>
 
+                                                {/* --- PREVIEW GAMBAR SOAL JIKA ADA --- */}
+                                                {q.question_image_url && (
+                                                    <div>
+                                                        <img 
+                                                            src={q.question_image_url} 
+                                                            alt="Ilustrasi Soal" 
+                                                            className="max-h-48 rounded-xl border border-slate-200 shadow-xs object-cover" 
+                                                        />
+                                                    </div>
+                                                )}
+
                                                 {/* Render Input Jawaban Singkat (TEXT) */}
                                                 {q.input_type === 'TEXT' && (
                                                     <input
                                                         type="text"
-                                                        value={previewAnswers[q.placeholder]}
-                                                        onChange={e => setPreviewAnswers(prev => ({ ...prev, [q.placeholder]: e.target.value }))}
+                                                        value={previewAnswers[q.placeholder] || ''}
+                                                        onChange={e => setPreviewAnswers(prev => ({ ...prev, [q.placeholder || idx]: e.target.value }))}
                                                         placeholder={q.placeholder || "Ketik jawaban singkat..."}
                                                         className="w-full border border-slate-200 rounded-lg px-3.5 py-2 text-xs bg-white outline-none focus:border-emerald-600 font-medium text-slate-800"
                                                     />
@@ -901,15 +964,13 @@ export default function FormCreate({ machines }: Props) {
                                                 {/* Render Input Paragraf (TEXTAREA) */}
                                                 {q.input_type === 'TEXTAREA' && (
                                                     <textarea
-                                                        value={previewAnswers[q.placeholder]}
-                                                        onChange={e => setPreviewAnswers(prev => ({ ...prev, [q.placeholder]: e.target.value }))}
+                                                        value={previewAnswers[q.placeholder] || ''}
+                                                        onChange={e => setPreviewAnswers(prev => ({ ...prev, [q.placeholder || idx]: e.target.value }))}
                                                         placeholder={q.placeholder || "Ketik paragraf jawaban di sini..."}
                                                         rows={3}
                                                         className="w-full border border-slate-200 rounded-lg px-3.5 py-2 text-xs bg-white outline-none focus:border-emerald-600 font-medium resize-none text-slate-800"
                                                     />
                                                 )}
-
-
 
                                                 {/* Render Opsi Pilihan Ganda dengan Jump Section Indicator */}
                                                 {(q.input_type === 'SELECT' || q.input_type === 'CHECKBOX' || q.input_type === 'DROPDOWN') && (
@@ -920,8 +981,8 @@ export default function FormCreate({ machines }: Props) {
                                                                     <input
                                                                         type="radio"
                                                                         name={`preview_q_${idx}`}
-                                                                        checked={previewAnswers[opt.option_text] === optIdx}
-                                                                        onChange={() => setPreviewAnswers(prev => ({ ...prev, [opt.option_text]: optIdx }))}
+                                                                        checked={previewAnswers[q.question_text] === optIdx}
+                                                                        onChange={() => setPreviewAnswers(prev => ({ ...prev, [q.question_text]: optIdx }))}
                                                                         className="text-emerald-600 focus:ring-emerald-500"
                                                                     />
                                                                     <span className="text-slate-700">{opt.option_text}</span>
@@ -936,10 +997,9 @@ export default function FormCreate({ machines }: Props) {
                                                     </div>
                                                 )}
 
-                                                {/* check file type */}
-                                                {q.input_type === 'FILE' && q.allowed_file_type && q.allowed_file_type.length > 0 && (
+                                                {q.input_type === 'FILE' && (
                                                     <div className="grid grid-rows-1 w-auto mx-auto flex-wrap items-center gap-3 text-xs mt-2 justify-start">
-                                                        <label className="inline-flex w-35 items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:border-emerald-500 hover:text-emerald-700 rounded- cursor-pointer text-slate-700 font-medium transition-all shadow-2xs">
+                                                        <label className="inline-flex w-35 items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:border-emerald-500 hover:text-emerald-700 rounded cursor-pointer text-slate-700 font-medium transition-all shadow-2xs">
                                                             <Upload className="w-3.5 h-3.5" />
                                                             <span>Tambahkan file</span>
                                                             <input
@@ -955,44 +1015,23 @@ export default function FormCreate({ machines }: Props) {
                                                                         const sizeInMb = parseInt(String(q.max_file_size || '10')) || 10;
                                                                         const maxBytes = sizeInMb * 1024 * 1024;
 
-                                                                        // Validasi Ukuran File Maksimal
                                                                         if (file.size > maxBytes) {
-                                                                            alert(`Ukuran file terlalu besar! Maksimal ${q.max_file_size || '10MB'}. (File Anda: ${(file.size / 1024 / 1024).toFixed(1)} MB)`);
+                                                                            alert(`Ukuran file terlalu besar! Maksimal ${q.max_file_size || '10MB'}.`);
                                                                             e.target.value = '';
                                                                             return;
                                                                         }
-
-                                                                        // Validasi Tipe File yang Diizinkan
-                                                                        const isImage = file.type.startsWith('image/');
-                                                                        const isVideo = file.type.startsWith('video/');
-                                                                        const isAllowed =
-                                                                            (isImage && q.allowed_file_type?.includes('IMAGE')) ||
-                                                                            (isVideo && q.allowed_file_type?.includes('VIDEO'));
-
-                                                                        if (!isAllowed) {
-                                                                            const allowedNames = q.allowed_file_type?.map(t => t === 'IMAGE' ? 'Gambar' : 'Video').join(' atau ');
-                                                                            alert(`Jenis file tidak diizinkan! Hanya diperbolehkan: ${allowedNames}`);
-                                                                            e.target.value = '';
-                                                                            return;
-                                                                        }
-
                                                                         setPreviewAnswers(prev => ({ ...prev, [q.question_text]: file }));
                                                                     }
                                                                 }}
                                                             />
                                                         </label>
 
-                                                        {/* Tampilkan Nama File jika Sudah Dipilih */}
                                                         {previewAnswers[q.question_text] && (
                                                             <span className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg font-medium flex items-center gap-1">
                                                                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                                                                {(previewAnswers[q.question_text] as File).name} ({((previewAnswers[q.question_text] as File).size / 1024 / 1024).toFixed(2)} MB)
+                                                                {(previewAnswers[q.question_text] as File).name}
                                                             </span>
                                                         )}
-
-                                                        <span className="text-[10px] text-slate-500">
-                                                            Format: {q.allowed_file_type.filter(Boolean).map(t => t === 'IMAGE' ? 'Gambar' : 'Video').join(' atau ')} (Maks. {Array.isArray(q.max_file_size) ? q.max_file_size[0] : q.max_file_size})
-                                                        </span>
                                                     </div>
                                                 )}
                                             </div>

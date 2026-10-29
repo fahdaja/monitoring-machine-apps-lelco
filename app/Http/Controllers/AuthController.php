@@ -12,9 +12,22 @@ class AuthController extends Controller {
     // Tampilkan halaman login
     public function create()
     {
-        $users = User::select('id', 'full_name', 'role')->get();
+        $users = User::with('roles')->get();
+
+        $formattedUsers = $users->map(function ($user) {
+            return [
+                'id' => $user->id,
+                'full_name' => $user->full_name,
+                'role' => $user->role ? [
+                    'id' => $user->id,
+                    'name' => $user->role,
+                ] : null,
+                'is_active' => $user->is_active,
+            ];
+        });
+
         return Inertia::render('auth/login', [
-            'users' => $users
+            'users' => $formattedUsers
         ]);
     }
 

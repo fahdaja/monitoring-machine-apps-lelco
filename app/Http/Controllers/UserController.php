@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use Inertia\Inertia;
 use Illuminate\Http\Request;
 use App\Models\User;
+use App\Models\Role;
+use App\Models\Department;
 
 class UserController extends Controller
 {
@@ -21,37 +23,44 @@ class UserController extends Controller
 
     public function create()
     {
+        $roles = Role::select('id', 'name')->get();
+        $departments = Department::select('id', 'name')->get();
         return Inertia::render('users/create', [
-            'departments' => [
-                'HRD', 
-                'Finance', 
-                'Production',
-                'Quality',
-                'Maintenance',
-                'Engineering',
-                'Purchasing'
-            ],
-            'roles' => ['admin', 'user', 'guest']
+            'roles' => $roles,
+            'departments' => $departments,
         ]);
     }
 
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'username' => 'required|string|unique:users,username|max:50',
             'full_name' => 'required|string|max:255',
-            'password' => 'required|string|min:8|confirmed',
+            'username' => 'required|string|unique:users,username|max:50',
+            'role' => 'required|string',
             'department' => 'nullable|string|max:100',
-            'role' => 'required|string|in:admin,user,guest',
             'email' => 'nullable|email|max:255',
             'phone_number' => 'nullable|string|max:20',
+            'is_active' => 'boolean',
+            'password' => 'required|string|min:8|',
         ]);
 
-        // Generate ID unik untuk user
-        $userId = 'USER-' . strtoupper(uniqid());
+       // 1. AMBIL NAMA ROLE SECARA UTUH DAN UBAH JADI HURUF KAPITAL (Tanpa disingkat)
+    $roleName = strtoupper(trim($validated['role'])); // Contoh: "MAINTENANCE_L2" atau "ADMIN"
+
+    // 2. GENERATE ANGKA ACAK 3 DIGIT DI BELAKANG (Contoh: 042, 519, 873)
+    $randomNumber = str_pad(rand(1, 999), 3, '0', STR_PAD_LEFT);
+
+    // 3. SUSUN FORMAT USER CODE (Contoh: USR-MAINTENANCE_L2-482)
+    $userCode = "USR-{$roleName}-{$randomNumber}";
+
+    // 4. PENGAMAN: Pastikan benar-benar unik (jika kebetulan angka acaknya kembar)
+    while (User::where('user_code', $userCode)->exists()) {
+        $randomNumber = str_pad(rand(1, 999), 3, '0', STR_PAD_LEFT);
+        $userCode = "USR-{$roleName}-{$randomNumber}";
+    }
 
         User::create([
-            'user_id' => $userId,
+            'user_code' => $userCode,
             'username' => $validated['username'],
             'full_name' => $validated['full_name'],
             'password' => bcrypt($validated['password']), // Hash password
@@ -62,54 +71,75 @@ class UserController extends Controller
             'is_active' => true,
         ]);
 
-        return redirect()->route('management-users.index')
+        return redirect()->route('users.index')
             ->with('toast', ['type' => 'success', 'message' => 'User berhasil ditambahkan!']);
     }
 
-    public function edit(User $user)
+    public function edit($id)
     {
-        return Inertia::render('user/edit', [
-            'user' => $user,
-            'departments' => ['HRD', 'Finance', 'Production', 'Quality', 'Maintenance', 'Engineering', 'Purchasing'],
-            'roles' => ['admin', 'user', 'guest'],
+        $user = User::findOrFail($id);
+        $roles = Role::select('id', 'name')->get();
+        $departments = Department::select('id', 'name')->get();
+        return Inertia::render('users/edit', [
+            'user' => [
+                'id'           => $user->id,
+                'username'     => $user->username,
+                'full_name'    => $user->full_name,
+                'email'        => $user->email,
+                'phone_number' => $user->phone_number,
+                'role'         => $user->role,
+                'department'   => $user->department,
+                'is_active'    => $user->is_active,
+            ],
+            'roles' => $roles,
+            'departments' => $departments,
         ]);
     }
 
-    public function update(Request $request, User $user)
+    public function update(Request $request, $id)
     {
+        $user = User::findOrFail($id);
         $validated = $request->validate([
-            'full_name' => 'required|string|max:255',
-            'department' => 'nullable|string|max:100',
-            'role' => 'required|string|in:admin,user,guest',
+            'username' => 'nullable|string|max:50',
+            'full_name' => 'nullable|string|max:255',
+            'department' => 'nullable|string|',
+            'role' => 'nullable|string',
             'email' => 'nullable|email|max:255',
             'phone_number' => 'nullable|string|max:20',
-            'is_active' => 'boolean',
+            'password' => 'nullable|string|min:8',
         ]);
 
+        $updateData = [
+            'username' => $validated['username'],
+            'full_name' => $validated['full_name'] ,
+            'department' => $validated['department'],
+            'role' => $validated['role'],
+            'email' => $validated['email'] ?? null,
+            'phone_number' => $validated['phone_number'] ?? null,
+        ];
+
         // Jika password diubah, validasi dan hash
-        if ($request->password) {
-            $request->validate([
-                'password' => 'required|string|min:8|confirmed',
-            ]);
-            $validated['password'] = bcrypt($request->password);
+        if(!empty($validated['password'])){
+            $updateData['password'] = bcrypt($validated['password']);
         }
+        $user->update($updateData);
 
-        $user->update($validated);
-
-        return redirect()->route('management-users.index')
+        return redirect()->route('users.index')
             ->with('toast', ['type' => 'success', 'message' => 'User berhasil diupdate!']);
     }
 
-    public function destroy(User $user)
+    public function destroy($id)
     {
-        // Jangan hapus admin
-        if ($user->username === 'admin') {
-            return back()->with('toast', ['type' => 'error', 'message' => 'Admin tidak bisa dihapus!']);
+        $user = User::findOrFail($id);
+        if (auth()->id() === $user->id) {
+            return redirect()->back()
+                ->with('toast', ['type' => 'error', 'message' => 'Anda tidak dapat menghapus akun sendiri!']);
         }
 
         $user->delete();
 
-        return back()->with('toast', ['type' => 'success', 'message' => 'User berhasil dihapus!']);
+        return redirect()->route('users.index')
+            ->with('toast', ['type' => 'success', 'message' => 'User berhasil dihapus!']);
     }
 
     public function toggleActive(Request $request, User $user)
