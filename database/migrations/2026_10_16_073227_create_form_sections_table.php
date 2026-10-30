@@ -11,15 +11,16 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('submissions', function (Blueprint $table) {
+        Schema::create('form_sections', function (Blueprint $table) {
             $table->id();
-            $table->string('submission_code')->unique()->nullable(false); 
-            $table->jsonb('answers_json')->nullable(); 
-            $table->timestamps('created_at')->nullable();
+            $table->string('section_code')->unique()->nullable(false); 
+            $table->string('section_title');
+            $table->text('section_description');
+            $table->integer('section_order');
+
             // relasi
-            $table->foreignId('machine_id')->constrained('machines')->onDelete('cascade');
             $table->foreignId('form_id')->constrained('forms')->onDelete('cascade');
-            $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
+            
         });
     }
 
@@ -28,6 +29,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('submissions');
+        Schema::dropIfExists('sections');
     }
 };

@@ -11,18 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('options', function (Blueprint $table) {
+        Schema::create('form_options', function (Blueprint $table) {
             $table->id();
             $table->string('option_code')->unique()->nullable(false); 
             $table->string('option_text');
             $table->string('option_value')->nullable();
-            $table->integer('sort_order')->default(0);
+            $table->integer('option_order')->default(0);
 
-            // opsional info tambahan untuk membantu user
-            $table->boolean('allowed_help_text')->default(false);
-            $table->boolean('allowed_standard_text')->default(false);
-            $table->text('help_text')->nullable();
-            $table->text('standard_text')->nullable();
 
             // opsional trigger breakdown
             $table->boolean('requires_breakdown_trigger')->default(false);
@@ -42,8 +37,8 @@ return new class extends Migration
             $table->boolean('is_normal')->default(false);
             
             // relasi 
-            $table->foreignId('question_id')->constrained('questions')->onDelete('cascade');
-            $table->foreignId('goto_section_id')->constrained('sections')->onDelete('cascade');
+            $table->foreignId('form_question_id')->constrained('form_questions')->onDelete('cascade');
+            $table->foreignId('goto_form_section_id')->constrained('form_sections')->onDelete('cascade');
         });
     }
 

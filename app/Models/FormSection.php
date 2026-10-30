@@ -9,7 +9,7 @@ class Section extends Model
 {
     use HasFactory;
 
-    protected $table = 'sections';
+    protected $table = 'form_sections';
     protected $primaryKey = 'id';
     public $incrementing = false;
 
@@ -32,8 +32,8 @@ class Section extends Model
         return $this->belongsTo(Form::class, 'form_id', 'form_id');
     }
 
-    public function questions()
+    public function section()
     {
-        return $this->hasMany(Question::class, 'section_id', 'section_id');
+        return $this->hasMany(FormQuestion::class, 'section_id', 'section_id');
     }
 }

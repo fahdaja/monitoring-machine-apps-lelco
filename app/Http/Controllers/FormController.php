@@ -6,6 +6,7 @@ use Inertia\Inertia;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Models\Form; // Sesuaikan dengan namespace Model Anda jika ada
+use App\Models\Machine;
 
 class FormController extends Controller
 {
@@ -14,34 +15,8 @@ class FormController extends Controller
      */
     public function index()
     {
-        // Contoh query DB nyata (buka komentar jika model sudah siap)
-        // $forms = Form::with('sections')->latest()->get();
-
-        $forms = [
-            [
-                'form_id'        => 'FORM-001',
-                'form_name'      => 'Inspeksi Harian Hydraulic Press 500T',
-                'machine_type'   => 'Hydraulic Press',
-                'level'          => 'L1',
-                'department'     => 'Stamping',
-                'is_active'      => true,
-                'sections_count' => 6,
-                'questions_count'=> 18,
-                'created_at'     => '2026-10-13',
-            ],
-            [
-                'form_id'        => 'FORM-002',
-                'form_name'      => 'Inspeksi Mingguan CNC Milling VMC850',
-                'machine_type'   => 'CNC Milling',
-                'level'          => 'L2',
-                'department'     => 'Machining',
-                'is_active'      => true,
-                'sections_count' => 4,
-                'questions_count'=> 12,
-                'created_at'     => '2026-10-15',
-            ],
-        ];
-
+        $forms = Form::with('sections', 'questions', 'options')->latest()->get();
+        
         return Inertia::render('forms/index', [
             'forms' => $forms,
         ]);
@@ -52,13 +27,8 @@ class FormController extends Controller
      */
     public function create()
     {
-        $machines = [
-            ['machine_id' => 'MCH-001', 'machine_name' => 'Hydraulic Press 500T',  'machine_type' => 'Hydraulic Press'],
-            ['machine_id' => 'MCH-002', 'machine_name' => 'Robotic Arm Welding',   'machine_type' => 'Welding Robot'],
-            ['machine_id' => 'MCH-004', 'machine_name' => 'CNC Milling VMC850',    'machine_type' => 'CNC Milling'],
-            ['machine_id' => 'MCH-009', 'machine_name' => 'Compressor Screw 55KW', 'machine_type' => 'Compressor'],
-        ];
 
+        $machines = Machine::select('id', 'machine_type')->get();
         return Inertia::render('forms/create', [
             'machines' => $machines,
         ]);

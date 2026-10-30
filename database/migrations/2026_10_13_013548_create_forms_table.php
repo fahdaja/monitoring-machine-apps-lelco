@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('forms', function (Blueprint $table) {
             $table->id();
             $table->string('form_code')->unique()->nullable(false); 
-            $table->string('form_name');
+            $table->string('title');
             $table->string('description');
             $table->date('created_at');
             $table->date('updated_at');

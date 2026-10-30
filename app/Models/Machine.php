@@ -13,7 +13,6 @@ class Machine extends Model
 
     protected $table = 'machines';
     protected $primaryKey = 'id';
-    public $incrementing = false;
 
     protected $fillable = [
         // nama dan tipe
@@ -24,6 +23,8 @@ class Machine extends Model
         'machine_type',
         'sub_type',
         'category',
+        'qr_image_path',
+        'qr_value',
 
         // spesifikasi mesin
         'specifications',
@@ -34,6 +35,7 @@ class Machine extends Model
         'location',
         'pic_department',
         'machine_status',
+        'active_status',
         'commission_date',
 
         'created_at',
@@ -41,17 +43,11 @@ class Machine extends Model
     ];
 
     protected $casts = [
-        'specifications' => 'array',
+        'specifications'  => 'array',
         'commission_date' => 'date',
-        'machine_status' => MachineStatus::class,
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime',
+        'machine_status'  => MachineStatus::class,
+        'active_status'   => 'boolean',
+        'created_at'      => 'datetime',
+        'updated_at'      => 'datetime',
     ];
-
-    /**
-     * relasi one to one dengan qr code
-     */
-    public function machineQr(): HasOne {
-        return $this->hasOne(MachineQr::class, 'qr_id', 'qr_id');
-    }
 }

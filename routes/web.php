@@ -38,7 +38,15 @@ Route::get('/dashboard', function () {
 })->middleware(['auth', 'role:ADMIN,OPERATOR,MAINTENANCE_L2']);
 
 Route::get('/machines', [MachineController::class, 'index'])->name('machines.index');
+Route::middleware(['auth', 'role:ADMIN'])->group(function () {
+    Route::get('/machines/create', [MachineController::class, 'create'])->name('machines.create');
+    Route::post('/machines', [MachineController::class, 'store'])->name('machines.store');
+    Route::get('/machines/{machineId}/edit', [MachineController::class, 'edit'])->name('machines.edit');
+    Route::put('/machines/{machineId}', [MachineController::class, 'update'])->name('machines.update');
+    Route::delete('/machines/{machineId}', [MachineController::class, 'destroy'])->name('machines.destroy');
+});
 Route::get('/machines/{machineId}', [MachineController::class, 'show'])->name('machines.show');
+
 
 Route::get('/breakdowns',function(){
     return inertia('breakdown/index');
@@ -104,7 +112,6 @@ Route::get('/inspection-tasks', function () {
 Route::get('forms', [FormController::class, 'index'])->middleware(['auth', 'role:ADMIN']);
 Route::get('/forms/create', [FormController::class, 'create'])->middleware(['auth', 'role:ADMIN']);
 
-Route::get('/machines/create', [MachineController::class, 'create'])->name('machines.create');
 Route::middleware(['auth', 'role:ADMIN'])->group(function () {
     Route::get('/users', [UserController::class, 'index'])->name('users.index'); // <-- Wajib ada name ini
     Route::get('/users/create', [UserController::class, 'create'])->name('users.create');
