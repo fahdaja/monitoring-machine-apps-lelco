@@ -96,77 +96,62 @@ export default function FormCreate({ machines }: Props) {
         ] as QuestionItem[],
     });
 
-    const daysOfWeek = [
-        {
-            label: 'Senin', value: 1,
+type ScheduleType = 'DAILY' | 'WEEKLY' | 'MONTHLY';
 
-        },
-        {
-            label: 'Selasa', value: 2,
+const formScheduleRules = (
+    type: ScheduleType, 
+    value: string[], 
+    startDateStr: string, 
+    endDateStr: string
+) => {
+    const scheduleDates: string[] = [];
+    
+    const startDate = new Date(startDateStr);
+    const endDate = new Date(endDateStr);
 
-        },
-        {
-            label: 'Rabu', value: 3,
 
-        },
-        {
-            label: 'Kamis', value: 4,
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        return scheduleDates;
+    }
 
-        },
-        {
-            label: 'Jumat', value: 5,
-
-        },
-        {
-            label: 'Sabtu', value: 6,
-
-        },
-        {
-            label: 'Minggu', value: 7,
-
-        }
-    ]
-
-    const upcomingSchedulesDates = () => {
-        const today = new Date();
-        const dayOfWeek = today.getDay();
-        const dayOfMonth = today.getDate();
-        const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-        const scheduledDates = [];
-
-        // perulangan untuk eksekusi harian
-            for (let i = 0; i < data.due_window_days; i++) {
-                const date = new Date(today);
-                date.setDate(date.getDate() + i);
-                scheduledDates.push(date.toISOString().split('T')[0]);
-            }
+    if (type === 'DAILY') {
+        const currentDate = new Date(startDate);
         
-
-        return scheduledDates;
-    }
-
-    const handleFrequencyTypeChange = (type: 'DAILY' | 'WEEKLY' | 'MONTHLY') => {
-        if (type === 'DAILY') {
-            setData('frequency_value', [1])
-            setData('day_of_week', '')
-            setData('day_of_month', 0)
-            setData('due_window_days', 1)
-        }
-        if (type === 'WEEKLY') {
-            setData('frequency_value',[])
-            setData('day_of_week', '')
-            setData('day_of_month', 0)
-            setData('due_window_days', 0)
-        }
-        if (type === 'MONTHLY') {
-            setData('frequency_value',[])
-            setData('day_of_week', '')
-            setData('day_of_month', 1)
-            setData('day_of_week', 'MONDAY')
-            setData('day_of_month', 0)
+        while (currentDate <= endDate) {
+            scheduleDates.push(currentDate.toISOString().split('T')[0]);
+            currentDate.setDate(currentDate.getDate() + 1);
         }
     }
 
+    if (type === 'WEEKLY') {
+        const targetDays = value.map(Number); 
+        const currentDate = new Date(startDate);
+
+        while (currentDate <= endDate) {
+            const currentDayOfWeek = currentDate.getDay(); 
+            if (targetDays.includes(currentDayOfWeek)) {
+                scheduleDates.push(currentDate.toISOString().split('T')[0]);
+            }
+            
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+    }
+    if (type === 'MONTHLY') {
+        const targetDates = value.map(Number); // misal: [10, 25]
+        const currentDate = new Date(startDate);
+
+        while (currentDate <= endDate) {
+            const currentDayOfMonth = currentDate.getDate();
+            if (targetDates.includes(currentDayOfMonth)) {
+                scheduleDates.push(currentDate.toISOString().split('T')[0]);
+            }
+            
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+    }
+
+    return scheduleDates;
+};
 
     const handleValidationRuleChange = (
         sIndex: number,
