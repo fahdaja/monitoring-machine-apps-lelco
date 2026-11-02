@@ -4,14 +4,16 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Enums\InputType;
 
-class Question extends Model
+class FormQuestion extends Model
 {
     use HasFactory;
 
     protected $table = 'form_questions';
     protected $primaryKey = 'id';
-    public $incrementing = false;
+    public $incrementing = true;
+    public $timestamps = false;
 
     protected $fillable = [
         'id',
@@ -33,21 +35,22 @@ class Question extends Model
     ];
 
     protected $casts = [
-        'input_type' => 'enum',
+        'is_required' => 'boolean',
+        'input_type' => InputType::class,
     ];
 
     public function form()
     {
-        return $this->belongsTo(Form::class, 'form_id', 'form_id');
+        return $this->belongsTo(Form::class, 'form_id', 'id');
     }
 
     public function section()
     {
-        return $this->belongsTo(Section::class, 'form_section_id', 'section_id');
+        return $this->belongsTo(Section::class, 'form_section_id', 'id');
     }
 
     public function options()
     {
-        return $this->hasMany(Option::class, 'form_question_id', 'question_id');
+        return $this->hasMany(FormOption::class, 'form_question_id', 'id');
     }
 }

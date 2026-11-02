@@ -20,7 +20,7 @@ return new class extends Migration
             
             // relasi 
             $table->foreignId('form_question_id')->constrained('form_questions')->onDelete('cascade');
-            $table->foreignId('goto_form_section_id')->constrained('form_sections')->onDelete('cascade');
+            $table->foreignId('goto_form_section_id')->nullable()->constrained('form_sections')->onDelete('cascade');
         });
     }
 

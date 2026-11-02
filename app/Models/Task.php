@@ -13,10 +13,9 @@ class Task extends Model {
     protected $fillable = [
         'task_code',
         'machine_id',
-        'schedule_id',
+        'form_id',
         'assigned_user_id',
         'status',
-        'start_date',
         'due_date',
         'completed_date',
         'source_type',

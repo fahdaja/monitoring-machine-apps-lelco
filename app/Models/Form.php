@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo; // <-- 1. Tambahkan import ini
 
 class Form extends Model
 {
@@ -11,14 +13,14 @@ class Form extends Model
 
     protected $table = 'forms';
     protected $primaryKey = 'id';
-    public $incrementing = false;
+    public $incrementing = true;
 
     protected $fillable = [
         'id',
-        'form_code',
         'machine_id',
-        'tittle',
-        'description',
+        'form_code',
+        'form_title',
+        'form_description',
         'frequency_type',
         'interval',
         'start_date',
@@ -34,13 +36,18 @@ class Form extends Model
         'updated_at' => 'datetime',
     ];
 
-    public function questions()
+    public function sections(): HasMany
     {
-        return $this->hasMany(Question::class, 'form_id', 'form_id');
+        return $this->hasMany(FormSection::class, 'form_id', 'id');
     }
 
-    public function machine()
+    public function questions(): HasMany
     {
-        return $this->belongsTo(Machine::class, 'machine_id', 'machine_id');
+        return $this->hasMany(FormQuestion::class, 'form_id', 'id');
+    }
+
+    public function machine(): BelongsTo
+    {
+        return $this->belongsTo(Machine::class, 'machine_id', 'id');
     }
 }

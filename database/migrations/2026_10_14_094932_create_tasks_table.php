@@ -14,7 +14,6 @@ return new class extends Migration
         Schema::create('tasks', function (Blueprint $table) {
             $table->id();
             $table->string('task_code')->unique()->nullable(false); 
-            $table->date('start_date');
             $table->date('due_date');
             $table->enum('status', ['UPCOMING','DUE','OVERDUE', 'IN_PROGRESS', 'COMPLETED'])->nullable();
             $table->enum('source_type', ['AUTO_REPORT', 'MANUAL_REPORT'])->nullable();
@@ -24,9 +23,9 @@ return new class extends Migration
             
            // relasi 
             $table->foreignId('machine_id')->constrained('machines')->onDelete('cascade');
-            $table->foreignId('form_id  ')->constrained('forms')->onDelete('cascade');
-            $table->foreignId('assigned_user_id')->constrained('users')->onDelete('cascade');
-            $table->foreignId('escalation_ticket_id')->constrained('breakdown_tickets')->onDelete('cascade');
+            $table->foreignId('form_id')->constrained('forms')->onDelete('cascade');
+            $table->foreignId('assigned_user_id')->nullable()->constrained('users')->onDelete('cascade');
+            $table->foreignId('escalation_ticket_id')->nullable()->constrained('breakdown_tickets')->onDelete('cascade');
         });
     }
 

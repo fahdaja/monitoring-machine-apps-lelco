@@ -5,7 +5,6 @@ namespace App\Enums;
 enum InputType : string
 {
     case TEXT = 'TEXT';
-    case NUMBER = 'NUMBER';
     case SELECT = 'SELECT';
     case CHECKBOX = 'CHECKBOX';
     case DROPDOWN = 'DROPDOWN';

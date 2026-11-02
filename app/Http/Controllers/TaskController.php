@@ -11,26 +11,6 @@ class TaskController extends Controller {
         ]);
     }
 
-    public function store(Request $request){
-        $validate = $request->validate([
-            'due_date' => 'required|date',
-        ]);
-
-        Task::create([
-            'machine_id' => $request->input('machine_id'),
-            'task_code' => 'TASK-' . strtoupper(uniqid()),
-            'due_date' => $validate['due_date'],
-
-            'status' => 'PENDING',
-            'source_type' => 'MANUAL_REPORT',
-            'form_id' => $request->input('form_id'),
-            'assigned_user_id' => Auth::user()->id,
-            'escalation_ticket_id' => $request->input('escalation_ticket_id'),
-        ]);
-
-        return redirect()->route('tasks.index')
-            ->with('success', 'Task berhasil dibuat');
-    }
 
     public function show($id){
         $tasks = Task::with([

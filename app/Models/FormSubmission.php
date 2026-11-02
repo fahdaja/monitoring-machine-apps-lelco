@@ -5,12 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Submission extends Model{
+class FormSubmission extends Model{
     use HasFactory;
     
     protected $table = 'submissions';
     protected $primaryKey = 'id';
-    public $incrementing = false;
+    public $incrementing = true;
     
     protected $fillable = [
         'id',
@@ -18,7 +18,8 @@ class Submission extends Model{
         'machine_id',
         'form_id',
         'user_id',
-        'answers_json',
+        'answers_values',
+        'submitted_at',
     ];
 
     public function machine()

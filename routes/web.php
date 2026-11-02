@@ -109,8 +109,11 @@ Route::get('/inspection-tasks', function () {
     ]);
 })->name('tasks.index');
 
-Route::get('forms', [FormController::class, 'index'])->middleware(['auth', 'role:ADMIN']);
-Route::get('/forms/create', [FormController::class, 'create'])->middleware(['auth', 'role:ADMIN']);
+Route::middleware(['auth', 'role:ADMIN'])->group(function () {
+    Route::get('forms', [FormController::class, 'index'])->name('forms.index');
+    Route::get('/forms/create', [FormController::class, 'create'])->name('forms.create');
+    Route::post('/forms', [FormController::class, 'store'])->name('forms.store');
+});
 
 Route::middleware(['auth', 'role:ADMIN'])->group(function () {
     Route::get('/users', [UserController::class, 'index'])->name('users.index'); // <-- Wajib ada name ini

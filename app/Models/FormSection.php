@@ -5,14 +5,15 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Section extends Model
+class FormSection extends Model
 {
     use HasFactory;
 
     protected $table = 'form_sections';
     protected $primaryKey = 'id';
-    public $incrementing = false;
-
+    public $incrementing = true;
+    public $timestamps = false;
+    
     protected $fillable = [
         'id',
         'form_id',
@@ -22,18 +23,13 @@ class Section extends Model
         'section_order'
     ];
 
-    protected $casts = [
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime',
-    ];
-
     public function form()
     {
-        return $this->belongsTo(Form::class, 'form_id', 'form_id');
+        return $this->belongsTo(Form::class, 'form_id', 'id');
     }
 
-    public function section()
+    public function questions()
     {
-        return $this->hasMany(FormQuestion::class, 'section_id', 'section_id');
+        return $this->hasMany(FormQuestion::class, 'form_section_id', 'id');
     }
 }
