@@ -1,7 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Head, Link, useForm } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
-import { PlusCircle, Copy, Trash2, Layers, Image, Video, HelpCircle, ShieldCheck, SlidersHorizontal, CheckCircle2, AlertTriangle, FileText, Eye, ArrowRight, CornerDownRight, Upload } from 'lucide-react';
+import { PlusCircle, Copy, Trash2, Layers, Eye, Calendar, Image as ImageIcon, CornerDownRight, HelpCircle, ShieldCheck } from 'lucide-react';
+
+interface ValidationRules {
+    expected_answer?: string;
+    validation_error_message?: string;
+    allowed_file_type?: ('IMAGE' | 'VIDEO' | string)[];
+    max_file_size?: '1MB' | '5MB' | '10MB' | string;
+}
 
 interface Machine {
     id: number;
@@ -12,6 +19,7 @@ interface Machine {
 interface OptionItem {
     option_text: string;
     is_normal: boolean;
+    option_order: number,
     goto_section_id?: string;
 }
 
@@ -19,82 +27,30 @@ interface QuestionItem {
     question_text: string;
     question_image?: File | null;
     question_image_url?: string;
+    question_file_url?: string;
+    question_order: number,
     placeholder?: string;
     input_type: 'TEXT' | 'TEXTAREA' | 'SELECT' | 'CHECKBOX' | 'DROPDOWN' | 'FILE' | 'DATE' | 'TIME';
     help_text?: string;
     standard_text?: string;
     is_required: boolean;
-    validation_rules: {
-        expected_answer?: string;
-        validation_error_message?: string;
-        allowed_file_type?: ('IMAGE' | 'VIDEO' | string)[];
-        max_file_size?: '1MB' | '5MB' | '10MB' | string;
-        date_value?: string;
-        time_value?: string;
-    },
+    validation_rules: ValidationRules,
+    question_file?: File | null,
+    question_date?: string;
+    question_time?: string;
     options: OptionItem[];
-    auto_ticket: boolean;
 }
 
 interface SectionItem {
-    form_title?: string;
-    form_description?: string;
     section_title?: string;
-    section_description?: string;
+    section_description?: string | null;
+    section_order?: number;
     questions: QuestionItem[];
 }
 
 interface Props {
     machines: Machine[];
 }
-
-export default function FormCreate({ machines }: Props) {
-    const { data, setData, post, processing } = useForm({
-        form_title: 'Formulir Pemantauan Tanpa Judul',
-        form_description: 'deskripsi optional',
-        id: 0,
-        machine_type: '',
-        description: '',
-        frequency_type: 'DAILY',
-        frequency_value: [],
-        day_of_week: 'MONDAY',
-        day_of_month: 1,
-        due_window_days: 1,
-        start_date: '',
-        end_date: '',
-        sections: [
-            {
-                section_title: '',
-                section_description: '',
-                questions: [],
-            },
-        ] as SectionItem[],
-        questions: [
-            {
-                question_text: '',
-                question_image: null,
-                question_image_url: '',
-                placeholder: '',
-                input_type: 'SELECT',
-                help_text: '',
-                standard_text: '',
-                is_required: false,
-                validation_rules: {
-                    expected_answer: '',
-                    validation_error_message: '',
-                    allowed_file_type: ['IMAGE', 'VIDEO'],
-                    max_file_size: '10MB',
-                    date_value: '',
-                    time_value: '',
-                },
-                options: [
-                    { option_text: 'Opsi 1', is_normal: true, goto_section_id: '' },
-                    { option_text: 'Opsi 2', is_normal: false, goto_section_id: '' }
-                ] as OptionItem[],
-                auto_ticket: false,
-            },
-        ] as QuestionItem[],
-    });
 
 type ScheduleType = 'DAILY' | 'WEEKLY' | 'MONTHLY';
 
@@ -105,1049 +61,933 @@ const formScheduleRules = (
     endDateStr: string
 ) => {
     const scheduleDates: string[] = [];
-    
     const startDate = new Date(startDateStr);
     const endDate = new Date(endDateStr);
 
-
-    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-        return scheduleDates;
-    }
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return scheduleDates;
 
     if (type === 'DAILY') {
-        const currentDate = new Date(startDate);
-        
-        while (currentDate <= endDate) {
-            scheduleDates.push(currentDate.toISOString().split('T')[0]);
-            currentDate.setDate(currentDate.getDate() + 1);
+        const curr = new Date(startDate);
+        while (curr < endDate) {
+            scheduleDates.push(curr.toISOString().split('T')[0]);
+            curr.setDate(curr.getDate() + 1);
         }
-    }
-
-    if (type === 'WEEKLY') {
-        const targetDays = value.map(Number); 
-        const currentDate = new Date(startDate);
-
-        while (currentDate <= endDate) {
-            const currentDayOfWeek = currentDate.getDay(); 
-            if (targetDays.includes(currentDayOfWeek)) {
-                scheduleDates.push(currentDate.toISOString().split('T')[0]);
+    } else if (type === 'WEEKLY') {
+        const targetDays = value.map(Number).filter(n => !isNaN(n)); 
+        const curr = new Date(startDate);
+        while (curr < endDate) {
+            if (targetDays.includes(curr.getDay())) {
+                scheduleDates.push(curr.toISOString().split('T')[0]);
             }
-            
-            currentDate.setDate(currentDate.getDate() + 1);
+            curr.setDate(curr.getDate() + 1);
         }
-    }
-    if (type === 'MONTHLY') {
-        const targetDates = value.map(Number); // misal: [10, 25]
-        const currentDate = new Date(startDate);
-
-        while (currentDate <= endDate) {
-            const currentDayOfMonth = currentDate.getDate();
-            if (targetDates.includes(currentDayOfMonth)) {
-                scheduleDates.push(currentDate.toISOString().split('T')[0]);
+    } else if (type === 'MONTHLY') {
+        const targetDates = value.map(Number).filter(n => !isNaN(n) && n > 0 && n <= 31);
+        const curr = new Date(startDate);
+        while (curr < endDate) {
+            if (targetDates.includes(curr.getDate())) {
+                scheduleDates.push(curr.toISOString().split('T')[0]);
             }
-            
-            currentDate.setDate(currentDate.getDate() + 1);
+            curr.setDate(curr.getDate() + 1);
         }
     }
-
     return scheduleDates;
 };
 
-    const handleValidationRuleChange = (
-        sIndex: number,
-        qIndex: number,
-        ruleField: keyof QuestionItem['validation_rules'],
-        value: any
-    ) => {
-        const updatedSections = [...data.sections];
-        const question = updatedSections[sIndex].questions[qIndex];
+export default function FormCreate({ machines }: Props) {
+    const today = new Date().toISOString().split('T')[0];
+    const [monthlyInputStr, setMonthlyInputStr] = useState('');
 
-        question.validation_rules = {
-            ...question.validation_rules,
-            [ruleField]: value,
-        };
-        setData('sections', updatedSections);
+    const { data, setData, post, processing } = useForm({
+        metadata: {
+            form_id: '',
+            form_title: 'Formulir Pemantauan Tanpa Judul',
+            form_description: '',
+            machine_id: '',
+            machine_type: '',
+            frequency_type: 'DAILY' as ScheduleType,
+            start_date: '',
+            end_date: '',
+            due_window_days: '1',
+            selected_custom_values: [] as string[],
+        },
+        sections: [
+            {
+                section_title: '',
+                section_description: '',
+                section_order: 0,
+                questions: [],
+            },
+        ] as SectionItem[],
+        questions: [] as QuestionItem[],
+        is_active: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+    });
+
+    const handleMetadataChange = (field: string, value: any) => {
+        setData('metadata', { ...data.metadata, [field]: value });
     };
 
-    const FILE_SIZE_OPTIONS = [
-        '1MB',
-        '5MB',
-        '10MB',
-    ];
+    const previewGeneratedDates = useMemo(() => {
+        if (!data.metadata.start_date || !data.metadata.end_date) return [];
+        return formScheduleRules(
+            data.metadata.frequency_type,
+            data.metadata.selected_custom_values,
+            data.metadata.start_date,
+            data.metadata.end_date
+        );
+    }, [data.metadata.frequency_type, data.metadata.selected_custom_values, data.metadata.start_date, data.metadata.end_date]);
+
+    const handleValidationRuleChange = (sIndex: number, qIndex: number, ruleField: keyof ValidationRules, value: any) => {
+        const updated = [...data.sections];
+        updated[sIndex].questions[qIndex].validation_rules = {
+            ...updated[sIndex].questions[qIndex].validation_rules,
+            [ruleField]: value,
+        };
+        setData('sections', updated);
+    };
+
+    const FILE_SIZE_OPTIONS = ['1MB', '5MB', '10MB'];
     const [activeSectionIndex, setActiveSectionIndex] = useState(0);
     const [activeFocus, setActiveFocus] = useState<string | number>('HEADER');
-
-    // State untuk mode Preview
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
     const [previewSectionId, setPreviewSectionId] = useState<number>(0);
-    const [previewAnswers, setPreviewAnswers] = useState<Record<number, any>>({});
     const [previewHistory, setPreviewHistory] = useState<number[]>([]);
+    const [previewAnswers, setPreviewAnswers] = useState<Record<string, any>>({});
 
     const addSection = () => {
-        const updatedSections = [
+        const updated = [
             ...data.sections,
             {
-                section_title: `Bagian Tanpa Judul`,
-                section_description: 'deskripsi bersifat (optional)',
+                section_title: 'Bagian Tanpa Judul',
+                section_description: '',
+                section_order: data.sections.length + 1,
                 questions: [
                     {
+                        question_order: 1,
                         question_text: '',
                         question_image: null,
                         question_image_url: '',
+                        question_file_url: '',
                         placeholder: '',
                         input_type: 'SELECT',
                         help_text: '',
                         standard_text: '',
                         is_required: false,
-                        validation_rules: {
-                            validation_error_message: '',
-                            expected_answer: '',
-                            allowed_file_type: [],
-                            max_file_size: '',
-                            date_value: '',
-                            time_value: '',
-                        },
+                        validation_rules: { validation_error_message: '', expected_answer: '', allowed_file_type: [], max_file_size: '' },
                         options: [
-                            { option_text: 'Normal (OK)', is_normal: true, goto_section_id: '' },
-                            { option_text: 'Rusak / Perlu Servis (NG)', is_normal: true, goto_section_id: '' }
+                            { option_text: 'Normal (OK)', is_normal: true, option_order: 1, goto_section_id: '' },
+                            { option_text: 'Rusak (NG)', is_normal: false, option_order: 2, goto_section_id: '' }
                         ],
-                        auto_ticket: false,
                     }
                 ],
             },
         ];
-        setData('sections', updatedSections);
-        setActiveSectionIndex(updatedSections.length - 1);
+        setData('sections', updated);
+        setActiveSectionIndex(updated.length - 1);
         setActiveFocus('SECTION_TITLE');
     };
 
     const addQuestionToActiveSection = () => {
-        const updatedSections = [...data.sections];
-        const targetIndex = activeSectionIndex < updatedSections.length ? activeSectionIndex : 0;
-
-        const newQuestion: QuestionItem = {
+        const updated = [...data.sections];
+        const targetIdx = activeSectionIndex < updated.length ? activeSectionIndex : 0;
+        const newQ: QuestionItem = {
             question_text: '',
-            question_image: null,
+            question_order: updated[targetIdx].questions.length + 1,
             question_image_url: '',
-            placeholder: '',
+            question_image: null,
             input_type: 'SELECT',
             help_text: '',
             standard_text: '',
             is_required: false,
-            validation_rules: {
-                expected_answer: '',
-                validation_error_message: '',
-                allowed_file_type: [],
-                max_file_size: '',
-                date_value: '',
-                time_value: '',
-            },
+            validation_rules: { expected_answer: '', validation_error_message: '', allowed_file_type: [], max_file_size: '' },
             options: [
-                { option_text: 'Opsi 1', is_normal: true, goto_section_id: '' },
-                { option_text: 'Opsi 2', is_normal: false, goto_section_id: '' }
+                { option_text: 'Opsi 1', is_normal: true, option_order: 1, goto_section_id: '' },
+                { option_text: 'Opsi 2', is_normal: false, option_order: 2, goto_section_id: '' }
             ],
-            auto_ticket: false,
         };
 
-        if (typeof activeFocus === 'number' && activeFocus < updatedSections[targetIndex].questions.length) {
-            updatedSections[targetIndex].questions.splice(activeFocus + 1, 0, newQuestion);
+        if (typeof activeFocus === 'number' && activeFocus < updated[targetIdx].questions.length) {
+            updated[targetIdx].questions.splice(activeFocus + 1, 0, newQ);
             setActiveFocus(activeFocus + 1);
         } else {
-            updatedSections[targetIndex].questions.push(newQuestion);
-            setActiveFocus(updatedSections[targetIndex].questions.length - 1);
+            updated[targetIdx].questions.push(newQ);
+            setActiveFocus(updated[targetIdx].questions.length - 1);
         }
-
-        setData('sections', updatedSections);
+        setData('sections', updated);
     };
 
     const removeSection = (sIndex: number) => {
         if (data.sections.length <= 1) return;
-        const updatedSections = data.sections.filter((_, i) => i !== sIndex);
-        setData('sections', updatedSections);
-        const prevIndex = Math.max(0, sIndex - 1);
-        setActiveSectionIndex(prevIndex);
-        setActiveFocus(prevIndex === 0 ? 'HEADER' : 'SECTION_TITLE');
+        const updated = data.sections.filter((_, i) => i !== sIndex);
+        setData('sections', updated);
+        setActiveSectionIndex(Math.max(0, sIndex - 1));
+        setActiveFocus('HEADER');
     };
 
     const removeQuestion = (sIndex: number, qIndex: number) => {
-        const updatedSections = [...data.sections];
-        updatedSections[sIndex].questions = updatedSections[sIndex].questions.filter((_, i) => i !== qIndex);
-        setData('sections', updatedSections);
-        const remainingQuestions = updatedSections[sIndex].questions.length;
-        if (remainingQuestions === 0) {
-            setActiveFocus(sIndex === 0 ? 'HEADER' : 'SECTION_TITLE');
-        } else {
-            setActiveFocus(Math.max(0, qIndex - 1));
-        }
+        const updated = [...data.sections];
+        updated[sIndex].questions = updated[sIndex].questions.filter((_, i) => i !== qIndex);
+        setData('sections', updated);
+        setActiveFocus(Math.max(0, qIndex - 1));
     };
 
     const duplicateQuestion = (sIndex: number, qIndex: number) => {
-        const updatedSections = [...data.sections];
-        const target = updatedSections[sIndex].questions[qIndex];
-        const duplicated = { ...target, options: target.options.map(opt => ({ ...opt })) };
-        updatedSections[sIndex].questions.splice(qIndex + 1, 0, duplicated);
-        setData('sections', updatedSections);
+        const updated = [...data.sections];
+        const target = updated[sIndex].questions[qIndex];
+        const dup = { ...target, options: target.options.map(o => ({ ...o })) };
+        updated[sIndex].questions.splice(qIndex + 1, 0, dup);
+        setData('sections', updated);
         setActiveFocus(qIndex + 1);
     };
 
     const handleQuestionChange = (sIndex: number, qIndex: number, field: keyof QuestionItem, value: any) => {
-        const updatedSections = [...data.sections];
-        updatedSections[sIndex].questions[qIndex] = {
-            ...updatedSections[sIndex].questions[qIndex],
-            [field]: value,
-        };
-        setData('sections', updatedSections);
+        const updated = [...data.sections];
+        updated[sIndex].questions[qIndex] = { ...updated[sIndex].questions[qIndex], [field]: value };
+        setData('sections', updated);
     };
 
     const handleSectionChange = (sIndex: number, field: 'section_title' | 'section_description', value: string) => {
-        const updatedSections = [...data.sections];
-        updatedSections[sIndex][field] = value;
-        setData('sections', updatedSections);
-    };
-
-    const toggleHelpTextActive = () => {
-        if (typeof activeFocus !== 'number') return;
-        const sIndex = activeSectionIndex < data.sections.length ? activeSectionIndex : 0;
-        const section = data.sections[sIndex];
-        if (!section || activeFocus >= section.questions.length) return;
-
-        const updatedSections = [...data.sections];
-        const current = updatedSections[sIndex].questions[activeFocus];
-        // Jika belum ada/kosong, isi placeholder awal; jika sudah ada, kosongkan
-        current.help_text = current.help_text ? '' : ' ';
-        setData('sections', updatedSections);
-    };
-
-    const toggleStandardTextActive = () => {
-        if (typeof activeFocus !== 'number') return;
-        const sIndex = activeSectionIndex < data.sections.length ? activeSectionIndex : 0;
-        const section = data.sections[sIndex];
-        if (!section || activeFocus >= section.questions.length) return;
-
-        const updatedSections = [...data.sections];
-        const current = updatedSections[sIndex].questions[activeFocus];
-        current.standard_text = current.standard_text ? '' : ' ';
-        setData('sections', updatedSections);
+        const updated = [...data.sections];
+        updated[sIndex][field] = value;
+        setData('sections', updated);
     };
 
     const handleQuestionImageUpload = (sIndex: number, qIndex: number, e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
             if (!file.type.startsWith('image/')) {
-                alert('File yang diunggah harus berupa gambar!');
+                alert('File harus berupa gambar!');
                 return;
             }
             const previewUrl = URL.createObjectURL(file);
-            const updatedSections = [...data.sections];
-            updatedSections[sIndex].questions[qIndex] = {
-                ...updatedSections[sIndex].questions[qIndex],
+            const updated = [...data.sections];
+            updated[sIndex].questions[qIndex] = {
+                ...updated[sIndex].questions[qIndex],
                 question_image: file,
                 question_image_url: previewUrl,
             };
-            setData('sections', updatedSections);
+            setData('sections', updated);
         }
     };
 
     const removeQuestionImage = (sIndex: number, qIndex: number) => {
-        const updatedSections = [...data.sections];
-        updatedSections[sIndex].questions[qIndex] = {
-            ...updatedSections[sIndex].questions[qIndex],
+        const updated = [...data.sections];
+        updated[sIndex].questions[qIndex] = {
+            ...updated[sIndex].questions[qIndex],
             question_image: null,
             question_image_url: '',
         };
-        setData('sections', updatedSections);
+        setData('sections', updated);
     };
 
-    const addOption = (sIndex: number, qIndex: number) => {
-        const updatedSections = [...data.sections];
-        const options = updatedSections[sIndex].questions[qIndex].options;
-        options.push({ option_text: `Opsi ${options.length + 1}`, is_normal: false, goto_section_id: '' });
-        setData('sections', updatedSections);
+    const toggleHelpText = (sIndex: number, qIndex: number) => {
+        const updated = [...data.sections];
+        const q = updated[sIndex].questions[qIndex];
+        q.help_text = q.help_text ? '' : ' ';
+        setData('sections', updated);
     };
 
-    const removeOption = (sIndex: number, qIndex: number, oIndex: number) => {
-        const updatedSections = [...data.sections];
-        updatedSections[sIndex].questions[qIndex].options = updatedSections[sIndex].questions[qIndex].options.filter((_, i) => i !== oIndex);
-        setData('sections', updatedSections);
-    };
-
-    const handleOptionChange = (sIndex: number, qIndex: number, oIndex: number, field: keyof OptionItem, value: any) => {
-        const updatedSections = [...data.sections];
-        updatedSections[sIndex].questions[qIndex].options[oIndex] = {
-            ...updatedSections[sIndex].questions[qIndex].options[oIndex],
-            [field]: value
-        };
-        setData('sections', updatedSections);
+    const toggleStandardText = (sIndex: number, qIndex: number) => {
+        const updated = [...data.sections];
+        const q = updated[sIndex].questions[qIndex];
+        q.standard_text = q.standard_text ? '' : ' ';
+        setData('sections', updated);
     };
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
-        post('/forms');
-    };
-
-    const handlePreviewNext = () => {
-        const currentSection = data.sections[previewSectionId];
-        let targetIndex: number | null = null;
-
-        if (currentSection) {
-            for (const q of currentSection.questions) {
-                if (q.input_type === 'SELECT') {
-                    const selectedOptIndex = previewAnswers[q.question_text];
-                    const selectedOpt = q.options[selectedOptIndex];
-                    if (selectedOpt && selectedOpt.goto_section_id !== '' && selectedOpt.goto_section_id !== undefined) {
-                        targetIndex = Number(selectedOpt.goto_section_id);
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (targetIndex === null || isNaN(targetIndex)) {
-            targetIndex = previewSectionId + 1;
-        }
-
-        if (targetIndex < data.sections.length) {
-            setPreviewHistory(prev => [...prev, previewSectionId]);
-            setPreviewSectionId(targetIndex);
-        } else {
-            alert("Pratinjau Selesai! Ini adalah akhir dari formulir.");
-        }
-    };
-
-    const handlePreviewBack = () => {
-        if (previewHistory.length > 0) {
-            const lastSection = previewHistory[previewHistory.length - 1];
-            setPreviewHistory(prev => prev.slice(0, -1));
-            setPreviewSectionId(lastSection);
-        }
-    };
-
-    const renderToolbar = () => {
-        const isQuestionActive = typeof activeFocus === 'number';
-        return (
-            <div className="absolute -right-14 top-6 hidden xl:flex flex-col bg-white border border-slate-200 shadow-lg rounded-xl p-1.5 gap-1.5 z-20">
-                <button type="button" onClick={addQuestionToActiveSection} title="Tambah Pertanyaan" className="p-2 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"><PlusCircle className="w-4 h-4" /></button>
-                <button type="button" onClick={toggleHelpTextActive} title="Help Text" className={`p-2 rounded-lg transition-colors ${isQuestionActive ? 'text-slate-600 hover:text-emerald-600 hover:bg-emerald-50' : 'text-slate-300 cursor-not-allowed'}`}><HelpCircle className="w-4 h-4" /></button>
-                <button type="button" onClick={toggleStandardTextActive} title="Standard Text" className={`p-2 rounded-lg transition-colors ${isQuestionActive ? 'text-slate-600 hover:text-emerald-600 hover:bg-emerald-50' : 'text-slate-300 cursor-not-allowed'}`}><ShieldCheck className="w-4 h-4" /></button>
-                <button
-                    type="button"
-                    title="Sisipkan Gambar Soal"
-                    onClick={() => {
-                        if (isQuestionActive) {
-                            const fileInput = document.getElementById(`question-img-upload-${activeSectionIndex}-${activeFocus}`) as HTMLInputElement;
-                            fileInput?.click();
-                        }
-                    }}
-                    className={`p-2 rounded-lg transition-colors ${isQuestionActive ? 'text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 cursor-pointer' : 'text-slate-300 cursor-not-allowed'}`}
-                >
-                    <Image className="w-4 h-4" />
-                </button>
-                <button type="button" title="Video" className="p-2 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"><Video className="w-4 h-4" /></button>
-                <button type="button" onClick={addSection} title="Bagian Baru" className="p-2 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"><Layers className="w-4 h-4" /></button>
-            </div>
+        const generatedDates = formScheduleRules(
+            data.metadata.frequency_type,
+            data.metadata.selected_custom_values,
+            data.metadata.start_date,
+            data.metadata.end_date
         );
+        post('/forms', { data: { ...data, schedule_dates: generatedDates } });
     };
 
     return (
         <AppLayout>
-            <Head title="Buat Template Form Pemantauan Mesin" />
+            <Head title="Buat Form Pemantauan" />
 
-            {/* Header Navigasi Atas */}
-            <div className="max-w-4xl mx-auto mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="max-w-3xl mx-auto mb-6 flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-black text-slate-900 tracking-tight">Buat Form Pemantauan</h1>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                        Rancang parameter checklist inspeksi dan validasi operasional mesin pabrik.
-                    </p>
+                    <h1 className="text-xl font-bold text-slate-800 tracking-tight">Builder Form Pemantauan</h1>
+                    <p className="text-xs text-slate-500">Rancang checklist inspeksi mesin dengan tampilan bersih.</p>
                 </div>
                 <div className="flex items-center gap-2">
                     <button
                         type="button"
                         onClick={() => { setPreviewSectionId(0); setPreviewHistory([]); setPreviewAnswers({}); setIsPreviewOpen(true); }}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-all shadow-xs"
+                        className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
                     >
-                        <Eye className="w-4 h-4" /> Pratinjau Form & Alur (Preview)
+                        <Eye className="w-3.5 h-3.5" /> Preview
                     </button>
                     <Link
                         href="/forms"
-                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all shadow-xs"
+                        className="px-3.5 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg text-xs font-semibold transition-colors"
                     >
-                        &larr; Kembali
+                        Kembali
                     </Link>
                 </div>
             </div>
 
-            <div className="max-w-4xl mx-auto space-y-6 pb-28 relative">
-                <form onSubmit={submit} className="space-y-6">
+            <div className="max-w-3xl mx-auto space-y-4 pb-24">
+                <form onSubmit={submit} className="space-y-4">
                     {data.sections.map((section, sIndex) => (
-                        <div key={sIndex} className="space-y-4">
+                        <div key={sIndex} className="space-y-3">
                             {sIndex === 0 ? (
-                                /* KARTU HEADER UTAMA */
-                                <div
+                                <div 
                                     onMouseDownCapture={() => { setActiveSectionIndex(sIndex); setActiveFocus('HEADER'); }}
-                                    className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8 space-y-6 relative border-t-8 border-t-emerald-600"
+                                    className="bg-white rounded-xl border border-slate-200 p-6 space-y-4 shadow-2xs border-t-4 border-t-emerald-600"
                                 >
-                                    {activeSectionIndex === sIndex && activeFocus === 'HEADER' && renderToolbar()}
+                                    <input
+                                        type="text"
+                                        value={data.metadata.form_title}
+                                        onChange={e => handleMetadataChange('form_title', e.target.value)}
+                                        placeholder="Judul Formulir"
+                                        className="w-full text-lg font-bold text-slate-900 border-b border-slate-100 pb-2 focus:border-emerald-600 focus:outline-none bg-transparent"
+                                    />
+                                    <input
+                                        type="text"
+                                        value={data.metadata.form_description}
+                                        onChange={e => handleMetadataChange('form_description', e.target.value)}
+                                        placeholder="Deskripsi singkat formulir (opsional)"
+                                        className="w-full text-xs text-slate-600 border-b border-slate-100 pb-2 focus:border-emerald-600 focus:outline-none bg-transparent"
+                                    />
 
-                                    <div className="flex items-center gap-2 text-xs font-bold text-emerald-700 uppercase tracking-wider">
-                                        <FileText className="w-4 h-4" /> Informasi Utama Formulir (Bagian 1 dari {data.sections.length})
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                                        <div>
+                                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Target Mesin *</label>
+                                            <select
+                                                value={data.metadata.machine_type}
+                                                onChange={e => handleMetadataChange('machine_type', e.target.value)}
+                                                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-slate-50 focus:border-emerald-600 outline-none font-medium"
+                                            >
+                                                <option value="">Pilih Mesin...</option>
+                                                {machines.map(m => (
+                                                    <option key={m.id} value={m.machine_type}>{m.machine_type}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Batas Tenggat (Hari)</label>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                value={data.metadata.due_window_days}
+                                                onChange={e => handleMetadataChange('due_window_days', e.target.value)}
+                                                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-slate-50 focus:border-emerald-600 outline-none font-medium"
+                                            />
+                                        </div>
                                     </div>
 
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Judul Formulir</label>
-                                            <textarea
-                                                value={data.form_title}
-                                                onChange={e => { setData('form_title', e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
-                                                placeholder="Contoh: Checklist Harian Mesin Injeksi"
-                                                rows={1}
-                                                className="w-full border-b border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-600 font-bold bg-slate-50/50 transition-all resize-none text-slate-900 overflow-hidden"
+                                    {/* KONFIGURASI PENJADWALAN LENGKAP */}
+                                    <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-100 space-y-3">
+                                        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                                            <Calendar className="w-3.5 h-3.5 text-emerald-600" /> Penjadwalan Tugas
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                            <select
+                                                value={data.metadata.frequency_type}
+                                                onChange={e => {
+                                                    const val = e.target.value as ScheduleType;
+                                                    setData('metadata', {
+                                                        ...data.metadata,
+                                                        frequency_type: val,
+                                                        selected_custom_values: [],
+                                                    });
+                                                    setMonthlyInputStr('');
+                                                }}
+                                                className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-white font-medium outline-none"
+                                            >
+                                                <option value="DAILY">Harian</option>
+                                                <option value="WEEKLY">Mingguan</option>
+                                                <option value="MONTHLY">Bulanan</option>
+                                            </select>
+                                            <input
+                                                type="date"
+                                                min={today}
+                                                value={data.metadata.start_date}
+                                                onChange={e => handleMetadataChange('start_date', e.target.value)}
+                                                className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-white font-medium outline-none"
+                                            />
+                                            <input
+                                                type="date"
+                                                min={data.metadata.start_date || today}
+                                                value={data.metadata.end_date}
+                                                onChange={e => handleMetadataChange('end_date', e.target.value)}
+                                                className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-white font-medium outline-none"
                                             />
                                         </div>
 
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Deskripsi (Opsional)</label>
-                                            <textarea
-                                                value={data.form_description}
-                                                onChange={e => { setData('form_description', e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
-                                                placeholder="Petunjuk pengisian form untuk teknisi..."
-                                                rows={1}
-                                                className="w-full border-b border-slate-200 p-3 text-xs outline-none focus:border-emerald-600 bg-slate-50/50 font-medium resize-none overflow-hidden"
-                                            />
-                                        </div>
-
-                                        <div className="grid grid-rows-1 sm:grid-rows-2 gap-2 pt-2">
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                                                    Target Mesin <span className="text-rose-600">*</span>
-                                                </label>
-                                                <select
-                                                    value={data.machine_type}
-                                                    onChange={e => setData('machine_type', e.target.value)}
-                                                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs outline-none focus:border-emerald-600 font-bold text-slate-800 bg-slate-50/50"
-                                                >
-                                                    <option value="">-- Pilih Mesin Terkait --</option>
-                                                    {machines.map((m) => (
-                                                        <option key={m.machine_type} value={m.machine_type}>{m.machine_type}</option>
+                                        {data.metadata.frequency_type === 'WEEKLY' && (
+                                            <div className="space-y-1 pt-2 border-t border-slate-200">
+                                                <label className="block text-[10px] font-bold text-slate-600 uppercase">Pilih Hari dalam Seminggu:</label>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {[
+                                                        { label: 'Minggu', val: '0' },
+                                                        { label: 'Senin', val: '1' },
+                                                        { label: 'Selasa', val: '2' },
+                                                        { label: 'Rabu', val: '3' },
+                                                        { label: 'Kamis', val: '4' },
+                                                        { label: 'Jumat', val: '5' },
+                                                        { label: 'Sabtu', val: '6' },
+                                                    ].map(day => (
+                                                        <label key={day.val} className={`px-2.5 py-1 rounded border text-[11px] font-semibold cursor-pointer transition-all ${data.metadata.selected_custom_values.includes(day.val) ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'}`}>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={data.metadata.selected_custom_values.includes(day.val)}
+                                                                onChange={e => {
+                                                                    const current = data.metadata.selected_custom_values;
+                                                                    const updated = e.target.checked ? [...current, day.val] : current.filter(v => v !== day.val);
+                                                                    handleMetadataChange('selected_custom_values', updated);
+                                                                }}
+                                                                className="hidden"
+                                                            />
+                                                            {day.label}
+                                                        </label>
                                                     ))}
-                                                </select>
-                                            </div>
-
-                                            <div className="grid grid-cols-3 gap-2">
-                                                <div className="col-span-2">
-                                                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Frekuensi</label>
-                                                    <div className="flex gap-1">
-                                                        <select
-                                                            value={data.frequency_type}
-                                                            onChange={e => setData('frequency_type', e.target.value)}
-                                                            className="border border-slate-200 rounded-xl px-2 py-2.5 bg-slate-50/50 font-medium text-xs w-full"
-                                                        >
-                                                            <option value="DAILY">Harian</option>
-                                                            <option value="WEEKLY">Mingguan</option>
-                                                            <option value="MONTHLY">Bulanan</option>
-                                                        </select>
-                                                        <input
-                                                            type="number"
-                                                            min="1"
-                                                            value={data.frequency_value}
-                                                            onChange={e => handleFrequencyChange(data.frequency_type, Number(e.target.value))}
-                                                            className="w-16 border border-slate-200 rounded-xl px-2 py-2.5 bg-slate-50/50 text-center font-bold text-xs"
-                                                        />
-                                                    </div>
-                                                </div>
-
-                                                <div>
-                                                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Batas (Hari)</label>
-                                                    <input
-                                                        type="number"
-                                                        min="0"
-                                                        value={data.due_window_days}
-                                                        onChange={e => setData('due_window_days', Number(e.target.value))}
-                                                        className="w-full border border-slate-200 rounded-xl px-2 py-2.5 bg-slate-50/50 text-center font-bold text-xs"
-                                                    />
                                                 </div>
                                             </div>
+                                        )}
+
+                                        {data.metadata.frequency_type === 'MONTHLY' && (
+                                            <div className="space-y-1 pt-2 border-t border-slate-200">
+                                                <label className="block text-[10px] font-bold text-slate-600 uppercase">
+                                                    Tanggal dalam Sebulan (Pisahkan koma, contoh: 1, 15, 30):
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="1, 15, 30"
+                                                    value={monthlyInputStr}
+                                                    onChange={e => {
+                                                        const raw = e.target.value;
+                                                        setMonthlyInputStr(raw);
+                                                        const vals = raw.split(',').map(s => s.trim()).filter(Boolean);
+                                                        handleMetadataChange('selected_custom_values', vals);
+                                                    }}
+                                                    className="w-full border border-slate-200 rounded-lg px-3 py-1.5 bg-white font-medium text-xs text-slate-800 outline-none focus:border-emerald-600"
+                                                />
+                                            </div>
+                                        )}
+
+                                        <div className="text-[11px] text-slate-500 font-medium flex justify-between items-center pt-1 border-t border-slate-200/60">
+                                            <span>Estimasi task terbuat:</span>
+                                            <span className="font-bold text-emerald-700">{previewGeneratedDates.length} Task</span>
                                         </div>
                                     </div>
                                 </div>
                             ) : (
-                                /* KARTU HEADER SECTION LANJUTAN */
-                                <div
+                                <div 
                                     onMouseDownCapture={() => { setActiveSectionIndex(sIndex); setActiveFocus('SECTION_TITLE'); }}
-                                    className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8 space-y-4 relative border-l-8 border-l-emerald-600"
+                                    className="bg-white rounded-xl border border-slate-200 p-5 space-y-3 shadow-2xs border-l-4 border-l-emerald-600"
                                 >
-                                    {activeSectionIndex === sIndex && activeFocus === 'SECTION_TITLE' && renderToolbar()}
-
-                                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                                        <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Bagian {sIndex + 1} dari {data.sections.length}</span>
-                                        {data.sections.length > 1 && (
-                                            <button
-                                                type="button"
-                                                onClick={() => removeSection(sIndex)}
-                                                className="text-slate-400 hover:text-rose-600 text-xs font-bold flex items-center gap-1 transition-colors"
-                                            >
-                                                <Trash2 className="w-3.5 h-3.5" /> Hapus Bagian
-                                            </button>
-                                        )}
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-[11px] font-bold text-emerald-700 uppercase">Bagian {sIndex + 1}</span>
+                                        <button type="button" onClick={() => removeSection(sIndex)} className="text-slate-400 hover:text-rose-600 text-xs">Hapus</button>
                                     </div>
-
-                                    <input
-                                        type="text"
-                                        value={section.section_title}
-                                        onChange={e => handleSectionChange(sIndex, 'section_title', e.target.value)}
-                                        placeholder="Judul Bagian Baru"
-                                        className="w-full text-lg font-bold text-slate-900 border-b border-slate-100 hover:border-slate-300 focus:border-emerald-600 focus:outline-none pb-2 transition-colors bg-transparent"
-                                    />
-
-                                    <textarea
-                                        value={section.section_description}
-                                        onChange={e => { handleSectionChange(sIndex, 'section_description', e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
-                                        placeholder="Deskripsi bagian (opsional)"
-                                        rows={1}
-                                        className="w-full text-xs text-slate-600 border-b border-slate-100 hover:border-slate-300 focus:border-emerald-600 focus:outline-none pb-2 resize-none overflow-hidden transition-colors bg-transparent"
-                                    />
+                                    <div className="space-y-2">
+                                        <input
+                                            type="text"
+                                            value={section.section_title}
+                                            onChange={e => handleSectionChange(sIndex, 'section_title', e.target.value)}
+                                            placeholder="Judul Bagian"
+                                            className="w-full text-base font-bold text-slate-800 border-b border-slate-100 pb-1.5 focus:border-emerald-600 outline-none bg-transparent"
+                                        />
+                                        <input
+                                            type="text"
+                                            value={section.section_description || ''}
+                                            onChange={e => handleSectionChange(sIndex, 'section_description', e.target.value)}
+                                            placeholder="Deskripsi bagian (opsional)"
+                                            className="w-full text-xs text-slate-500 border-b border-slate-100 pb-1.5 focus:border-emerald-600 outline-none bg-transparent"
+                                        />
+                                    </div>
                                 </div>
                             )}
 
-                            {/* DAFTAR PERTANYAAN DALAM SECTION */}
-                            <div className="space-y-4">
+                            {/* Daftar Pertanyaan */}
+                            <div className="space-y-3">
                                 {section.questions.map((q, qIndex) => (
                                     <div
                                         key={qIndex}
                                         onMouseDownCapture={() => { setActiveSectionIndex(sIndex); setActiveFocus(qIndex); }}
-                                        className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 relative border-l-4 border-l-emerald-600 transition-all hover:border-slate-300"
+                                        className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs space-y-3 transition-all hover:border-slate-300"
                                     >
-                                        {activeSectionIndex === sIndex && activeFocus === qIndex && renderToolbar()}
-
-                                        {/* Baris Pertanyaan & Tipe Input */}
-                                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                                        <div className="flex items-center gap-2">
                                             <input
                                                 type="text"
                                                 value={q.question_text}
                                                 onChange={e => handleQuestionChange(sIndex, qIndex, 'question_text', e.target.value)}
                                                 placeholder={`Pertanyaan ${qIndex + 1}`}
-                                                className="flex-1 border border-slate-200 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-emerald-600 font-semibold text-slate-900 bg-slate-50/50 transition-all"
+                                                className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 bg-slate-50/50 outline-none focus:border-emerald-600"
                                             />
+                                            
+                                            {/* Tombol Upload Gambar Soal */}
+                                            <input
+                                                type="file"
+                                                id={`q-img-${sIndex}-${qIndex}`}
+                                                accept="image/*"
+                                                className="hidden"
+                                                onChange={e => handleQuestionImageUpload(sIndex, qIndex, e)}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => document.getElementById(`q-img-${sIndex}-${qIndex}`)?.click()}
+                                                className="p-2 border border-slate-200 hover:bg-slate-50 rounded-lg text-slate-600 transition-colors"
+                                                title="Sisipkan Gambar"
+                                            >
+                                                <ImageIcon className="w-4 h-4" />
+                                            </button>
 
                                             <select
                                                 value={q.input_type}
                                                 onChange={e => handleQuestionChange(sIndex, qIndex, 'input_type', e.target.value)}
-                                                className="w-full sm:w-48 border border-slate-200 rounded-xl px-3 py-2.5 text-xs outline-none focus:border-emerald-600 bg-slate-50/50 font-bold text-slate-700"
+                                                className="w-32 border border-slate-200 rounded-lg px-2.5 py-2 text-xs font-bold text-slate-700 bg-slate-50/50 outline-none"
                                             >
-                                                <option value="TEXT">Jawaban Singkat</option>
+                                                <option value="TEXT">Singkat</option>
                                                 <option value="TEXTAREA">Paragraf</option>
                                                 <option value="SELECT">Pilihan Ganda</option>
-                                                <option value="CHECKBOX">Kotak Centang</option>
-                                                <option value="DROPDOWN">Drop-down</option>
-                                                <option value="FILE">Upload File</option>
+                                                <option value="CHECKBOX">Checkbox</option>
+                                                <option value="DROPDOWN">Dropdown</option>
+                                                <option value="FILE">File</option>
                                                 <option value="DATE">Tanggal</option>
                                                 <option value="TIME">Waktu</option>
                                             </select>
                                         </div>
 
+                                        {/* FITUR BANTUAN: HELP TEXT & STANDARD TEXT */}
+                                        <div className="flex items-center gap-2 pt-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => toggleHelpText(sIndex, qIndex)}
+                                                className={`px-2.5 py-1 rounded text-[10px] font-bold border transition-colors flex items-center gap-1 ${q.help_text ? 'bg-sky-100 text-sky-800 border-sky-300' : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'}`}
+                                            >
+                                                <HelpCircle className="w-3 h-3" /> {q.help_text ? 'Help Text Aktif' : '+ Help Text'}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => toggleStandardText(sIndex, qIndex)}
+                                                className={`px-2.5 py-1 rounded text-[10px] font-bold border transition-colors flex items-center gap-1 ${q.standard_text ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'}`}
+                                            >
+                                                <ShieldCheck className="w-3 h-3" /> {q.standard_text ? 'Standard Text Aktif' : '+ Standard Text'}
+                                            </button>
+                                        </div>
 
-                                        {/* Help Text Input (Tampil jika help_text diisi / diaktifkan) */}
                                         {q.help_text !== undefined && q.help_text !== '' && (
-                                            <div className="flex items-center gap-2 pt-1">
+                                            <div className="flex items-center gap-2">
                                                 <input
                                                     type="text"
                                                     value={q.help_text.trim() === '' ? '' : q.help_text}
                                                     onChange={e => handleQuestionChange(sIndex, qIndex, 'help_text', e.target.value)}
-                                                    placeholder="Tuliskan panduan atau help text untuk teknisi..."
-                                                    className="w-full border border-sky-200 bg-sky-50/40 rounded-xl px-3.5 py-2 text-xs text-sky-900 outline-none focus:ring-1 focus:ring-sky-500 font-medium"
+                                                    placeholder="Tuliskan panduan / help text..."
+                                                    className="w-full border border-sky-200 bg-sky-50/40 rounded-lg px-3 py-1.5 text-xs text-sky-900 outline-none"
                                                 />
-                                                <button type="button" onClick={() => handleQuestionChange(sIndex, qIndex, 'help_text', '')} title="Hapus Panduan" className="text-slate-400 hover:text-rose-600 font-bold px-1.5 cursor-pointer">&times;</button>
+                                                <button type="button" onClick={() => handleQuestionChange(sIndex, qIndex, 'help_text', '')} className="text-slate-400 hover:text-rose-600 font-bold">&times;</button>
                                             </div>
                                         )}
 
-                                        {/* Standard Text Input (Tampil jika standard_text diisi / diaktifkan) */}
                                         {q.standard_text !== undefined && q.standard_text !== '' && (
-                                            <div className="flex items-center gap-2 pt-1">
+                                            <div className="flex items-center gap-2">
                                                 <input
                                                     type="text"
                                                     value={q.standard_text.trim() === '' ? '' : q.standard_text}
                                                     onChange={e => handleQuestionChange(sIndex, qIndex, 'standard_text', e.target.value)}
                                                     placeholder="Tuliskan nilai standar / acuan baku..."
-                                                    className="w-full border border-emerald-200 bg-emerald-50/40 rounded-xl px-3.5 py-2 text-xs text-emerald-900 outline-none focus:ring-1 focus:ring-emerald-500 font-medium"
+                                                    className="w-full border border-emerald-200 bg-emerald-50/40 rounded-lg px-3 py-1.5 text-xs text-emerald-900 outline-none"
                                                 />
-                                                <button type="button" onClick={() => handleQuestionChange(sIndex, qIndex, 'standard_text', '')} title="Hapus Standar Acuan" className="text-slate-400 hover:text-rose-600 font-bold px-1.5 cursor-pointer">&times;</button>
+                                                <button type="button" onClick={() => handleQuestionChange(sIndex, qIndex, 'standard_text', '')} className="text-slate-400 hover:text-rose-600 font-bold">&times;</button>
                                             </div>
                                         )}
 
-                                        {/* --- FITUR: SISIPKAN GAMBAR PADA PERTANYAAN --- */}
-                                        <div className="">
-                                            <input
-                                                type="file"
-                                                id={`question-img-upload-${sIndex}-${qIndex}`}
-                                                accept="image/*"
-                                                className="hidden"
-                                                onChange={(e) => handleQuestionImageUpload(sIndex, qIndex, e)}
-                                            />
-                                            {q.question_image_url && (
-                                                <div className="relative inline-block group">
-                                                    <img
-                                                        src={q.question_image_url}
-                                                        alt="Ilustrasi Pertanyaan"
-                                                        className="h-auto w-auto object-cover rounded-xl border border-slate-200 shadow-xs"
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => removeQuestionImage(sIndex, qIndex)}
-                                                        className="absolute top-2 right-2 bg-slate-900/80 hover:bg-rose-600 text-white w-6 h-6 rounded-lg text-xs font-bold transition-colors shadow-sm flex items-center justify-center"
-                                                        title="Hapus Gambar"
-                                                    >
-                                                        &times;
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
-                                        {/* khusus kolom jawaban singkat */}
-                                        {(q.input_type === 'TEXT') && (
-                                            <div>
-                                                <div className="flex items-center gap-2 pt-1">
-                                                    <input
-                                                        type="text"
-                                                        value={q.placeholder}
-                                                        onChange={e => handleQuestionChange(sIndex, qIndex, 'placeholder', e.target.value)}
-                                                        placeholder="Teks jawaban singkat"
-                                                        className="w-full border border-slate-200 bg-slate-50/40 rounded-xl px-3.5 py-2 text-xs text-slate-900 outline-none focus:ring-1 focus:ring-slate-500 font-medium"
-                                                        disabled
-                                                    />
-                                                </div>
-                                            </div>
-                                        )}
-                                        {/* khusus kolom jawaban panjang */}
-                                        {(q.input_type === 'TEXTAREA') && (
-                                            <div>
-                                                <div className="flex items-center gap-2 pt-1">
-                                                    <textarea
-                                                        value={q.placeholder}
-                                                        onChange={e => handleQuestionChange(sIndex, qIndex, 'placeholder', e.target.value)}
-                                                        placeholder="Teks jawaban panjang"
-                                                        className="w-full border border-slate-200 bg-slate-50/40 rounded-xl px-3.5 py-2 text-xs text-slate-900 outline-none focus:ring-1 focus:ring-slate-500 font-medium resize-none"
-                                                        disabled
-                                                    />
-                                                </div>
+                                        {/* Preview Gambar Soal Tanpa Batasan Height/Width */}
+                                        {q.question_image_url && (
+                                            <div className="relative mt-2">
+                                                <img 
+                                                    src={q.question_image_url} 
+                                                    alt="Preview Soal" 
+                                                    className="w-full h-auto rounded-lg border border-slate-200 bg-slate-50 object-contain" 
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removeQuestionImage(sIndex, qIndex)}
+                                                    className="absolute top-2 right-2 bg-slate-900/80 hover:bg-rose-600 text-white w-6 h-6 rounded-md text-xs font-bold flex items-center justify-center transition-colors shadow-sm"
+                                                    title="Hapus Gambar"
+                                                >
+                                                    &times;
+                                                </button>
                                             </div>
                                         )}
 
-                                        {/* Konfigurasi Validasi Jawaban (KHUSUS TEXT & TEXTAREA) */}
-                                        {(q.input_type === 'TEXT' || q.input_type === 'TEXTAREA') && (
-                                            <div className="space-y-3 pt-2 bg-slate-50/60 p-4 rounded-xl border border-slate-100 text-xs">
-                                                <div className="flex items-center justify-between">
-                                                    <label className="flex items-center gap-2 font-bold text-slate-700 cursor-pointer">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={q.validation_rules?.expected_answer !== undefined && q.validation_rules?.expected_answer !== ''}
-                                                            onChange={e => handleValidationRuleChange(sIndex, qIndex, 'expected_answer', e.target.checked ? ' ' : '')}
-                                                            className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
-                                                        />
-                                                        <span className="flex items-center gap-1.5 text-xs text-slate-800 font-bold">
-                                                            <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-600" /> Validasi Jawaban (Wajib Sama)
-                                                        </span>
-                                                    </label>
-                                                </div>
-
-                                                {q.validation_rules?.expected_answer !== undefined && q.validation_rules?.expected_answer !== '' && (
-                                                    <div className="space-y-3 pt-2 border-t border-slate-200/60">
-                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                                            <div>
-                                                                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
-                                                                    Jawaban yang Diinginkan
-                                                                </label>
-                                                                <input
-                                                                    type="text"
-                                                                    value={q.validation_rules?.expected_answer ?? ''}
-                                                                    onChange={e => handleValidationRuleChange(sIndex, qIndex, 'expected_answer', e.target.value)}
-                                                                    placeholder="Contoh: Normal / Sesuai / 6.5"
-                                                                    className="w-full border border-slate-200 bg-white rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-600 shadow-2xs"
-                                                                />
-                                                            </div>
-                                                            <div>
-                                                                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
-                                                                    Pesan Error Kustom (Jika Berbeda)
-                                                                </label>
-                                                                <input
-                                                                    type="text"
-                                                                    value={q.validation_rules?.validation_error_message || ''}
-                                                                    onChange={e => handleValidationRuleChange(sIndex, qIndex, 'validation_error_message', e.target.value)}
-                                                                    placeholder="Contoh: Jawaban tidak sesuai standar acuan!"
-                                                                    className="w-full border border-slate-200 bg-white rounded-lg px-3 py-2 text-xs font-medium text-slate-800 outline-none focus:border-emerald-600 shadow-2xs"
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
+                                        {q.input_type === 'TEXT' && (
+                                            <input type="text" disabled placeholder="Jawaban singkat..." className="w-full border border-slate-200 bg-slate-50 rounded-lg px-3 py-1.5 text-xs text-slate-400" />
+                                        )}
+                                        {q.input_type === 'TEXTAREA' && (
+                                            <textarea disabled rows={2} placeholder="Jawaban paragraf..." className="w-full border border-slate-200 bg-slate-50 rounded-lg px-3 py-1.5 text-xs text-slate-400 resize-none" />
+                                        )}
+                                        {q.input_type === 'FILE' && (
+                                            <div className="border border-dashed border-slate-200 rounded-lg p-3 text-center text-xs text-slate-400 bg-slate-50">Upload File Area</div>
+                                        )}
+                                        {q.input_type === 'DATE' && (
+                                            <input type="date" disabled className="w-full border border-slate-200 bg-slate-50 rounded-lg px-3 py-1.5 text-xs text-slate-400" />
+                                        )}
+                                        {q.input_type === 'TIME' && (
+                                            <input type="time" disabled className="w-full border border-slate-200 bg-slate-50 rounded-lg px-3 py-1.5 text-xs text-slate-400" />
                                         )}
 
-                                        {/* Konfigurasi Opsi & Jump Section (KHUSUS SELECT / DROPDOWN / CHECKBOX) */}
-                                        {(q.input_type === 'SELECT' || q.input_type === 'DROPDOWN' || q.input_type === 'CHECKBOX') && (
-                                            <div className="space-y-3 pt-2 bg-slate-50/60 p-4 rounded-xl border border-slate-100 text-xs">
-                                                <div className="flex items-center justify-between">
-                                                    <span className="block font-bold text-slate-600 uppercase tracking-wider text-[10px]">Konfigurasi Opsi & Aturan Lompat (Jump Section):</span>
-                                                </div>
-
+                                        {/* Opsi Pilihan Ganda dengan Fitur Goto Section */}
+                                        {(['SELECT', 'CHECKBOX', 'DROPDOWN'] as string[]).includes(q.input_type) && (
+                                            <div className="space-y-2 bg-slate-50/60 p-3 rounded-lg border border-slate-100">
                                                 {q.options.map((opt, oIndex) => (
-                                                    <div key={oIndex} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+                                                    <div key={oIndex} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 bg-white p-2 rounded-lg border border-slate-200 text-xs">
                                                         <div className="flex items-center gap-2 flex-1">
-                                                            <span className="text-slate-400 font-bold w-4">{oIndex + 1}.</span>
+                                                            <span className="text-slate-400 w-3">{oIndex + 1}.</span>
                                                             <button
                                                                 type="button"
-                                                                onClick={() => handleOptionChange(sIndex, qIndex, oIndex, 'is_normal', !opt.is_normal)}
-                                                                className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-colors flex items-center gap-1 shrink-0 ${opt.is_normal
-                                                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                                                                    : 'bg-rose-100 text-rose-800 border border-rose-200'
-                                                                    }`}
+                                                                onClick={() => {
+                                                                    const opts = [...q.options];
+                                                                    opts[oIndex].is_normal = !opts[oIndex].is_normal;
+                                                                    handleQuestionChange(sIndex, qIndex, 'options', opts);
+                                                                }}
+                                                                className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${opt.is_normal ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}
                                                             >
-                                                                {opt.is_normal ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
                                                                 {opt.is_normal ? 'OK' : 'NG'}
                                                             </button>
-
                                                             <input
                                                                 type="text"
                                                                 value={opt.option_text}
-                                                                onChange={e => handleOptionChange(sIndex, qIndex, oIndex, 'option_text', e.target.value)}
-                                                                placeholder={`Opsi ${oIndex + 1}`}
-                                                                className="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 bg-slate-50 text-slate-800 outline-none focus:border-emerald-600 font-medium text-xs"
+                                                                onChange={e => {
+                                                                    const opts = [...q.options];
+                                                                    opts[oIndex].option_text = e.target.value;
+                                                                    handleQuestionChange(sIndex, qIndex, 'options', opts);
+                                                                }}
+                                                                className="flex-1 border border-slate-200 rounded px-2.5 py-1 text-xs outline-none bg-slate-50"
                                                             />
                                                         </div>
 
+                                                        {/* Goto Section khusus SELECT */}
                                                         {q.input_type === 'SELECT' && (
-                                                            <div className="flex items-center gap-2 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-100">
-                                                                <div className="flex items-center gap-1 text-[11px] text-slate-500 font-bold shrink-0">
-                                                                    <CornerDownRight className="w-3.5 h-3.5 text-emerald-600" /> Lompat ke:
-                                                                </div>
+                                                            <div className="flex items-center gap-1.5">
+                                                                <CornerDownRight className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                                                                 <select
                                                                     value={opt.goto_section_id ?? ''}
-                                                                    onChange={e => handleOptionChange(sIndex, qIndex, oIndex, 'goto_section_id', e.target.value)}
-                                                                    className="border border-emerald-200 bg-emerald-50/40 rounded-lg px-2.5 py-1.5 text-xs font-bold text-emerald-900 outline-none focus:border-emerald-600 w-full sm:w-40"
+                                                                    onChange={e => {
+                                                                        const opts = [...q.options];
+                                                                        opts[oIndex].goto_section_id = e.target.value;
+                                                                        handleQuestionChange(sIndex, qIndex, 'options', opts);
+                                                                    }}
+                                                                    className="border border-emerald-200 bg-emerald-50/40 rounded px-2 py-1 text-[11px] font-semibold text-emerald-900 outline-none"
                                                                 >
-                                                                    <option value="">(Lanjut Default)</option>
+                                                                    <option value="">Lanjut Default</option>
                                                                     {data.sections.map((sec, targetIdx) => {
                                                                         if (targetIdx <= sIndex) return null;
                                                                         return (
                                                                             <option key={targetIdx} value={targetIdx}>
                                                                                 Bagian {targetIdx + 1}: {sec.section_title || 'Tanpa Judul'}
                                                                             </option>
-                                                                        )
+                                                                        );
                                                                     })}
                                                                 </select>
-
-                                                                {q.options.length > 1 && (
-                                                                    <button type="button" onClick={() => removeOption(sIndex, qIndex, oIndex)} className="text-slate-400 hover:text-rose-600 font-bold px-2 py-1">&times;</button>
-                                                                )}
                                                             </div>
+                                                        )}
+
+                                                        {q.options.length > 1 && (
+                                                            <button 
+                                                                type="button" 
+                                                                onClick={() => {
+                                                                    const opts = q.options.filter((_, i) => i !== oIndex);
+                                                                    handleQuestionChange(sIndex, qIndex, 'options', opts);
+                                                                }} 
+                                                                className="text-slate-400 hover:text-rose-600 px-1.5 font-bold"
+                                                            >
+                                                                &times;
+                                                            </button>
                                                         )}
                                                     </div>
                                                 ))}
-
-                                                <div className="pt-1">
-                                                    <button type="button" onClick={() => addOption(sIndex, qIndex)} className="text-emerald-700 font-extrabold hover:underline text-xs flex items-center gap-1">
-                                                        <PlusCircle className="w-3.5 h-3.5" /> Tambah Opsi Pilihan
-                                                    </button>
-                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const opts = [...q.options, { option_text: `Opsi ${q.options.length + 1}`, is_normal: false, option_order: q.options.length + 1, goto_section_id: '' }];
+                                                        handleQuestionChange(sIndex, qIndex, 'options', opts);
+                                                    }}
+                                                    className="text-emerald-700 font-semibold text-xs hover:underline pt-1 inline-block"
+                                                >
+                                                    + Tambah Opsi
+                                                </button>
                                             </div>
                                         )}
 
-                                        {/* khusus untuk input tipe file */}
+                                        {/* Validasi Minimalis */}
+                                        {(q.input_type === 'TEXT' || q.input_type === 'TEXTAREA') && (
+                                            <div className="flex items-center gap-3 text-xs text-slate-500 pt-1">
+                                                <span className="font-semibold text-[11px] text-slate-600">Validasi:</span>
+                                                <input
+                                                    type="text"
+                                                    value={q.validation_rules?.expected_answer || ''}
+                                                    onChange={e => handleValidationRuleChange(sIndex, qIndex, 'expected_answer', e.target.value)}
+                                                    placeholder="Expected answer..."
+                                                    className="flex-1 border-b border-slate-200 py-1 bg-transparent text-xs outline-none focus:border-emerald-600"
+                                                />
+                                                <input
+                                                    type="text"
+                                                    value={q.validation_rules?.validation_error_message || ''}
+                                                    onChange={e => handleValidationRuleChange(sIndex, qIndex, 'validation_error_message', e.target.value)}
+                                                    placeholder="Pesan error..."
+                                                    className="flex-1 border-b border-slate-200 py-1 bg-transparent text-xs outline-none focus:border-emerald-600"
+                                                />
+                                            </div>
+                                        )}
+
                                         {q.input_type === 'FILE' && (
-                                            <div className="space-y-4 pt-2 bg-slate-50/60 p-4 rounded-xl border border-slate-100 text-xs">
-                                                <div>
-                                                    <span className='block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2'>Pilih jenis file yang diizinkan diunggah</span>
-                                                    <div className='flex items-center gap-4'>
-                                                        <label className='flex items-center gap-1.5 text-xs text-slate-700 font-medium cursor-pointer'>
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={q.validation_rules?.allowed_file_type?.includes('IMAGE')}
-                                                                onChange={e => {
-                                                                    const current = q.validation_rules?.allowed_file_type || [];
-                                                                    const updated = e.target.checked
-                                                                        ? [...current.filter(t => t !== 'IMAGE'), 'IMAGE']
-                                                                        : current.filter(t => t !== 'IMAGE');
-                                                                    handleValidationRuleChange(sIndex, qIndex, 'allowed_file_type', updated);
-                                                                }}
-                                                                className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 w-4 h-4"
-                                                            />
-                                                            Gambar (Foto)
-                                                        </label>
-                                                        <label className='flex items-center gap-1.5 text-xs text-slate-700 font-medium cursor-pointer'>
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={q.validation_rules?.allowed_file_type?.includes('VIDEO')}
-                                                                onChange={e => {
-                                                                    const current = q.validation_rules?.allowed_file_type || [];
-                                                                    const updated = e.target.checked
-                                                                        ? [...current.filter(t => t !== 'VIDEO'), 'VIDEO']
-                                                                        : current.filter(t => t !== 'VIDEO');
-                                                                    handleValidationRuleChange(sIndex, qIndex, 'allowed_file_type', updated);
-                                                                }}
-                                                                className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 w-4 h-4"
-                                                            />
-                                                            Video
-                                                        </label>
-                                                    </div>
-                                                </div>
-
-                                                <div className='flex items-center gap-3 pt-2 border-t border-slate-200/60'>
-                                                    <span className='text-xs font-bold text-slate-700 uppercase tracking-wider'>Ukuran file maksimal:</span>
-                                                    <select
-                                                        value={q.validation_rules?.max_file_size || '10MB'}
-                                                        onChange={e => handleValidationRuleChange(sIndex, qIndex, 'max_file_size', e.target.value)}
-                                                        className='border border-slate-200 bg-white rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 outline-none focus:border-emerald-600 shadow-2xs'
-                                                    >
-                                                        {FILE_SIZE_OPTIONS.map(size => (
-                                                            <option key={size} value={size}>{size}</option>
-                                                        ))}
-                                                    </select>
-                                                </div>
+                                            <div className="flex items-center gap-3 text-xs text-slate-500 pt-1">
+                                                <span className="font-semibold text-[11px] text-slate-600">Max Size File:</span>
+                                                <select
+                                                    value={q.validation_rules?.max_file_size || '10MB'}
+                                                    onChange={e => handleValidationRuleChange(sIndex, qIndex, 'max_file_size', e.target.value)}
+                                                    className="border border-slate-200 rounded px-2 py-1 bg-slate-50 text-xs font-semibold outline-none"
+                                                >
+                                                    {FILE_SIZE_OPTIONS.map(sz => <option key={sz} value={sz}>{sz}</option>)}
+                                                </select>
                                             </div>
                                         )}
 
-                                        {q.input_type === 'DATE' && (
-                                            <div className='flex items-center justify-between w-50 mt-5 mb-5 px-3 py-2 border-b border-slate-200 bg-slate-50/70 rounded-md select-none'>
-                                                <span className="text-[10px] font-bold text-slate-500">
-                                                    {q.validation_rules?.date_value || 'Bulan, hari, tahun'}
-                                                </span>
-                                                <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                                </svg>
-                                            </div>
-                                        )}
-
-                                        {q.input_type === 'TIME' && (
-                                            <div className='flex items-center justify-between w-50 mt-5 mb-5 px-3 py-2 border-b border-slate-200 bg-slate-50/70 rounded-md select-none'>
-                                                <span className="text-[10px] font-bold text-slate-500">
-                                                    {q.validation_rules?.time_value || 'Waktu'}
-                                                </span>
-                                                <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                </svg>
-                                            </div>
-                                        )}
-
-                                        {/* Footer Kartu Pertanyaan */}
-                                        <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs">
-                                            <label className="flex items-center gap-2 font-bold text-slate-700 cursor-pointer">
+                                        <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
+                                            <label className="flex items-center gap-1.5 font-semibold text-slate-700 cursor-pointer">
                                                 <input
                                                     type="checkbox"
                                                     checked={q.is_required}
                                                     onChange={e => handleQuestionChange(sIndex, qIndex, 'is_required', e.target.checked)}
-                                                    className="rounded border-slate-300 text-emerald-600 w-4 h-4"
+                                                    className="rounded border-slate-300 text-emerald-600 w-3.5 h-3.5"
                                                 />
-                                                Wajib Diisi (*Required*)
+                                                Wajib Diisi
                                             </label>
-                                            <div className="flex items-center gap-1.5">
-                                                <button type="button" onClick={() => duplicateQuestion(sIndex, qIndex)} title="Duplikat Pertanyaan" className="p-2 text-slate-400 hover:text-emerald-600 bg-slate-50 hover:bg-emerald-50 rounded-lg transition-colors"><Copy className="w-4 h-4" /></button>
-                                                <button type="button" onClick={() => removeQuestion(sIndex, qIndex)} title="Hapus Pertanyaan" className="p-2 text-slate-400 hover:text-rose-600 bg-slate-50 hover:bg-rose-50 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
+                                            <div className="flex items-center gap-1">
+                                                <button type="button" onClick={() => duplicateQuestion(sIndex, qIndex)} className="p-1.5 text-slate-400 hover:text-emerald-600"><Copy className="w-3.5 h-3.5" /></button>
+                                                <button type="button" onClick={() => removeQuestion(sIndex, qIndex)} className="p-1.5 text-slate-400 hover:text-rose-600"><Trash2 className="w-3.5 h-3.5" /></button>
                                             </div>
                                         </div>
                                     </div>
                                 ))}
 
-                                <div className="flex justify-center pt-2">
+                                <div className="text-center pt-2">
                                     <button
                                         type="button"
                                         onClick={addQuestionToActiveSection}
-                                        className="bg-white border border-emerald-200 hover:border-emerald-300 text-emerald-700 px-6 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-2"
+                                        className="px-4 py-2 bg-white border border-emerald-200 hover:bg-emerald-50 text-emerald-700 rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1.5"
                                     >
-                                        <PlusCircle className="w-4 h-4" /> Tambah Pertanyaan Baru
+                                        <PlusCircle className="w-4 h-4" /> Tambah Pertanyaan
                                     </button>
                                 </div>
                             </div>
                         </div>
                     ))}
 
-                    {/* Tombol Simpan Form Utama */}
-                    <div className="flex items-center justify-end gap-3 pt-6 border-t border-slate-200">
-                        <Link href="/forms" className="px-6 py-3 rounded-xl text-xs font-bold border border-slate-200 text-slate-600 hover:bg-white transition-all shadow-xs">
-                            Batal
-                        </Link>
-                        <button type="submit" disabled={processing} className="px-8 py-3 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-all flex items-center gap-2">
-                            Simpan Template Form Pemantauan
+                    <div className="flex items-center justify-between pt-4">
+                        <button
+                            type="button"
+                            onClick={addSection}
+                            className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
+                        >
+                            <Layers className="w-4 h-4" /> Tambah Bagian Baru
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={processing}
+                            className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors shadow-sm"
+                        >
+                            Simpan Template Form
                         </button>
                     </div>
                 </form>
             </div>
 
-            {/* MODAL PRATINJAU FORM (PREVIEW & JUMP SECTION SIMULATOR) */}
+            {/* MODAL PREVIEW INTERAKTIF DENGAN GOTO SECTION SUPPORT */}
             {isPreviewOpen && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-                    <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-slate-100">
-                        {/* Header Modal */}
-                        <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <span className="bg-emerald-600 text-white text-[10px] font-black uppercase px-2 py-0.5 rounded">Preview Mode</span>
-                            </div>
-                            <button onClick={() => setIsPreviewOpen(false)} className="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-2xs flex items-center justify-center z-50 p-4">
+                    <div className="bg-white w-full max-w-xl rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]">
+                        <div className="bg-slate-900 text-white px-5 py-3 flex items-center justify-between">
+                            <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">Preview Mode Uji Coba (Bagian {previewSectionId + 1})</span>
+                            <button onClick={() => setIsPreviewOpen(false)} className="text-slate-400 hover:text-white font-bold">&times;</button>
                         </div>
-
-                        {/* Body Preview */}
-                        <div className="p-6 overflow-y-auto space-y-6 flex-1 bg-slate-50/50">
+                        <div className="p-6 overflow-y-auto space-y-4 flex-1 bg-slate-50">
                             {previewSectionId === 0 && (
-                                <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white p-6 rounded-2xl shadow-md space-y-2.5 border-t-4 border-emerald-500">
-                                    <div className="flex items-start justify-between gap-4">
-                                        <div className="space-y-2 flex-1 min-w-0">
-                                            <h1 className="text-2xl font-black tracking-tight text-white break-words">
-                                                {data.form_title || 'Formulir Pemantauan Tanpa Judul'}
-                                            </h1>
-                                            {data.form_description ? (
-                                                <p className="text-xs text-slate-300 tracking-tight break-words font-medium leading-relaxed">
-                                                    {data.form_description}
-                                                </p>
-                                            ) : (
-                                                <p className="text-xs text-slate-500 italic">
-                                                    (Tidak ada deskripsi formulir)
-                                                </p>
-                                            )}
-                                        </div>
-                                        <div className="shrink-0">
-                                            <span className="bg-emerald-600 rounded-full px-3 py-1 text-[10px] text-white font-bold uppercase tracking-wider shadow-xs inline-block">
-                                                Frekuensi: {data.frequency_type}
-                                            </span>
-                                        </div>
+                                <div className="bg-slate-900 text-white p-5 rounded-xl space-y-1">
+                                    <h2 className="text-lg font-bold">{data.metadata.form_title || 'Formulir Pemantauan'}</h2>
+                                    {data.metadata.form_description && <p className="text-xs text-slate-300">{data.metadata.form_description}</p>}
+                                    <div className="pt-2 text-[11px] text-emerald-400 font-semibold">
+                                        Target Mesin: {data.metadata.machine_type || 'Belum dipilih'} | Frekuensi: {data.metadata.frequency_type}
                                     </div>
                                 </div>
                             )}
 
-                            {data.sections[previewSectionId] && (previewSectionId > 0 || data.sections[previewSectionId].questions.length > 0) ? (
-                                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-6">
-                                    {previewSectionId > 0 && (
-                                        <div className="border-b border-slate-100 pb-3">
-                                            <h2 className="text-lg font-bold text-slate-900 mt-2 break-words tracking-tight leading-relaxed">{data.sections[previewSectionId].section_title}</h2>
-                                            {data.sections[previewSectionId].section_description && (
-                                                <p className="text-xs text-slate-500 mt-1 tracking-tight break-words leading-relaxed">{data.sections[previewSectionId].section_description}</p>
-                                            )}
+                            {previewSectionId > 0 && data.sections[previewSectionId]?.section_title && (
+                                <div className="bg-emerald-900 text-white p-4 rounded-xl space-y-1">
+                                    <h3 className="text-base font-bold">{data.sections[previewSectionId].section_title}</h3>
+                                    {data.sections[previewSectionId].section_description && (
+                                        <p className="text-xs text-emerald-200">{data.sections[previewSectionId].section_description}</p>
+                                    )}
+                                </div>
+                            )}
+
+                            {data.sections[previewSectionId]?.questions.map((q, qIndex) => (
+                                <div key={qIndex} className="bg-white p-4 rounded-xl border border-slate-200 space-y-2.5 shadow-xs">
+                                    <label className="text-xs font-bold text-slate-800 block">
+                                        {qIndex + 1}. {q.question_text || 'Pertanyaan Tanpa Judul'} {q.is_required && <span className="text-rose-500">*</span>}
+                                    </label>
+
+                                    {/* Help Text Preview */}
+                                    {q.help_text && q.help_text.trim() !== '' && (
+                                        <p className="text-[11px] text-sky-800 bg-sky-50 border border-sky-100 p-2 rounded-lg">
+                                            💡 <strong>Panduan:</strong> {q.help_text}
+                                        </p>
+                                    )}
+
+                                    {/* Standard Text Preview */}
+                                    {q.standard_text && q.standard_text.trim() !== '' && (
+                                        <p className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-100 p-2 rounded-lg">
+                                            🛡️ <strong>Standar Acuan:</strong> {q.standard_text}
+                                        </p>
+                                    )}
+
+                                    {/* Gambar Soal Preview Full Size */}
+                                    {q.question_image_url && (
+                                        <div className="pt-1">
+                                            <img 
+                                                src={q.question_image_url} 
+                                                alt="Preview Soal" 
+                                                className="w-full h-auto rounded-lg border border-slate-200 bg-slate-50 object-contain" 
+                                            />
                                         </div>
                                     )}
 
-                                    {/* List Pertanyaan di Section Ini */}
-                                    <div className="space-y-4">
-                                        {data.sections[previewSectionId].questions.map((q, idx) => (
-                                            <div key={idx} className="space-y-3 p-4 bg-slate-50/60 rounded-xl border border-slate-100">
-                                                <label className="block text-xs font-bold text-slate-800">
-                                                    {idx + 1}. {q.question_text || '(Pertanyaan belum diisi)'}
-                                                    {q.is_required && <span className="text-rose-600 ml-1">*</span>}
-                                                </label>
+                                    {/* Jenis Input Aktif */}
+                                    {q.input_type === 'TEXT' && (
+                                        <input 
+                                            type="text" 
+                                            placeholder="Ketik jawaban singkat di sini..." 
+                                            value={previewAnswers[`q_${previewSectionId}_${qIndex}`] || ''}
+                                            onChange={e => setPreviewAnswers(prev => ({ ...prev, [`q_${previewSectionId}_${qIndex}`]: e.target.value }))}
+                                            className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white text-slate-800 outline-none focus:border-emerald-600" 
+                                        />
+                                    )}
+                                    {q.input_type === 'TEXTAREA' && (
+                                        <textarea 
+                                            rows={2} 
+                                            placeholder="Ketik jawaban paragraf di sini..." 
+                                            value={previewAnswers[`q_${previewSectionId}_${qIndex}`] || ''}
+                                            onChange={e => setPreviewAnswers(prev => ({ ...prev, [`q_${previewSectionId}_${qIndex}`]: e.target.value }))}
+                                            className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white text-slate-800 outline-none focus:border-emerald-600 resize-none" 
+                                        />
+                                    )}
+                                    {q.input_type === 'FILE' && (
+                                        <div className="space-y-1">
+                                            <input type="file" className="w-full border border-dashed border-slate-300 rounded-lg p-2 text-xs bg-white text-slate-600 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer" />
+                                            <span className="text-[10px] text-slate-400 block">Maksimal ukuran file: {q.validation_rules?.max_file_size || '10MB'}</span>
+                                        </div>
+                                    )}
+                                    {q.input_type === 'DATE' && (
+                                        <input 
+                                            type="date" 
+                                            value={previewAnswers[`q_${previewSectionId}_${qIndex}`] || ''}
+                                            onChange={e => setPreviewAnswers(prev => ({ ...prev, [`q_${previewSectionId}_${qIndex}`]: e.target.value }))}
+                                            className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white text-slate-800 outline-none focus:border-emerald-600" 
+                                        />
+                                    )}
+                                    {q.input_type === 'TIME' && (
+                                        <input 
+                                            type="time" 
+                                            value={previewAnswers[`q_${previewSectionId}_${qIndex}`] || ''}
+                                            onChange={e => setPreviewAnswers(prev => ({ ...prev, [`q_${previewSectionId}_${qIndex}`]: e.target.value }))}
+                                            className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white text-slate-800 outline-none focus:border-emerald-600" 
+                                        />
+                                    )}
 
-                                                {/* --- PREVIEW GAMBAR SOAL JIKA ADA --- */}
-                                                {q.question_image_url && (
-                                                    <div>
-                                                        <img
-                                                            src={q.question_image_url}
-                                                            alt="Ilustrasi Soal"
-                                                            className="max-h-48 rounded-xl border border-slate-200 shadow-xs object-cover"
-                                                        />
-                                                    </div>
-                                                )}
-
-                                                {/* Render Input Jawaban Singkat (TEXT) */}
-                                                {q.input_type === 'TEXT' && (
-                                                    <input
-                                                        type="text"
-                                                        value={previewAnswers[q.placeholder] || ''}
-                                                        onChange={e => setPreviewAnswers(prev => ({ ...prev, [q.placeholder || idx]: e.target.value }))}
-                                                        placeholder={q.placeholder || "Ketik jawaban singkat..."}
-                                                        className="w-full border border-slate-200 rounded-lg px-3.5 py-2 text-xs bg-white outline-none focus:border-emerald-600 font-medium text-slate-800"
-                                                    />
-                                                )}
-
-                                                {/* Render Input Paragraf (TEXTAREA) */}
-                                                {q.input_type === 'TEXTAREA' && (
-                                                    <textarea
-                                                        value={previewAnswers[q.placeholder] || ''}
-                                                        onChange={e => setPreviewAnswers(prev => ({ ...prev, [q.placeholder || idx]: e.target.value }))}
-                                                        placeholder={q.placeholder || "Ketik paragraf jawaban di sini..."}
-                                                        rows={3}
-                                                        className="w-full border border-slate-200 rounded-lg px-3.5 py-2 text-xs bg-white outline-none focus:border-emerald-600 font-medium resize-none text-slate-800"
-                                                    />
-                                                )}
-
-                                                {/* Render Opsi Pilihan Ganda dengan Jump Section Indicator */}
-                                                {(q.input_type === 'SELECT' || q.input_type === 'CHECKBOX' || q.input_type === 'DROPDOWN') && (
-                                                    <div className="space-y-2 pt-1">
-                                                        {q.options.map((opt, optIdx) => (
-                                                            <label key={optIdx} className="flex items-center justify-between p-2.5 bg-white border border-slate-200 rounded-lg cursor-pointer hover:border-emerald-500 transition-all text-xs font-medium">
-                                                                <div className="flex items-center gap-2">
-                                                                    <input
-                                                                        type="radio"
-                                                                        name={`preview_q_${idx}`}
-                                                                        checked={previewAnswers[q.question_text] === optIdx}
-                                                                        onChange={() => setPreviewAnswers(prev => ({ ...prev, [q.question_text]: optIdx }))}
-                                                                        className="text-emerald-600 focus:ring-emerald-500"
-                                                                    />
-                                                                    <span className="text-slate-700">{opt.option_text}</span>
-                                                                </div>
-                                                                {opt.goto_section_id !== '' && opt.goto_section_id !== undefined && (
-                                                                    <span className="text-[10px] bg-amber-50 text-amber-800 font-bold px-2 py-0.5 rounded border border-amber-200 flex items-center gap-1">
-                                                                        ⚡ Lompat ke Bagian {Number(opt.goto_section_id) + 1}
-                                                                    </span>
-                                                                )}
-                                                            </label>
-                                                        ))}
-                                                    </div>
-                                                )}
-
-                                                {q.input_type === 'FILE' && (
-                                                    <div className="grid grid-rows-1 w-auto mx-auto flex-wrap items-center gap-3 text-xs mt-2 justify-start">
-                                                        <label className="inline-flex w-35 items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:border-emerald-500 hover:text-emerald-700 rounded cursor-pointer text-slate-700 font-medium transition-all shadow-2xs">
-                                                            <Upload className="w-3.5 h-3.5" />
-                                                            <span>Tambahkan file</span>
-                                                            <input
-                                                                type="file"
-                                                                hidden
-                                                                accept={[
-                                                                    q.validation_rules.allowed_file_type?.includes('IMAGE') ? 'image/*' : '',
-                                                                    q.validation_rules.allowed_file_type?.includes('VIDEO') ? 'video/*' : ''
-                                                                ].filter(Boolean).join(',')}
-                                                                onChange={(e) => {
-                                                                    const file = e.target.files?.[0];
-                                                                    if (file) {
-                                                                        const sizeInMb = parseInt(String(q.validation_rules.max_file_size || '10')) || 10;
-                                                                        const maxBytes = sizeInMb * 1024 * 1024;
-
-                                                                        if (file.size > maxBytes) {
-                                                                            alert(`Ukuran file terlalu besar! Maksimal ${q.validation_rules.max_file_size || '10MB'}.`);
-                                                                            e.target.value = '';
-                                                                            return;
-                                                                        }
-                                                                        setPreviewAnswers(prev => ({ ...prev, [q.question_text]: file }));
-                                                                    }
+                                    {(['SELECT', 'CHECKBOX', 'DROPDOWN'] as string[]).includes(q.input_type) && (
+                                        <div className="space-y-1.5 pt-1">
+                                            {q.input_type === 'DROPDOWN' ? (
+                                                <select 
+                                                    value={previewAnswers[`q_${previewSectionId}_${qIndex}`] || ''}
+                                                    onChange={e => setPreviewAnswers(prev => ({ ...prev, [`q_${previewSectionId}_${qIndex}`]: e.target.value }))}
+                                                    className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white text-slate-800 outline-none focus:border-emerald-600 font-medium"
+                                                >
+                                                    <option value="">Pilih opsi...</option>
+                                                    {q.options.map((opt, oIdx) => (
+                                                        <option key={oIdx} value={opt.option_text}>
+                                                            {opt.option_text} ({opt.is_normal ? 'OK' : 'NG'})
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            ) : (
+                                                q.options.map((opt, oIdx) => (
+                                                    <div key={oIdx} className="flex items-center justify-between text-xs text-slate-700 p-2 bg-white rounded-lg border border-slate-200 hover:border-slate-300">
+                                                        <label className="flex items-center gap-2 cursor-pointer flex-1">
+                                                            <input 
+                                                                type={q.input_type === 'CHECKBOX' ? 'checkbox' : 'radio'} 
+                                                                name={`prev_${previewSectionId}_${qIndex}`} 
+                                                                checked={previewAnswers[`q_${previewSectionId}_${qIndex}`] === opt.option_text}
+                                                                onChange={() => {
+                                                                    setPreviewAnswers(prev => ({ 
+                                                                        ...prev, 
+                                                                        [`q_${previewSectionId}_${qIndex}`]: opt.option_text,
+                                                                        [`goto_${previewSectionId}_${qIndex}`]: opt.goto_section_id 
+                                                                    }));
                                                                 }}
-                                                            />
+                                                                className="text-emerald-600 rounded" 
+                                                            /> 
+                                                            <span className="font-medium text-slate-800">{opt.option_text}</span>
                                                         </label>
-
-                                                        {previewAnswers[q.question_text] && (
-                                                            <span className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg font-medium flex items-center gap-1">
-                                                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                                                                {(previewAnswers[q.question_text] as File).name}
-                                                            </span>
-                                                        )}
+                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${opt.is_normal ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                                                            {opt.is_normal ? 'OK' : 'NG'}
+                                                        </span>
                                                     </div>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
-                            ) : null}
+                            ))}
                         </div>
-
-                        {/* Footer Modal Preview */}
-                        <div className="bg-white px-6 py-4 border-t border-slate-200 flex items-center justify-between">
+                        <div className="bg-white px-5 py-3 border-t border-slate-200 flex justify-between">
                             <button
                                 type="button"
-                                onClick={handlePreviewBack}
+                                onClick={() => {
+                                    if (previewHistory.length > 0) {
+                                        setPreviewSectionId(previewHistory[previewHistory.length - 1]);
+                                        setPreviewHistory(prev => prev.slice(0, -1));
+                                    }
+                                }}
                                 disabled={previewHistory.length === 0}
-                                className="px-4 py-2 rounded-xl text-xs font-bold border border-slate-200 text-slate-600 disabled:opacity-40 hover:bg-slate-50 transition-all"
+                                className="px-3.5 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold disabled:opacity-40 hover:bg-slate-50 transition-colors"
                             >
-                                &larr; Kembali
+                                Sebelumnya
                             </button>
                             <button
                                 type="button"
-                                onClick={handlePreviewNext}
-                                className="px-6 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition-all shadow-xs flex items-center gap-1.5"
+                                onClick={() => {
+                                    // Evaluasi apakah ada goto_section_id dari pertanyaan di section ini
+                                    let nextTarget = previewSectionId + 1;
+                                    const currentSecQuestions = data.sections[previewSectionId]?.questions || [];
+                                    
+                                    for (let i = 0; i < currentSecQuestions.length; i++) {
+                                        const gotoVal = previewAnswers[`goto_${previewSectionId}_${i}`];
+                                        if (gotoVal !== undefined && gotoVal !== '') {
+                                            nextTarget = Number(gotoVal);
+                                            break;
+                                        }
+                                    }
+
+                                    if (nextTarget < data.sections.length) {
+                                        setPreviewHistory(prev => [...prev, previewSectionId]);
+                                        setPreviewSectionId(nextTarget);
+                                    } else {
+                                        alert("Uji coba preview Selesai!");
+                                    }
+                                }}
+                                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs"
                             >
-                                Selanjutnya <ArrowRight className="w-3.5 h-3.5" />
+                                {previewSectionId + 1 < data.sections.length ? 'Selanjutnya' : 'Selesai'}
                             </button>
                         </div>
                     </div>

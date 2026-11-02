@@ -19,6 +19,11 @@ class Form extends Model
         'machine_id',
         'tittle',
         'description',
+        'frequency_type',
+        'interval',
+        'start_date',
+        'end_date',
+        'is_active',
         'created_at',
         'updated_at',
     ];

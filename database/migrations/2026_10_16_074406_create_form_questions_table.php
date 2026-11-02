@@ -16,12 +16,12 @@ return new class extends Migration
             $table->string('question_code')->unique()->nullable(false); 
             $table->text('question_text');
             $table->string('question_image')->nullable();
+            $table->string('question_file')->nullable();
+            $table->date('question_date')->nullable();
+            $table->time('question_time')->nullable();
             $table->enum('input_type', ['TEXT' , 'TEXTAREA' , 'SELECT' , 'CHECKBOX' , 'DROPDOWN' , 'FILE' , 'DATE' , 'TIME']);
             $table->text('help_text')->nullable();
             $table->text('standard_text')->nullable();
-            $table->string('media_url')->nullable();
-            $table->string('media_type')->nullable();
-            $table->string('media_title')->nullable();
             $table->integer('question_order')->default(0);
             $table->json('validation_rules')->nullable();
             $table->boolean('is_required')->default(false);

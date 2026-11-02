@@ -14,8 +14,13 @@ return new class extends Migration
         Schema::create('forms', function (Blueprint $table) {
             $table->id();
             $table->string('form_code')->unique()->nullable(false); 
-            $table->string('title');
-            $table->string('description');
+            $table->string('form_title');
+            $table->string('form_description');
+            $table->enum('frequency_type', ['DAILY', 'WEEKLY', 'MONTHLY'])->default('DAILY');
+            $table->integer('interval')->nullable();
+            $table->date('start_date')->nullable();
+            $table->date('end_date')->nullable();
+            $table->boolean('is_active')->default(true);
             $table->date('created_at');
             $table->date('updated_at');
 

@@ -14,18 +14,17 @@ return new class extends Migration
         Schema::create('tasks', function (Blueprint $table) {
             $table->id();
             $table->string('task_code')->unique()->nullable(false); 
+            $table->date('start_date');
             $table->date('due_date');
-            $table->enum('status', ['DUE','OVERDUE', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'])->nullable();
-            $table->date('started_at');
-            $table->date('completed_at');
-            $table->enum('source_type', ['AUTO_REPORT', 'MANUAL_REPORT']);
-            $table->date('created_at');
-            $table->date('updated_at');
-            $table->string('notes');
+            $table->enum('status', ['UPCOMING','DUE','OVERDUE', 'IN_PROGRESS', 'COMPLETED'])->nullable();
+            $table->enum('source_type', ['AUTO_REPORT', 'MANUAL_REPORT'])->nullable();
+            $table->json('draft_answers')->nullable();
+            $table->dateTime('completed_at')->nullable();
+            $table->timestamps();
             
            // relasi 
             $table->foreignId('machine_id')->constrained('machines')->onDelete('cascade');
-            $table->foreignId('schedule_id')->constrained('form_schedules')->onDelete('cascade');
+            $table->foreignId('form_id  ')->constrained('forms')->onDelete('cascade');
             $table->foreignId('assigned_user_id')->constrained('users')->onDelete('cascade');
             $table->foreignId('escalation_ticket_id')->constrained('breakdown_tickets')->onDelete('cascade');
         });

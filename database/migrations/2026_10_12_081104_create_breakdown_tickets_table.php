@@ -16,7 +16,6 @@ return new class extends Migration
             $table->string('ticket_code')->unique()->nullable(false); 
             $table->string('problem_category');
             $table->text('problem_descriptions');
-            $table->enum('priority', ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'])->default('MEDIUM');
             $table->enum('status', [
                 'OPEN', 
                 'IN_PROGRESS', 
@@ -48,6 +47,7 @@ return new class extends Migration
 
                 // relasi ke tabel machines
                 $table->foreignId('machine_id')->constrained('machines')->onDelete('cascade');
+                $table->foreignId('form_submission_id')->constrained('form_submissions')->onDelete('cascade');
             });
     }
 

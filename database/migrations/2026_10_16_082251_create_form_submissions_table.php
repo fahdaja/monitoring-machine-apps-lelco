@@ -14,11 +14,10 @@ return new class extends Migration
         Schema::create('submissions', function (Blueprint $table) {
             $table->id();
             $table->string('submission_code')->unique()->nullable(false); 
-            $table->jsonb('answers_json')->nullable(); 
-            $table->timestamp('created_at')->nullable();
-            // relasi
-            $table->foreignId('machine_id')->constrained('machines')->onDelete('cascade');
-            $table->foreignId('form_id')->constrained('forms')->onDelete('cascade');
+            $table->jsonb('answers_value')->nullable(); 
+            $table->dateTime('submitted_at')->nullable();
+
+            $table->foreignId('task_id')->constrained('tasks')->onDelete('cascade');
             $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
         });
     }
