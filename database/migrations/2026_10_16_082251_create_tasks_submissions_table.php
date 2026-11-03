@@ -11,9 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('form_submissions', function (Blueprint $table) {
+        Schema::create('tasks_submissions', function (Blueprint $table) {
             $table->id();
             $table->string('submission_code')->unique()->nullable(false); 
+            $table->enum('status', ['DRAFT', 'SUBMITTED'])->default('DRAFT');
             $table->jsonb('answers_value')->nullable(); 
             $table->dateTime('submitted_at')->nullable();
             //relasi
@@ -32,6 +33,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('submissions');
+        Schema::dropIfExists('tasks_submissions');
     }
 };

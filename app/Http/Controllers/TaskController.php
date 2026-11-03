@@ -1,10 +1,30 @@
 <?php
 
+namespace App\Http\Controllers;
+
+use Inertia\Inertia;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use App\Models\Form;
+use App\Models\Machine;
+use App\Models\FormSection;
+use App\Models\FormQuestion;
+use App\Models\FormOption;
+use App\Models\Task;
+
 class TaskController extends Controller {
 
 
     public function index(){
         $tasks = Task::with(['form.machine'])->whereIn('status', ['UPCOMING', 'IN_PROGRESS', 'OVERDUE', 'DUE', 'COMPLETED'])->orderBy('due_date', 'asc')->get();
+
+        if(Carbon::new()->isAfter($tasks->due_date) && $tasks->status !== 'COMPLETED'){
+            $tasks->update([
+                'status' => 'OVERDUE'
+            ]);
+            
+        }
 
         return Inertia::render('tasks/index', [
             'tasks' => $tasks
@@ -18,15 +38,8 @@ class TaskController extends Controller {
             'form.sections.questions.options',
         ])->findOrFail($id);
 
-        if(Carbon::new()->isAfter($tasks->due_date) && $tasks->status !== 'COMPLETED'){
-            $tasks->update([
-                'status' => 'OVERDUE'
-            ]);
-            
-        }
         return Inertia::render('tasks/show', [
             'tasks' => $tasks,
-            'initialAnswers' => $tasks->draft_answers ?? []
         ]);
     }
 

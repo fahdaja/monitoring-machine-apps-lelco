@@ -15,10 +15,10 @@ return new class extends Migration
     $table->id();
     $table->string('schedule_code')->unique()->nullable(false); 
     $table->foreignId('form_id')->constrained('forms')->onDelete('cascade');
-    $table->string('frequency_type'); // DAILY, WEEKLY, MONTHLY
+    $table->string('frequency_type'); 
     $table->date('start_date');
     $table->date('end_date');
-    $table->json('custom_values')->nullable(); // Untuk menyimpan hari/tanggal pilihan
+    $table->json('custom_values')->nullable(); 
     $table->timestamps();
 });
     }

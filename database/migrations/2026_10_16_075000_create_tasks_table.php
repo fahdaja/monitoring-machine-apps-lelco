@@ -17,7 +17,6 @@ return new class extends Migration
             $table->date('due_date');
             $table->enum('status', ['UPCOMING','DUE','OVERDUE', 'IN_PROGRESS', 'COMPLETED'])->nullable();
             $table->enum('source_type', ['AUTO_REPORT', 'MANUAL_REPORT'])->nullable();
-            $table->json('draft_answers')->nullable();
             $table->dateTime('completed_at')->nullable();
             $table->timestamps();
             

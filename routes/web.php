@@ -8,15 +8,14 @@ use App\Http\Controllers\FormController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ScheduleController;
+use App\Http\Controllers\TaskController;
 
 // Auth Routes
 Route::get('/login', [AuthController::class, 'create']);
 Route::post('/login', [AuthController::class, 'store']);
 Route::post('/logout', [AuthController::class, 'destroy']);
 
-Route::get('/inspection-form',function(){
-    return inertia('inspectionForm');
-})->name('inspection-form');
+Route::get('/inspection-form/{taskId}',[TaskController::class, 'show']);
 
 Route::get('/dashboard', function () {
     return inertia('dashboard', [

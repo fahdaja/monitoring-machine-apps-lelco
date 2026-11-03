@@ -32,7 +32,7 @@ export default defineConfig({
         host: '0.0.0.0',
         cors: true,
         hmr: {
-            host: '192.168.1.102',
+            host: '127.0.0.1',
         },
         watch: {
             ignored: [

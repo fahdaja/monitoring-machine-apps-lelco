@@ -17,8 +17,7 @@ class FormController extends Controller
 {
     public function index()
     {
-        $forms = Form::with('sections.questions.options')->latest()->get();
-        
+        $forms = Form::with('machine','sections.questions.options')->latest()->get();
         return Inertia::render('forms/index', [
             'forms' => $forms,
         ]);
@@ -72,7 +71,6 @@ class FormController extends Controller
             $form->form_code        = $formCode;
             $form->form_title       = $meta['form_title'];
             $form->form_description = $meta['form_description'] ?? '-';
-            $form->is_active        = true;
             $form->save();
             
             // Simpan Sections, Questions, & Options

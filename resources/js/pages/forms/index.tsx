@@ -14,17 +14,14 @@ interface FormItem {
     form_title: string;
     form_description?: string;
     machine: Machine;
-    frequency_type: string;
     responder?: string;
     sections_count?: number;
     created_at?: string;
     updated_at?: string;
-    is_active: boolean;
 }
 
 interface Props {
     forms: FormItem[];
-    machines: Machine[];
 }
 
 interface User {
@@ -40,7 +37,7 @@ interface PageProps {
     [key: string]: any;
 }
 
-export default function FormIndex({ forms, machines }: Props) {
+export default function FormIndex({ forms }: Props) {
     const { auth } = usePage<PageProps>().props;
     const userRole = auth?.user?.role?.toUpperCase();
     const isAdmin = userRole === 'ADMIN';
@@ -108,7 +105,7 @@ export default function FormIndex({ forms, machines }: Props) {
                                         </td>
                                         <td className="text-center p-4 text-slate-600">
                                             <span className="bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg font-semibold">
-                                                {f.machine?.machine_type || 'Mesin Umum'}
+                                                {f.machine?.machine_type}
                                             </span>
                                         </td>
                                         <td className="p-4 text-center font-medium text-slate-700">

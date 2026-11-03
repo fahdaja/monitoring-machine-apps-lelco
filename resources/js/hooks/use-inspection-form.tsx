@@ -1,4 +1,4 @@
-import { Section, SectionAnswer } from "@/types/inspection";
+import { Section } from "@/types/inspection";
 import { useRef, useState } from "react";
 
 
@@ -9,7 +9,6 @@ export function useInspectionForm(sections: Section[]) {
         const [errorMessage, setErrorMessage] = useState<string | null>(null);
         const errorRef = useRef<HTMLDivElement>(null);
 
-        const [answers, setAnswers] = useState<Record<number, SectionAnswer>>({});
         
         const currentSection = sections[currentSectionIndex];
         const isFirstSection = currentSectionIndex === 0;

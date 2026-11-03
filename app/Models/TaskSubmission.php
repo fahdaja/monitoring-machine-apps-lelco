@@ -18,6 +18,7 @@ class FormSubmission extends Model{
         'machine_id',
         'form_id',
         'user_id',
+        'status',
         'answers_values',
         'submitted_at',
     ];
@@ -25,6 +26,11 @@ class FormSubmission extends Model{
     public function machine()
     {
         return $this->belongsTo(Machine::class, 'machine_id', 'machine_id');
+    }
+
+    public function task()
+    {
+        
     }
 
     public function form()
