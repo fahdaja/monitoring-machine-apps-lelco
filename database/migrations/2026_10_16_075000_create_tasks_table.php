@@ -22,10 +22,9 @@ return new class extends Migration
             $table->timestamps();
             
            // relasi 
-            $table->foreignId('machine_id')->constrained('machines')->onDelete('cascade');
-            $table->foreignId('form_id')->constrained('forms')->onDelete('cascade');
-            $table->foreignId('assigned_user_id')->nullable()->constrained('users')->onDelete('cascade');
-            $table->foreignId('escalation_ticket_id')->nullable()->constrained('breakdown_tickets')->onDelete('cascade');
+            $table->foreignId('machine_id')->nullable()->references('id')->on('machines')->onDelete('cascade');
+            $table->foreignId('form_id')->nullable()->references('id')->on('forms')->onDelete('cascade');
+            $table->foreignId('assigned_user_id')->nullable()->references('id')->on('users')->onDelete('cascade');
         });
     }
 

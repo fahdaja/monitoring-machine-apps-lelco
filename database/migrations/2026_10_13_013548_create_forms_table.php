@@ -16,11 +16,6 @@ return new class extends Migration
             $table->string('form_code')->unique()->nullable(false); 
             $table->string('form_title');
             $table->string('form_description');
-            $table->enum('frequency_type', ['DAILY', 'WEEKLY', 'MONTHLY'])->default('DAILY');
-            $table->integer('due_window_days')->nullable();
-            $table->date('start_date')->nullable();
-            $table->date('end_date')->nullable();
-            $table->boolean('is_active')->default(true);
             $table->date('created_at');
             $table->date('updated_at');
 

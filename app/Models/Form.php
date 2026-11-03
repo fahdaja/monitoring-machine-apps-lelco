@@ -21,11 +21,6 @@ class Form extends Model
         'form_code',
         'form_title',
         'form_description',
-        'frequency_type',
-        'interval',
-        'start_date',
-        'end_date',
-        'is_active',
         'created_at',
         'updated_at',
     ];

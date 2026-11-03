@@ -22,14 +22,13 @@ class FormQuestion extends Model
         'question_code',
         'question_text',
         'question_image',
-        'question_url',
+        'question_file',
+        'question_date',
+        'question_time',
         'help_text',
         'standard_text',
         'input_type',
         'validation_rules',
-        'media_url',
-        'media_type',
-        'media_title',
         'is_required',
         'question_order'
     ];

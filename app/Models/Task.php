@@ -36,9 +36,4 @@ class Task extends Model {
     {
         return $this->belongsTo(User::class, 'assigned_user_id', 'id');
     }
-
-    public function breakdownticket()
-    {
-        return $this->belongsTo(BreakdownTicket::class, 'escalation_ticket_id', 'id');
-    }
 }

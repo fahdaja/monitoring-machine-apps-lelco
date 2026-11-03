@@ -25,29 +25,28 @@ return new class extends Migration
                 'CLOSED'
                 ])->default('OPEN');
                 
-                // pelapor 
-                $table->timestamp('reported_at')->useCurrent();
+                // pelapor
+                $table->timestamp('reported_at')->nullable();
                 
                 // teknisi yang menangani
-                $table->timestamp('started_at')->useCurrent();
-                $table->timestamp('closed_at')->useCurrent();
+                $table->timestamp('started_at')->nullable();
+                $table->timestamp('closed_at')->nullable();
                 
                 // permasalahan dan aksi untuk menyelesaikan permasalahan
                 $table->text('root_cause')->nullable();
                 $table->text('corrective_action')->nullable();
                 
                 // task di verifikasi oleh siapa
-                $table->timestamp('verified_at')->useCurrent();
+                $table->timestamp('verified_at')->nullable();
                 $table->text('verification_notes')->nullable();
                 
                 // relasi ke tabel users
-                $table->foreignId('reported_by')->references('id')->on('users')->onDelete('cascade');
-                $table->foreignId('verified_by')->references('id')->on('users')->onDelete('cascade');
-                $table->foreignId('assigned_to')->references('id')->on('users')->onDelete('cascade');
+                $table->foreignId('reported_by')->nullable()->references('id')->on('users')->onDelete('cascade');
+                $table->foreignId('verified_by')->nullable()->references('id')->on('users')->onDelete('cascade');
+                $table->foreignId('assigned_to')->nullable()->references('id')->on('users')->onDelete('cascade');
 
                 // relasi ke tabel machines
-                $table->foreignId('machine_id')->constrained('machines')->onDelete('cascade');
-                $table->foreignId('form_submission_id')->constrained('form_submissions')->onDelete('cascade');
+                $table->foreignId('machine_id')->nullable()->references('id')->on('machines')->onDelete('cascade');
             });
     }
 
