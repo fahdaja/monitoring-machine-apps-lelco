@@ -4,7 +4,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Carbon\Carbon;
 use App\Models\Form;
 use App\Models\FormSection;
 use App\Models\FormQuestion;
@@ -46,7 +45,7 @@ class Task extends Model {
 
     public function option()
     {
-        return $this->hasMany(FormOption::class)->orderBy('option_order', 'asx');
+        return $this->hasMany(FormOption::class)->orderBy('option_order', 'asc');
     }
 
     public function machine()

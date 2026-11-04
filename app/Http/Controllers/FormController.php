@@ -32,106 +32,127 @@ class FormController extends Controller
     }
 
     public function store(Request $request)
-    {
-        return DB::transaction(function () use ($request) {
+{
+    return DB::transaction(function () use ($request) {
 
-            $validated = $request->validate([
-                'metadata.machine_type'                => 'required|string|exists:machines,machine_type',
-                'metadata.form_title'                  => 'required|string|max:255',
-                'metadata.form_description'            => 'nullable|string',
+        $validated = $request->validate([
+            'metadata.machine_type'              => 'required|string|exists:machines,machine_type',
+            'metadata.form_title'                => 'required|string|max:255',
+            'metadata.form_description'          => 'nullable|string',
 
-                'sections'                             => 'required|array|min:1',
-                'sections.*.section_title'             => 'required|string|max:255',
-                'sections.*.section_description'       => 'nullable|string',
-                'sections.*.questions'                 => 'required|array|min:1',
-                'sections.*.questions.*.question_text' => 'required|string',
-                'sections.*.questions.*.question_image' => 'nullable',
-                'sections.*.questions.*.question_file' => 'nullable|string',
-                'sections.*.questions.*.question_date' => 'nullable|string',
-                'sections.*.questions.*.question_time' => 'nullable|string',
-                'sections.*.questions.*.help_text'     => 'nullable|string',
-                'sections.*.questions.*.standard_text' => 'nullable|string',
-                'sections.*.questions.*.input_type'    => 'required|string|in:TEXT,TEXTAREA,SELECT,CHECKBOX,DROPDOWN,FILE,DATE,TIME',
-                'sections.*.questions.*.options'       => 'nullable|array',
-                'sections.*.questions.*.is_required'   => 'required|boolean',
-                'sections.*.questions.*.validation_rules' => 'nullable',
+            'sections'                           => 'required|array|min:1',
+            'sections.*.section_title'           => 'required|string|max:255',
+            'sections.*.section_description'     => 'nullable|string',
+            'sections.*.questions'               => 'required|array|min:1',
+            'sections.*.questions.*.question_text' => 'required|string',
+            'sections.*.questions.*.question_image' => 'nullable',
+            'sections.*.questions.*.question_file' => 'nullable|string',
+            'sections.*.questions.*.question_date' => 'nullable|string',
+            'sections.*.questions.*.question_time' => 'nullable|string',
+            'sections.*.questions.*.help_text'     => 'nullable|string',
+            'sections.*.questions.*.standard_text' => 'nullable|string',
+            'sections.*.questions.*.input_type'    => 'required|string|in:TEXT,TEXTAREA,SELECT,CHECKBOX,DROPDOWN,FILE,DATE,TIME',
+            'sections.*.questions.*.options'       => 'nullable|array',
+            'sections.*.questions.*.options.*.id'  => 'nullable|exists:form_options,id',
+            'sections.*.questions.*.options.*.option_text' => 'required|string',
+            'sections.*.questions.*.options.*.is_normal' => 'required|boolean',
+            'sections.*.questions.*.options.*.goto_form_section_id' => 'nullable',
+            'sections.*.questions.*.is_required'   => 'required|boolean',
+            'sections.*.questions.*.validation_rules' => 'nullable',
+        ]);
+
+        $meta = $validated['metadata'];
+        $machine = Machine::where('machine_type', $meta['machine_type'])->firstOrFail();
+        $machineTypePrefix = substr(strtoupper($machine->machine_type), 0, 3);
+
+        do {
+            $formCode = "FRM{$machineTypePrefix}" . strtoupper(uniqid());
+        } while (Form::where('form_code', $formCode)->exists());
+
+        // 1. Simpan Form Utama
+        $form = new Form();
+        $form->machine_id       = $machine->id;
+        $form->form_code        = $formCode;
+        $form->form_title       = $meta['form_title'];
+        $form->form_description = $meta['form_description'] ?? '-';
+        $form->save();
+        
+        // Array penampung untuk memetakan index section ke ID database asli (untuk goto_form_section_id)
+        $createdSectionIds = [];
+
+        // 2. Simpan Sections Terlebih Dahulu agar Mendapatkan ID Database
+        foreach ($validated['sections'] as $sIndex => $sectionData) {
+            $section = FormSection::create([
+                'form_id'             => $form->id,
+                'section_code'        => "SEC-" . strtoupper(uniqid()),
+                'section_title'       => $sectionData['section_title'],
+                'section_description' => $sectionData['section_description'] ?? '-',
+                'section_order'       => $sIndex + 1,
             ]);
 
-            $meta = $validated['metadata'];
-            $machine = Machine::where('machine_type', $meta['machine_type'])->firstOrFail();
-            $machineTypePrefix = substr(strtoupper($machine->machine_type), 0, 3);
+            // Simpan ID asli berdasarkan index urutannya
+            $createdSectionIds[$sIndex] = $section->id;
+        }
 
-            do {
-                $formCode = "FRM{$machineTypePrefix}" . strtoupper(uniqid());
-            } while (Form::where('form_code', $formCode)->exists());
+        // 3. Simpan Questions & Options
+        foreach ($validated['sections'] as $sIndex => $sectionData) {
+            // Ambil section yang bersangkutan berdasarkan form_id dan urutannya
+            $section = FormSection::where('form_id', $form->id)
+                ->where('section_order', $sIndex + 1)
+                ->first();
 
-            // Simpan Form Utama
-            $form = new Form();
-            $form->machine_id       = $machine->id;
-            $form->form_code        = $formCode;
-            $form->form_title       = $meta['form_title'];
-            $form->form_description = $meta['form_description'] ?? '-';
-            $form->save();
-            
-            // Simpan Sections, Questions, & Options
-            foreach ($validated['sections'] as $sIndex => $sectionData) {
-                $section = FormSection::create([
-                    'form_id'             => $form->id,
-                    'section_code'        => "SEC-" . strtoupper(uniqid()),
-                    'section_title'       => $sectionData['section_title'],
-                    'section_description' => $sectionData['section_description'] ?? '-',
-                    'section_order'       => $sIndex + 1,
+            foreach ($sectionData['questions'] as $qIndex => $questionData) {
+                $imagePath = null;
+                if (isset($questionData['question_image']) && $questionData['question_image'] instanceof \Illuminate\Http\UploadedFile) {
+                    $imagePath = $questionData['question_image']->store('question-images', 'public');
+                } else {
+                    $imagePath = $questionData['question_image'] ?? null;
+                }
+
+                $question = FormQuestion::create([
+                    'form_id'          => $form->id,
+                    'form_section_id'  => $section->id,
+                    'question_code'    => "QST-" . strtoupper(uniqid()),
+                    'question_text'    => $questionData['question_text'],
+                    'question_image'   => $imagePath,
+                    'question_file'    => $questionData['question_file'] ?? null,
+                    'question_date'    => $questionData['question_date'] ?? null,
+                    'question_time'    => $questionData['question_time'] ?? null,
+                    'validation_rules' => $questionData['validation_rules'] ?? null,
+                    'help_text'        => $questionData['help_text'] ?? null,
+                    'standard_text'    => $questionData['standard_text'] ?? null,
+                    'input_type'       => $questionData['input_type'],
+                    'question_order'   => $qIndex + 1,
+                    'is_required'      => $questionData['is_required'] ?? false,
                 ]);
 
-                foreach ($sectionData['questions'] as $qIndex => $questionData) {
-                    $imagePath = null;
-                    if (isset($questionData['question_image']) && $questionData['question_image'] instanceof \Illuminate\Http\UploadedFile) {
-                        $imagePath = $questionData['question_image']->store('question-images', 'public');
-                    } else {
-                        $imagePath = $questionData['question_image'] ?? null;
-                    }
+                if (isset($questionData['options']) && is_array($questionData['options'])) {
+                    foreach ($questionData['options'] as $oIndex => $optionData) {
+                        
+                        // Konversi index section dari frontend menjadi ID database asli
+                        $targetSectionIndex = $optionData['goto_form_section_id'] ?? null;
+                        $realSectionId = null;
 
-                    $rawRules = $questionData['validation_rules'] ?? null;
-
-// Jika diterima sebagai string JSON dari frontend, decode dulu agar utuh
-if (is_string($rawRules)) {
-    $decoded = json_decode($rawRules, true);
-    $validationRulesJson = is_array($decoded) ? json_encode($decoded) : null;
-} else {
-    $validationRulesJson = is_array($rawRules) ? json_encode($rawRules) : null;
-}
-
-                    $question = FormQuestion::create([
-                        'form_id'          => $form->id,
-                        'form_section_id'  => $section->id,
-                        'question_code'    => "QST-" . strtoupper(uniqid()),
-                        'question_text'    => $questionData['question_text'],
-                        'question_image'   => $imagePath,
-                        'question_file'    => $questionData['question_file'] ?? null,
-                        'question_date'    => $questionData['question_date'] ?? null,
-                        'question_time'    => $questionData['question_time'] ?? null,
-                        'validation_rules' => $validationRulesJson,
-                        'help_text'        => $questionData['help_text'] ?? null,
-                        'standard_text'    => $questionData['standard_text'] ?? null,
-                        'input_type'       => $questionData['input_type'],
-                        'question_order'   => $qIndex + 1,
-                        'is_required'      => $questionData['is_required'] ?? false,
-                    ]);
-
-                    if (isset($questionData['options']) && is_array($questionData['options'])) {
-                        foreach ($questionData['options'] as $oIndex => $optionData) {
-                            FormOption::create([
-                                'form_question_id'     => $question->id,
-                                'option_code'          => "OPT-" . strtoupper(uniqid()),
-                                'option_text'          => $optionData['option_text'],
-                                'option_order'         => $oIndex + 1,
-                                'is_normal'            => $optionData['is_normal'] ?? false,
-                                'goto_form_section_id' => $optionData['goto_form_section_id'] !== '' ? $optionData['goto_form_section_id'] : null,
-                            ]);
+                        if ($targetSectionIndex !== '' && $targetSectionIndex !== null) {
+                            // Cek apakah index tersebut ada di array mapping kita
+                            $numericIndex = (int) $targetSectionIndex;
+                            if (isset($createdSectionIds[$numericIndex])) {
+                                $realSectionId = $createdSectionIds[$numericIndex];
+                            }
                         }
+
+                        FormOption::create([
+                            'form_question_id'     => $question->id,
+                            'option_code'          => "OPT-" . strtoupper(uniqid()),
+                            'option_text'          => $optionData['option_text'],
+                            'option_order'         => $oIndex + 1,
+                            'is_normal'            => $optionData['is_normal'] ?? false,
+                            'goto_form_section_id' => $realSectionId, // Disimpan dengan ID database yang valid
+                        ]);
                     }
                 }
             }
+        }
 
             Task::create([
                 'machine_id'           => $machine->id,
@@ -160,25 +181,22 @@ if (is_string($rawRules)) {
     ]);
 }
 
-    /**
-     * Update template form beserta sections, questions, & options.
-     */
-    public function update(Request $request, $id)
+   public function update(Request $request, $id)
     {
         return DB::transaction(function () use ($request, $id) {
             $form = Form::findOrFail($id);
 
             $validated = $request->validate([
-                'metadata.machine_type'                => 'required|string|exists:machines,machine_type',
-                'metadata.form_title'                  => 'required|string|max:255',
-                'metadata.form_description'            => 'nullable|string',
+                'metadata.machine_type'              => 'required|string|exists:machines,machine_type',
+                'metadata.form_title'                => 'required|string|max:255',
+                'metadata.form_description'          => 'nullable|string',
 
-                'sections'                             => 'required|array|min:1',
-                'sections.*.id'                        => 'nullable|exists:form_sections,id',
-                'sections.*.section_title'             => 'required|string|max:255',
-                'sections.*.section_description'       => 'nullable|string',
-                'sections.*.questions'                 => 'required|array|min:1',
-                'sections.*.questions.*.id'            => 'nullable|exists:form_questions,id',
+                'sections'                           => 'required|array|min:1',
+                'sections.*.id'                      => 'nullable|exists:form_sections,id',
+                'sections.*.section_title'           => 'required|string|max:255',
+                'sections.*.section_description'     => 'nullable|string',
+                'sections.*.questions'               => 'required|array|min:1',
+                'sections.*.questions.*.id'          => 'nullable|exists:form_questions,id',
                 'sections.*.questions.*.question_text' => 'required|string',
                 'sections.*.questions.*.question_image' => 'nullable',
                 'sections.*.questions.*.question_file' => 'nullable|string',
@@ -188,6 +206,10 @@ if (is_string($rawRules)) {
                 'sections.*.questions.*.standard_text' => 'nullable|string',
                 'sections.*.questions.*.input_type'    => 'required|string|in:TEXT,TEXTAREA,SELECT,CHECKBOX,DROPDOWN,FILE,DATE,TIME',
                 'sections.*.questions.*.options'       => 'nullable|array',
+                'sections.*.questions.*.options.*.id'  => 'nullable|exists:form_options,id',
+                'sections.*.questions.*.options.*.option_text' => 'required|string',
+                'sections.*.questions.*.options.*.is_normal' => 'required|boolean',
+                'sections.*.questions.*.options.*.goto_form_section_id' => 'nullable', // Tambahan validasi untuk goto section
                 'sections.*.questions.*.is_required'   => 'required|boolean',
                 'sections.*.questions.*.validation_rules' => 'nullable',
             ]);
@@ -203,7 +225,10 @@ if (is_string($rawRules)) {
             ]);
 
             $existingSectionIds = [];
+            // Array untuk memetakan index section di frontend ke ID database asli
+            $createdSectionIds = [];
 
+            // 1. Simpan / Update Sections Terlebih Dahulu
             foreach ($validated['sections'] as $sIndex => $sectionData) {
                 $section = FormSection::updateOrCreate(
                     ['id' => $sectionData['id'] ?? null, 'form_id' => $form->id],
@@ -214,9 +239,21 @@ if (is_string($rawRules)) {
                         'section_order'       => $sIndex + 1,
                     ]
                 );
+                
                 $existingSectionIds[] = $section->id;
+                // Simpan mapping ID berdasarkan index urutan section di frontend
+                $createdSectionIds[$sIndex] = $section->id;
+            }
+
+            // 2. Simpan / Update Questions & Options
+            foreach ($validated['sections'] as $sIndex => $sectionData) {
+                // Ambil section berdasarkan form_id dan urutannya yang valid
+                $section = FormSection::where('form_id', $form->id)
+                    ->where('section_order', $sIndex + 1)
+                    ->first();
 
                 $existingQuestionIds = [];
+
                 foreach ($sectionData['questions'] as $qIndex => $questionData) {
                     $questionId = $questionData['id'] ?? null;
                     $oldQuestion = $questionId ? FormQuestion::find($questionId) : null;
@@ -239,17 +276,6 @@ if (is_string($rawRules)) {
                         $imagePath = $oldQuestion ? $oldQuestion->question_image : null;
                     }
 
-                    $rawRules = $questionData['validation_rules'] ?? null;
-
-// Jika diterima sebagai string JSON dari frontend, decode dulu agar utuh
-if (is_string($rawRules)) {
-    $decoded = json_decode($rawRules, true);
-    $validationRulesJson = is_array($decoded) ? json_encode($decoded) : null;
-} else {
-    $validationRulesJson = is_array($rawRules) ? json_encode($rawRules) : null;
-}
-                    // --------------------------------------------------------------------------------
-
                     $question = FormQuestion::updateOrCreate(
                         ['id' => $questionId, 'form_id' => $form->id, 'form_section_id' => $section->id],
                         [
@@ -260,7 +286,7 @@ if (is_string($rawRules)) {
                             'question_file'    => $questionData['question_file'] ?? null,
                             'question_date'    => $questionData['question_date'] ?? null,
                             'question_time'    => $questionData['question_time'] ?? null,
-                            'validation_rules' => $validationRulesJson,
+                            'validation_rules' => $questionData['validation_rules'] ?? null,
                             'help_text'        => $questionData['help_text'] ?? null,
                             'standard_text'    => $questionData['standard_text'] ?? null,
                             'question_order'   => $qIndex + 1,
@@ -271,17 +297,38 @@ if (is_string($rawRules)) {
 
                     // Sync Options jika ada
                     if (isset($questionData['options']) && is_array($questionData['options'])) {
+                        $existingOptionIds = [];
+
                         foreach ($questionData['options'] as $oIndex => $optionData) {
-                            FormOption::updateOrCreate(
+                            
+                            // Konversi index target section dari frontend menjadi ID database asli
+                            $targetSectionIndex = $optionData['goto_form_section_id'] ?? null;
+                            $realSectionId = null;
+
+                            if ($targetSectionIndex !== '' && $targetSectionIndex !== null) {
+                                $numericIndex = (int) $targetSectionIndex;
+                                if (isset($createdSectionIds[$numericIndex])) {
+                                    $realSectionId = $createdSectionIds[$numericIndex];
+                                }
+                            }
+
+                            $option = FormOption::updateOrCreate(
                                 ['id' => $optionData['id'] ?? null, 'form_question_id' => $question->id],
                                 [
-                                    'option_code'  => $optionData['option_code'] ?? "OPT-" . strtoupper(uniqid()),
-                                    'option_text'  => $optionData['option_text'],
-                                    'option_order' => $oIndex + 1,
-                                    'is_normal'    => $optionData['is_normal'] ?? false,
+                                    'option_code'          => $optionData['option_code'] ?? "OPT-" . strtoupper(uniqid()),
+                                    'option_text'          => $optionData['option_text'],
+                                    'option_order'         => $oIndex + 1,
+                                    'is_normal'            => $optionData['is_normal'] ?? false,
+                                    'goto_form_section_id' => $realSectionId, // Disimpan dengan ID database yang valid
                                 ]
                             );
+                            $existingOptionIds[] = $option->id;
                         }
+
+                        // Hapus option yang sudah dihapus oleh user dari frontend
+                        FormOption::where('form_question_id', $question->id)
+                            ->whereNotIn('id', $existingOptionIds)
+                            ->delete();
                     }
                 }
 

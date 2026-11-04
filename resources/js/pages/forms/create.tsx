@@ -62,7 +62,7 @@ export default function FormCreate({ machines }: Props) {
         },
         sections: [
             {
-                section_title: 'Bagian Utama',
+                section_title: '',
                 section_description: '',
                 section_order: 1,
                 questions: [
@@ -77,8 +77,8 @@ export default function FormCreate({ machines }: Props) {
                         is_required: false,
                         validation_rules: [{ validation_error_message: '', expected_answer: '', allowed_file_type: [], max_file_size: '' }],
                         options: [
-                            { option_text: 'Normal (OK)', is_normal: true, option_order: 1, goto_form_section_id: null },
-                            { option_text: 'Rusak (NG)', is_normal: false, option_order: 2, goto_form_section_id: null }
+                            { option_text: 'Opsi 1', is_normal: true, option_order: 1, goto_form_section_id: 0 || null },
+                            { option_text: 'Opsi 2', is_normal: false, option_order: 2, goto_form_section_id: 0 || null }
                         ],
                     }
                 ],
@@ -316,70 +316,65 @@ export default function FormCreate({ machines }: Props) {
             </div>
 
             <div className="max-w-3xl mx-auto space-y-4 pb-24">
+                {/* Bagian Metadata Utama Form */}
+                <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4 shadow-2xs border-t-4 border-t-emerald-600">
+                    <input
+                        type="text"
+                        value={data.metadata.form_title}
+                        onChange={e => handleMetadataChange('form_title', e.target.value)}
+                        placeholder="Judul Formulir"
+                        className="w-full text-lg font-bold text-slate-900 border-b border-slate-100 pb-2 focus:border-emerald-600 focus:outline-none bg-transparent"
+                    />
+                    <input
+                        type="text"
+                        value={data.metadata.form_description}
+                        onChange={e => handleMetadataChange('form_description', e.target.value)}
+                        placeholder="Deskripsi singkat formulir (opsional)"
+                        className="w-full text-xs text-slate-600 border-b border-slate-100 pb-2 focus:border-emerald-600 focus:outline-none bg-transparent"
+                    />
+
+                    <div>
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">Target Mesin *</label>
+                        <select
+                            value={data.metadata.machine_type}
+                            onChange={e => handleMetadataChange('machine_type', e.target.value)}
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-slate-50 focus:border-emerald-600 outline-none font-medium"
+                        >
+                            <option value="">Pilih Mesin...</option>
+                            {machines.map(m => (
+                                <option key={m.id} value={m.machine_type}>{m.machine_type}</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+
                 <form onSubmit={submit} className="space-y-4">
                     {data.sections.map((section, sIndex) => (
-                        <div key={sIndex} className="space-y-3">
-                            {sIndex === 0 ? (
-                                <div 
-                                    onMouseDownCapture={() => { setActiveSectionIndex(sIndex); setActiveFocus('HEADER'); }}
-                                    className="bg-white rounded-xl border border-slate-200 p-6 space-y-4 shadow-2xs border-t-4 border-t-emerald-600"
-                                >
-                                    <input
-                                        type="text"
-                                        value={data.metadata.form_title}
-                                        onChange={e => handleMetadataChange('form_title', e.target.value)}
-                                        placeholder="Judul Formulir"
-                                        className="w-full text-lg font-bold text-slate-900 border-b border-slate-100 pb-2 focus:border-emerald-600 focus:outline-none bg-transparent"
-                                    />
-                                    <input
-                                        type="text"
-                                        value={data.metadata.form_description}
-                                        onChange={e => handleMetadataChange('form_description', e.target.value)}
-                                        placeholder="Deskripsi singkat formulir (opsional)"
-                                        className="w-full text-xs text-slate-600 border-b border-slate-100 pb-2 focus:border-emerald-600 focus:outline-none bg-transparent"
-                                    />
+                        <div key={sIndex} className="bg-white rounded-xl border border-slate-200 p-5 space-y-4 shadow-2xs border-l-4 border-l-emerald-600">
+                            {/* Header Section dengan Judul yang Bisa Diubah Bebas */}
+                            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                                <span className="text-[11px] font-bold text-emerald-700 uppercase">Bagian {sIndex + 1}</span>
+                                {data.sections.length > 1 && (
+                                    <button type="button" onClick={() => removeSection(sIndex)} className="text-slate-400 hover:text-rose-600 text-xs cursor-pointer">Hapus Bagian</button>
+                                )}
+                            </div>
 
-                                    <div>
-                                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">Target Mesin *</label>
-                                        <select
-                                            value={data.metadata.machine_type}
-                                            onChange={e => handleMetadataChange('machine_type', e.target.value)}
-                                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-slate-50 focus:border-emerald-600 outline-none font-medium"
-                                        >
-                                            <option value="">Pilih Mesin...</option>
-                                            {machines.map(m => (
-                                                <option key={m.id} value={m.machine_type}>{m.machine_type}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div 
-                                    onMouseDownCapture={() => { setActiveSectionIndex(sIndex); setActiveFocus('SECTION_TITLE'); }}
-                                    className="bg-white rounded-xl border border-slate-200 p-5 space-y-3 shadow-2xs border-l-4 border-l-emerald-600"
-                                >
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-[11px] font-bold text-emerald-700 uppercase">Bagian {sIndex + 1}</span>
-                                        <button type="button" onClick={() => removeSection(sIndex)} className="text-slate-400 hover:text-rose-600 text-xs">Hapus</button>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <input
-                                            type="text"
-                                            value={section.section_title}
-                                            onChange={e => handleSectionChange(sIndex, 'section_title', e.target.value)}
-                                            placeholder="Judul Bagian"
-                                            className="w-full text-base font-bold text-slate-800 border-b border-slate-100 pb-1.5 focus:border-emerald-600 outline-none bg-transparent"
-                                        />
-                                        <input
-                                            type="text"
-                                            value={section.section_description || ''}
-                                            onChange={e => handleSectionChange(sIndex, 'section_description', e.target.value)}
-                                            placeholder="Deskripsi bagian (opsional)"
-                                            className="w-full text-xs text-slate-500 border-b border-slate-100 pb-1.5 focus:border-emerald-600 outline-none bg-transparent"
-                                        />
-                                    </div>
-                                </div>
-                            )}
+                            <div className="space-y-2">
+                                <input
+                                    type="text"
+                                    value={section.section_title}
+                                    onChange={e => handleSectionChange(sIndex, 'section_title', e.target.value)}
+                                    placeholder="Judul Bagian (Contoh: Inspeksi Komponen Utama)"
+                                    className="w-full text-base font-bold text-slate-800 border-b border-slate-100 pb-1.5 focus:border-emerald-600 outline-none bg-transparent"
+                                />
+                                <input
+                                    type="text"
+                                    value={section.section_description || ''}
+                                    onChange={e => handleSectionChange(sIndex, 'section_description', e.target.value)}
+                                    placeholder="Deskripsi bagian (opsional)"
+                                    className="w-full text-xs text-slate-500 border-b border-slate-100 pb-1.5 focus:border-emerald-600 outline-none bg-transparent"
+                                />
+                            </div>
 
                             {/* Daftar Pertanyaan */}
                             <div className="space-y-3">

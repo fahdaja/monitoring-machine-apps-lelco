@@ -1,17 +1,18 @@
 import React, { useState } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
 import AppLayout from '../../layouts/app-layout';
+import { QrCode } from 'lucide-react';
 
 // Type Definitions
 export interface InspectionTask {
-    taskId: string;
-    machineId: string;
+    taskId: number;
+    taskCode: string;
+    machineId: number;
+    machineCode: string;
     machineName: string;
     activity: string;
-    level: 'L1' | 'L2' | 'L3';
     scheduledDate: string; // Format: YYYY-MM-DD
     location: string;
-    department?: string;
     status: 'DUE' | 'OVERDUE' | 'UPCOMING' | 'COMPLETED';
     inspectorName?: string;
     completedAt?: string;
@@ -21,7 +22,7 @@ interface InspectionCalendarData {
     year: number;
     month: number;
     daysInMonth: number;
-    firstWeekday: number; // 0: Senin, 6: Minggu
+    daysInWeek: number; // 0: Senin, 6: Minggu
     today: string;
     tasks: InspectionTask[];
 }
@@ -33,66 +34,23 @@ interface TasksIndexProps {
 export default function TasksIndex({ calendarData }: TasksIndexProps) {
     const todayStr = new Date().toISOString().split('T')[0];
 
-    // Fallback Mock Data jika props belum dikirim dari Laravel
-    const mockData: InspectionCalendarData = calendarData || {
-        year: 2026,
-        month: 10,
-        daysInMonth: 31,
-        firstWeekday: 3, // Kamis
+    const currentCalendarData: InspectionCalendarData = calendarData || {
+        year: new Date().getFullYear(),
+        month: new Date().getMonth() + 1,
+        daysInMonth: new Date().getDate(),
+        daysInWeek: new Date().getDay(),
         today: todayStr,
-        tasks: [
-            {
-                taskId: 'TSK-202610-001',
-                machineId: 'MCH-001',
-                machineName: 'Hydraulic Press 500T',
-                activity: 'Pemeriksaan Rutin Level Oli & Kebocoran Valve',
-                level: 'L1',
-                scheduledDate: '2026-10-13',
-                location: 'Line A - Area 01',
-                status: 'DUE',
-            },
-            {
-                taskId: 'TSK-202610-002',
-                machineId: 'MCH-004',
-                machineName: 'CNC Milling VMC850',
-                activity: 'Inspeksi Vibrasi Spindle & Pelumasan Guide Way',
-                level: 'L2',
-                scheduledDate: '2026-10-12',
-                location: 'Line B - Area 03',
-                status: 'OVERDUE',
-            },
-            {
-                taskId: 'TSK-202610-003',
-                machineId: 'MCH-002',
-                machineName: 'Robotic Arm Welding',
-                activity: 'Inspeksi Tekanan Pneumatik & Kebersihan Tip Torch',
-                level: 'L1',
-                scheduledDate: '2026-10-13',
-                location: 'Line A - Area 02',
-                status: 'COMPLETED',
-                inspectorName: 'Budi Santoso',
-                completedAt: '09:15',
-            },
-            {
-                taskId: 'TSK-202610-004',
-                machineId: 'MCH-009',
-                machineName: 'Compressor Screw 55KW',
-                activity: 'Pemeriksaan Air Filter & Drain Condensate Tank',
-                level: 'L1',
-                scheduledDate: '2026-10-15',
-                location: 'Utility Room',
-                status: 'UPCOMING',
-            },
-        ],
-    };
+        tasks: []
+    } 
 
-    const [currentYear, setCurrentYear] = useState(mockData.year);
-    const [currentMonth, setCurrentMonth] = useState(mockData.month);
-    const [selectedDate, setSelectedDate] = useState<string>(mockData.today);
+
+    const [currentYear, setCurrentYear] = useState(currentCalendarData.year);
+    const [currentMonth, setCurrentMonth] = useState(currentCalendarData.month);
+    const [selectedDate, setSelectedDate] = useState<string>(currentCalendarData.today);
     const [selectedTaskForModal, setSelectedTaskForModal] = useState<InspectionTask | null>(null);
 
     // Filter Task berdasarkan Tanggal Terpilih
-    const tasksForSelectedDate = mockData.tasks.filter((t) => t.scheduledDate === selectedDate);
+    const tasksForSelectedDate = currentCalendarData.tasks.filter((t) => t.scheduledDate === selectedDate);
 
     // Navigasi Bulan Kalender
     const handlePrevMonth = () => {
@@ -146,15 +104,15 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
         ));
 
         // 2. Blank Days Sebelum Tanggal 1
-        for (let i = 0; i < mockData.firstWeekday; i++) {
+        for (let i = 0; i < currentCalendarData.daysInWeek; i++) {
             days.push(<div key={`blank-${i}`} className="min-h-[50px] bg-transparent" />);
         }
 
         // 3. Tanggal-tanggal Bulan
-        for (let day = 1; day <= mockData.daysInMonth; day++) {
+        for (let day = 1; day <= currentCalendarData.daysInMonth; day++) {
             const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-            const dayTasks = mockData.tasks.filter((t) => t.scheduledDate === dateStr);
-            const isToday = dateStr === mockData.today;
+            const dayTasks = currentCalendarData.tasks.filter((t) => t.scheduledDate === dateStr);
+            const isToday = dateStr === currentCalendarData.today;
             const isSelected = dateStr === selectedDate;
 
             days.push(
@@ -222,7 +180,7 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
             <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                 <div>
                     <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight">
-                        Inspection Tasks
+                        Inspection Calender
                     </h1>
                     <p className="text-sm text-slate-500 mt-1">
                         Jadwal preventive inspection L1/L2. Pilih tanggal pada kalender untuk melihat task aktif.
@@ -251,7 +209,7 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                             </h2>
                             <button
                                 type="button"
-                                onClick={() => setSelectedDate(mockData.today)}
+                                onClick={() => setSelectedDate(currentCalendarData.today)}
                                 className="text-xs font-bold text-blue-600 hover:text-blue-800"
                             >
                                 Hari Ini
@@ -306,14 +264,11 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                                 >
                                     <div className="flex items-start justify-between gap-2 mb-2">
                                         <div className="flex items-center gap-2">
-                                            <span className="inline-grid place-items-center px-2 py-0.5 bg-slate-900 text-white text-[10px] font-black rounded">
-                                                {t.level}
-                                            </span>
                                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${getBadgeClass(t.status)}`}>
                                                 {t.status}
                                             </span>
                                         </div>
-                                        <span className="text-[10px] font-mono text-slate-400">{t.taskId}</span>
+                                        <span className="text-[10px] font-mono text-slate-400">{t.taskCode}</span>
                                     </div>
 
                                     <h4 className="font-extrabold text-slate-900 text-sm leading-snug">{t.activity}</h4>
@@ -322,7 +277,7 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                                         <Link href={`/machines/${t.machineId}`} className="font-bold text-slate-900 hover:underline">
                                             {t.machineName}
                                         </Link>
-                                        <span className="block text-[11px] text-slate-400 mt-0.5">{t.machineId} &bull; {t.location}</span>
+                                        <span className="block text-[11px] text-slate-400 mt-0.5">{t.machineCode} &bull; {t.location}</span>
                                     </div>
 
                                     {t.completedAt && (
@@ -359,15 +314,15 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                 <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 text-center">
                         <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-900 font-black text-xl">
-                            &;
+                            <QrCode/>  
                         </div>
                         <h3 className="text-lg font-extrabold text-slate-900">Verifikasi QR Mesin</h3>
                         <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                            Scan QR fisik mesin <strong className="text-slate-900">{selectedTaskForModal.machineId}</strong> sebelum memulai pengisian lembar inspeksi.
+                            Scan QR fisik mesin <strong className="text-slate-900">{selectedTaskForModal.machineCode}</strong> sebelum memulai pengisian lembar inspeksi.
                         </p>
 
                         <div className="my-5 p-3 rounded-xl bg-slate-50 border border-slate-200 text-left text-xs">
-                            <span className="text-[10px] font-mono text-slate-400 block">{selectedTaskForModal.taskId}</span>
+                            <span className="text-[10px] font-mono text-slate-400 block">{selectedTaskForModal.taskCode}</span>
                             <strong className="block text-slate-900 text-sm font-bold mt-0.5">{selectedTaskForModal.activity}</strong>
                             <span className="block text-slate-500 mt-1">{selectedTaskForModal.machineName} ({selectedTaskForModal.location})</span>
                         </div>
@@ -376,7 +331,7 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                             <button
                                 type="button"
                                 onClick={() => {
-                                    alert(`Buka scanner QR untuk mesin ${selectedTaskForModal.machineId}`);
+                                    router.visit(`/inspection-form/${selectedTaskForModal.taskId}`)
                                     setSelectedTaskForModal(null);
                                 }}
                                 className="w-full py-2.5 px-4 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors"

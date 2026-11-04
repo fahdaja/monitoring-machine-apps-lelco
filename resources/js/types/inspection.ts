@@ -5,6 +5,13 @@ export interface ValidationRules {
     max_file_size?: '1MB' | '5MB' | '10MB' | string;
 }
 
+
+export interface Machine{
+    id: number;
+    machine_name: string;
+    machine_type: string;
+}
+
 export interface Option {
     id: number;
     form_question_id: number;
@@ -26,7 +33,7 @@ export interface Question {
     input_type: string;
     help_text: string;
     standard_text: string;
-    validation_rules: ValidationRules;
+    validation_rules: ValidationRules[];
     is_required: boolean;
     question_order: number;
     options: Option[];
@@ -43,24 +50,25 @@ export interface Section {
 }
 
 export interface FormTemplate {
-    form_id: string;
+    id: string;
     form_title: string;
     form_description: string;
     sections: Section[];
+    machines: {
+        id: number;
+        machine_name: string;
+        machine_type: string;
+    };
 }
 
 export interface InspectionTask {
     task_id: number;
-    status: string;
-    schedule_date: string;
-    machine: {
-        machine_id: string;
-        machine_name: string;
-    };
+    task_code: string;
     form: FormTemplate;
+    status: string
 }
 
 export interface InspectionsFormProps {
-    tasks?: InspectionTask[];
+    tasks: InspectionTask[];
 }
 

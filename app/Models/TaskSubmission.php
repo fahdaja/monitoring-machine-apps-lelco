@@ -14,9 +14,9 @@ class FormSubmission extends Model{
     
     protected $fillable = [
         'id',
-        'submission_code',
-        'machine_id',
-        'form_id',
+        'task_submission_code',
+        'escalation_ticket_id',
+        'task_id',
         'user_id',
         'status',
         'answers_values',

@@ -6,41 +6,78 @@ use Inertia\Inertia;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use App\Models\User;
 use App\Models\Form;
 use App\Models\Machine;
 use App\Models\FormSection;
 use App\Models\FormQuestion;
 use App\Models\FormOption;
 use App\Models\Task;
+use Carbon\Carbon;
 
 class TaskController extends Controller {
 
 
     public function index(){
-        $tasks = Task::with(['form.machine'])->whereIn('status', ['UPCOMING', 'IN_PROGRESS', 'OVERDUE', 'DUE', 'COMPLETED'])->orderBy('due_date', 'asc')->get();
+        $tasks = Task::with(['machine', 'form', 'user'])->whereIn('status', ['UPCOMING', 'IN_PROGRESS', 'OVERDUE', 'DUE', 'COMPLETED'])->orderBy('due_date', 'asc')->get();
 
-        if(Carbon::new()->isAfter($tasks->due_date) && $tasks->status !== 'COMPLETED'){
-            $tasks->update([
-                'status' => 'OVERDUE'
-            ]);
-            
+        foreach ($tasks as $task) {
+        if (Carbon::now()->isAfter($task->due_date) && !in_array($task->status, ['COMPLETED', 'OVERDUE'])) {
+            $task->update(['status' => 'OVERDUE']);
         }
+    }
+    $formattedTasks = $tasks->map(function($task){
+        $machine = $task->machine;
+        $inspectorName = $task->user->full_name ?? 'Belum ditugaskan';
 
+        return [
+            'taskId' => $task->id,
+            'taskCode' => $task->task_code,
+            'machineCode' => $machine->machine_code,
+            'machineName' => $machine->machine_name,
+            'location' => $machine->location,
+            'activity' => $task->form->form_title,
+            'scheduledDate' => $task->due_date,
+            'status' => $task->status,
+            'inspectorName' => $inspectorName,
+            'completedAt' => $task->completed_at ? Carbon::parse($task->completed_at)->format('H:i') : null,
+        ];
+    });
+
+    $now = Carbon::now();
+    $calendarData = [
+        'year' => $now->year,
+        'month' => $now->month,
+        'daysInMonth' => $now->daysInMonth,
+        'daysInWeek' => $now->copy()->startOfMonth()->dayOfWeekIso - 1,
+        'today' => $now->toDateString(),
+        'tasks' => $formattedTasks,
+    ];
+    // dd($tasks->toArray());
         return Inertia::render('tasks/index', [
-            'tasks' => $tasks
+            'calendarData' => $calendarData
         ]);
     }
 
 
     public function show($id){
-        $tasks = Task::with([
-            'form.machine',
-            'form.sections.questions.options',
-        ])->findOrFail($id);
+        $task = Task::with([
+        'form.machine',
+        'form.sections' => function($query) {
+            $query->orderBy('section_order', 'asc');
+        },
+        'form.sections.questions' => function($query) {
+            $query->orderBy('question_order', 'asc');
+        },
+        'form.sections.questions.options' => function($query) {
+            $query->orderBy('option_order', 'asc');
+        }
+    ])->findOrFail($id);
 
-        return Inertia::render('tasks/show', [
-            'tasks' => $tasks,
-        ]);
+    // Render ke halaman React yang sesuai (misal: 'tasks/show' atau 'inspection-form')
+    return Inertia::render('tasks/show', [
+        'task' => $task, // Kirim sebagai 'task' agar sesuai dengan komponen frontend
+    ]);
     }
 
    public function submit(Request $request, $id)

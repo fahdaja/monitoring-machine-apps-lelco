@@ -34,6 +34,7 @@ class FormQuestion extends Model
     ];
 
     protected $casts = [
+        'validation_rules' => 'array',
         'is_required' => 'boolean',
         'input_type' => InputType::class,
     ];
