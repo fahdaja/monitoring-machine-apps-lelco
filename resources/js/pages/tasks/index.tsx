@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../layouts/app-layout';
 import { QrCode } from 'lucide-react';
 
@@ -13,9 +13,10 @@ export interface InspectionTask {
     activity: string;
     scheduledDate: string; // Format: YYYY-MM-DD
     location: string;
-    status: 'DUE' | 'OVERDUE' | 'UPCOMING' | 'COMPLETED';
+    status: 'DUE' | 'OVERDUE' | 'UPCOMING' | 'COMPLETED' | 'IN_PROGRESS';
     inspectorName?: string;
     completedAt?: string;
+    assignedUserId?: number | null;
 }
 
 interface InspectionCalendarData {
@@ -41,7 +42,7 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
         daysInWeek: new Date().getDay(),
         today: todayStr,
         tasks: []
-    } 
+    }
 
     const [scannedInput, setScannedInput] = useState('');
     const [scanError, setScanError] = useState<string | null>(null);
@@ -50,18 +51,19 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
     const [selectedDate, setSelectedDate] = useState<string>(currentCalendarData.today);
     const [selectedTaskForModal, setSelectedTaskForModal] = useState<InspectionTask | null>(null);
 
-    const handleVerifyAndStart = (task: InspectionTask, scannedCode: string) => {
-    // Validasi kecocokan QR code fisik dengan kode mesin di task
-    if (scannedCode.trim().toUpperCase() !== task.machineCode.trim().toUpperCase()) {
-        setScanError(`QR Code tidak valid! Anda menscan "${scannedCode}", tapi mesin yang benar adalah "${task.machineCode}".`);
-        return;
-    }
 
-    // Jika cocok, bersihkan error dan arahkan ke halaman form inspeksi
-    setScanError(null);
-    setSelectedTaskForModal(null);
-    router.visit(`/inspection-form/${task.taskId}`);
-};
+    const handleVerifyAndStart = (task: InspectionTask, scannedCode: string) => {
+        // Validasi kecocokan QR code fisik dengan kode mesin di task
+        if (scannedCode.trim().toUpperCase() !== task.machineCode.trim().toUpperCase()) {
+            setScanError(`QR Code tidak valid! Anda menscan "${scannedCode}", tapi mesin yang benar adalah "${task.machineCode}".`);
+            return;
+        }
+
+        // Jika cocok, bersihkan error dan arahkan ke halaman form inspeksi
+        setScanError(null);
+        setSelectedTaskForModal(null);
+        router.visit(`/inspection-form/${task.taskId}`);
+    };
     // Filter Task berdasarkan Tanggal Terpilih
     const tasksForSelectedDate = currentCalendarData.tasks.filter((t) => t.scheduledDate === selectedDate);
 
@@ -89,12 +91,14 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
         return new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric' }).format(date);
     };
 
-    const getBadgeClass = (status: InspectionTask['status']) => {
+    const getBadgeClass = (status: InspectionTask['status'] | 'IN_PROGRESS') => {
         switch (status) {
             case 'DUE':
                 return 'bg-amber-100 text-amber-800 border-amber-200';
             case 'OVERDUE':
                 return 'bg-rose-100 text-rose-800 border-rose-200';
+            case 'IN_PROGRESS':
+                return 'bg-indigo-100 text-indigo-800 border-indigo-200'; // 🚀 Badge khusus In Progress
             case 'COMPLETED':
                 return 'bg-emerald-100 text-emerald-800 border-emerald-200';
             case 'UPCOMING':
@@ -133,13 +137,12 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                     key={day}
                     type="button"
                     onClick={() => setSelectedDate(dateStr)}
-                    className={`min-h-[58px] p-2 rounded-xl border text-left flex flex-col justify-between transition-all relative ${
-                        isSelected
-                            ? 'bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-slate-900/20'
-                            : isToday
+                    className={`min-h-[58px] p-2 rounded-xl border text-left flex flex-col justify-between transition-all relative ${isSelected
+                        ? 'bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-slate-900/20'
+                        : isToday
                             ? 'bg-blue-50/60 border-blue-300 text-slate-900 font-bold'
                             : 'bg-white border-slate-200 hover:border-slate-300 text-slate-800'
-                    }`}
+                        }`}
                 >
                     <span className="text-xs font-extrabold">{day}</span>
 
@@ -150,24 +153,24 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                                 {dayTasks.slice(0, 3).map((t, idx) => (
                                     <span
                                         key={idx}
-                                        className={`w-1.5 h-1.5 rounded-full ${
-                                            t.status === 'OVERDUE'
-                                                ? 'bg-rose-500'
-                                                : t.status === 'DUE'
+                                        className={`w-1.5 h-1.5 rounded-full ${t.status === 'OVERDUE'
+                                            ? 'bg-rose-500'
+                                            : t.status === 'DUE'
                                                 ? 'bg-amber-500'
-                                                : t.status === 'COMPLETED'
-                                                ? 'bg-emerald-500'
-                                                : 'bg-blue-500'
-                                        }`}
+                                                : t.status === 'IN_PROGRESS'
+                                                    ? 'bg-indigo-500' // ✅ Warna titik untuk In Progress
+                                                    : t.status === 'COMPLETED'
+                                                        ? 'bg-emerald-500'
+                                                        : 'bg-blue-500'
+                                            }`}
                                     />
                                 ))}
                             </div>
                             <span
-                                className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${
-                                    isSelected
-                                        ? 'bg-white/20 text-white'
-                                        : 'bg-slate-100 text-slate-700'
-                                }`}
+                                className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${isSelected
+                                    ? 'bg-white/20 text-white'
+                                    : 'bg-slate-100 text-slate-700'
+                                    }`}
                             >
                                 {dayTasks.length}
                             </span>
@@ -203,7 +206,7 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
 
             {/* Calendar & Task Detail Layout */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                
+
                 {/* 1. Panel Kalender Bulanan (Left - 7 cols) */}
                 <div className="lg:col-span-7 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
                     {/* Toolbar Kalender */}
@@ -241,11 +244,11 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                     {/* Render Kalender */}
                     {renderCalendarDays()}
 
-                    {/* Legenda Indikator */}
                     <div className="flex items-center gap-4 text-[10px] text-slate-500 font-semibold mt-4 pt-3 border-t border-slate-100 flex-wrap">
                         <span className="flex items-center gap-1.5"><i className="w-2 h-2 rounded-full bg-amber-500 inline-block" /> Due</span>
                         <span className="flex items-center gap-1.5"><i className="w-2 h-2 rounded-full bg-rose-500 inline-block" /> Overdue</span>
                         <span className="flex items-center gap-1.5"><i className="w-2 h-2 rounded-full bg-blue-500 inline-block" /> Upcoming</span>
+                        <span className="flex items-center gap-1.5"><i className="w-2 h-2 rounded-full bg-indigo-500 inline-block" /> In Progress</span> {/* 🚀 Tambahan */}
                         <span className="flex items-center gap-1.5"><i className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Completed</span>
                     </div>
                 </div>
@@ -265,15 +268,14 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                             tasksForSelectedDate.map((t) => (
                                 <div
                                     key={t.taskId}
-                                    className={`p-4 border border-slate-200 rounded-xl bg-slate-50/50 hover:bg-white transition-all border-l-4 ${
-                                        t.status === 'OVERDUE'
-                                            ? 'border-l-rose-500'
-                                            : t.status === 'DUE'
+                                    className={`p-4 border border-slate-200 rounded-xl bg-slate-50/50 hover:bg-white transition-all border-l-4 ${t.status === 'OVERDUE'
+                                        ? 'border-l-rose-500'
+                                        : t.status === 'DUE'
                                             ? 'border-l-amber-500'
                                             : t.status === 'COMPLETED'
-                                            ? 'border-l-emerald-500'
-                                            : 'border-l-blue-500'
-                                    }`}
+                                                ? 'border-l-emerald-500'
+                                                : 'border-l-blue-500'
+                                        }`}
                                 >
                                     <div className="flex items-start justify-between gap-2 mb-2">
                                         <div className="flex items-center gap-2">
@@ -285,7 +287,7 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                                     </div>
 
                                     <h4 className="font-extrabold text-slate-900 text-sm leading-snug">{t.activity}</h4>
-                                    
+
                                     <div className="mt-2 text-xs text-slate-600">
                                         <Link href={`/machines/${t.machineId}`} className="font-bold text-slate-900 hover:underline">
                                             {t.machineName}
@@ -299,17 +301,57 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                                         </p>
                                     )}
 
-                                    {['DUE', 'OVERDUE'].includes(t.status) && (
-                                        <div className="mt-3.5 pt-2.5 border-t border-slate-200/60 flex items-center justify-end">
-                                            <button
-                                                type="button"
-                                                onClick={() => setSelectedTaskForModal(t)}
-                                                className="w-full py-2 px-3 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg text-center transition-colors"
-                                            >
-                                                Scan QR &amp; Mulai Inspeksi
-                                            </button>
-                                        </div>
-                                    )}
+                                    <div className="mt-3.5 pt-2.5 border-t border-slate-200/60 flex items-center justify-end gap-2">
+                                        {(() => {
+                                            // Ambil ID user yang sedang login dari Inertia props (pastikan auth.user dikirim dari controller)
+                                            const currentUserId = (usePage().props.auth as any)?.user?.id;
+                                            const isAssignedToOther = t.assignedUserId && t.assignedUserId !== currentUserId;
+
+                                            if (t.status === 'COMPLETED') {
+                                                return (
+                                                    <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 w-full text-center">
+                                                        Inspeksi Selesai ✓
+                                                    </span>
+                                                );
+                                            }
+
+                                            // 🛑 Jika task sedang dikerjakan / di-assign ke teknisi lain
+                                            if (isAssignedToOther) {
+                                                return (
+                                                    <div className="w-full py-2 px-3 text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg text-center">
+                                                        ⚠️ Sedang dikerjakan oleh {t.inspectorName || 'Teknisi Lain'}
+                                                    </div>
+                                                );
+                                            }
+
+                                            if (t.status === 'UPCOMING') {
+                                                return (
+                                                    <span className="text-[11px] font-medium text-slate-400 bg-slate-100 px-3 py-1.5 rounded-lg w-full text-center">
+                                                        Jadwal Belum Dimulai
+                                                    </span>
+                                                );
+                                            }
+
+                                            // Jika milik user ini atau belum di-assign sama sekali
+                                            return (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (t.status === 'IN_PROGRESS') {
+                                                            // 🚀 Jika sudah In Progress, langsung masuk ke form tanpa scan QR lagi
+                                                            router.visit(`/inspection-form/${t.taskId}`);
+                                                        } else {
+                                                            // Jika status DUE / OVERDUE, tetap wajib verifikasi scan QR dulu
+                                                            setSelectedTaskForModal(t);
+                                                        }
+                                                    }}
+                                                    className="w-full py-2 px-3 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg text-center transition-colors cursor-pointer shadow-sm"
+                                                >
+                                                    {t.status === 'IN_PROGRESS' ? 'Lanjutkan Inspeksi' : 'Scan QR & Mulai Inspeksi'}
+                                                </button>
+                                            );
+                                        })()}
+                                    </div>
                                 </div>
                             ))
                         ) : (
@@ -323,63 +365,63 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
             </div>
 
             {/* Modal Verifikasi QR sebelum Mulai Inspeksi */}
-{selectedTaskForModal && (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 text-center">
-            <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-900 font-black text-xl">
-                <QrCode />  
-            </div>
-            <h3 className="text-lg font-extrabold text-slate-900">Verifikasi QR Mesin</h3>
-            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                Scan QR fisik mesin <strong className="text-slate-900">{selectedTaskForModal.machineCode}</strong> sebelum memulai pengisian lembar inspeksi.
-            </p>
+            {selectedTaskForModal && (
+                <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 text-center">
+                        <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-900 font-black text-xl">
+                            <QrCode />
+                        </div>
+                        <h3 className="text-lg font-extrabold text-slate-900">Verifikasi QR Mesin</h3>
+                        <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                            Scan QR fisik mesin <strong className="text-slate-900">{selectedTaskForModal.machineCode}</strong> sebelum memulai pengisian lembar inspeksi.
+                        </p>
 
-            <div className="my-4 p-3 rounded-xl bg-slate-50 border border-slate-200 text-left text-xs">
-                <span className="text-[10px] font-mono text-slate-400 block">{selectedTaskForModal.taskCode}</span>
-                <strong className="block text-slate-900 text-sm font-bold mt-0.5">{selectedTaskForModal.activity}</strong>
-                <span className="block text-slate-500 mt-1">{selectedTaskForModal.machineName} ({selectedTaskForModal.location})</span>
-            </div>
+                        <div className="my-4 p-3 rounded-xl bg-slate-50 border border-slate-200 text-left text-xs">
+                            <span className="text-[10px] font-mono text-slate-400 block">{selectedTaskForModal.taskCode}</span>
+                            <strong className="block text-slate-900 text-sm font-bold mt-0.5">{selectedTaskForModal.activity}</strong>
+                            <span className="block text-slate-500 mt-1">{selectedTaskForModal.machineName} ({selectedTaskForModal.location})</span>
+                        </div>
 
-            {/* Input simulasi / hasil scan dari kamera */}
-            <div className="mb-4 text-left space-y-1">
-                <label className="text-[11px] font-bold text-slate-700">Hasil Scan / Kode QR Mesin:</label>
-                <input
-                    type="text"
-                    value={scannedInput}
-                    onChange={(e) => setScannedInput(e.target.value)}
-                    placeholder="Scan atau ketik kode mesin..."
-                    className="w-full p-2.5 text-xs bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900"
-                />
-                {scanError && (
-                    <p className="text-[11px] font-semibold text-rose-600 mt-1 bg-rose-50 p-2 rounded-lg border border-rose-200">
-                        {scanError}
-                    </p>
-                )}
-            </div>
+                        {/* Input simulasi / hasil scan dari kamera */}
+                        <div className="mb-4 text-left space-y-1">
+                            <label className="text-[11px] font-bold text-slate-700">Hasil Scan / Kode QR Mesin:</label>
+                            <input
+                                type="text"
+                                value={scannedInput}
+                                onChange={(e) => setScannedInput(e.target.value)}
+                                placeholder="Scan atau ketik kode mesin..."
+                                className="w-full p-2.5 text-xs bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900"
+                            />
+                            {scanError && (
+                                <p className="text-[11px] font-semibold text-rose-600 mt-1 bg-rose-50 p-2 rounded-lg border border-rose-200">
+                                    {scanError}
+                                </p>
+                            )}
+                        </div>
 
-            <div className="space-y-2">
-                <button
-                    type="button"
-                    onClick={() => handleVerifyAndStart(selectedTaskForModal, scannedInput)}
-                    className="w-full py-2.5 px-4 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
-                >
-                    Verifikasi &amp; Mulai Inspeksi
-                </button>
-                <button
-                    type="button"
-                    onClick={() => {
-                        setSelectedTaskForModal(null);
-                        setScannedInput('');
-                        setScanError(null);
-                    }}
-                    className="w-full py-2 px-4 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
-                >
-                    Batal
-                </button>
-            </div>
-        </div>
-    </div>
-)}
+                        <div className="space-y-2">
+                            <button
+                                type="button"
+                                onClick={() => handleVerifyAndStart(selectedTaskForModal, scannedInput)}
+                                className="w-full py-2.5 px-4 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                            >
+                                Verifikasi &amp; Mulai Inspeksi
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSelectedTaskForModal(null);
+                                    setScannedInput('');
+                                    setScanError(null);
+                                }}
+                                className="w-full py-2 px-4 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                            >
+                                Batal
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </AppLayout>
     );
 }

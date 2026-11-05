@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Enums\TicketStatus;
 use Carbon\Carbon;
 
 class BreakdownTicket extends Model
@@ -14,16 +15,17 @@ class BreakdownTicket extends Model
     protected $table = 'breakdown_tickets';
     protected $primaryKey = 'id';
     public $incrementing = false;
+    public $timestamps = false;
 
 
     protected $fillable = [ 
         // ticket information
         'id',
+        'ticket_code',
         'machine_id',
         'problem_category',
-        'problem_description',
-        'priority',
-        'current_level',
+        'problem_descriptions',
+        'source_type',
         'status',
         'reported_at',
         'reported_by',
@@ -36,9 +38,8 @@ class BreakdownTicket extends Model
         // permasalahan dan aksi untuk menyelesaikan permasalahan
         'root_cause',
         'corrective_action',
-        
-        // task di verifikasi oleh siapa
-        'task_id',
+
+
         'verified_by',
         'verified_at',
         'verification_notes',
@@ -48,9 +49,7 @@ class BreakdownTicket extends Model
 
 
         // untuk enum
-        'status' => 'enum',
-        'priority' => 'enum',
-        'current_level' => 'enum',
+        'status' => TicketStatus::class,
 
         // untuk tanggal 
         'reported_at' => 'datetime',

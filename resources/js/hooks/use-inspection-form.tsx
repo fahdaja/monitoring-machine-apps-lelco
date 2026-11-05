@@ -1,9 +1,45 @@
-import { useRef, useState } from "react";
+import axios from "axios";
+import { useEffect, useRef, useState } from "react";
 
 
 export function useInspectionForm(sections: any[], initialAnswers: Record<number, any> = {}) {
 
     // 
+    const storageKey = `inspection_answers_${window.location.pathname}`;
+
+    const parseAnswersData = (rawData: any) => {
+        let mapped: Record<number, any> = {};
+
+        // Jika bentuknya sudah key-value map standar (misal: { 1: {value: ...} })
+        if (rawData && !rawData.sections && !Array.isArray(rawData) && Object.keys(rawData).length > 0) {
+            // Cek apakah key-nya berupa ID angka pertanyaan
+            const firstKey = Object.keys(rawData)[0];
+            if (!isNaN(Number(firstKey))) {
+                return rawData;
+            }
+        }
+
+        // Jika bentuknya snapshot enterprise (memiliki key 'sections')
+        const sectionsList = rawData?.sections || (Array.isArray(rawData) ? rawData : []);
+        if (sectionsList.length > 0) {
+            sectionsList.forEach((sec: any) => {
+                if (sec.questions && Array.isArray(sec.questions)) {
+                    sec.questions.forEach((q: any) => {
+                        const qId = q.form_question_id || q.id;
+                        const detail = q.answer_detail || { value: '', note: '', photos: '' };
+                        if (qId) {
+                            mapped[qId] = {
+                                value: detail.value ?? '',
+                                note: detail.note ?? '',
+                                photos: detail.photos ?? ''
+                            };
+                        }
+                    });
+                }
+            });
+        }
+        return mapped;
+    };
 
     const [targetJumpSectionId, setTargetJumpSectionId] = useState<number | null>(null);
     // cari index aktif
@@ -17,7 +53,35 @@ export function useInspectionForm(sections: any[], initialAnswers: Record<number
     const [maxCompletedIndex, setMaxCompletedIndex] = useState(-1);
 
     // state untuk menampung jawaban
-    const [answers, setAnswers] = useState<Record<number, any>>(initialAnswers);
+
+   const [answers, setAnswers] = useState<Record<number, any>>(() => {
+        try {
+            const savedLocal = localStorage.getItem(storageKey);
+            if (savedLocal) {
+                const parsedLocal = JSON.parse(savedLocal);
+                const converted = parseAnswersData(parsedLocal);
+                if (Object.keys(converted).length > 0) {
+                    return converted; // Berhasil merestore dari LocalStorage!
+                }
+            }
+        } catch (e) {
+            console.error("Gagal membaca LocalStorage:", e);
+        }
+
+        // Fallback ke initialAnswers dari database jika local kosong
+        return parseAnswersData(initialAnswers);
+    });
+
+    // Sinkronkan ke LocalStorage setiap kali answers berubah
+    useEffect(() => {
+        try {
+            if (answers && Object.keys(answers).length > 0) {
+                localStorage.setItem(storageKey, JSON.stringify(answers));
+            }
+        } catch (e) {
+            console.error("Gagal menyimpan ke LocalStorage:", e);
+        }
+    }, [answers, storageKey]);
 
     // Section dan pertanyaan yang sedang aktif
     const currentSection = sections[currentSectionIndex];
@@ -86,110 +150,150 @@ const handleValueChoice = (questionId: number, val: any, selectedOption?: any) =
         }
     };
 
-const handleAddPhoto = (questionId: number, e: React.ChangeEvent<HTMLInputElement>, questionItem: any) => {
+const handleFileUpload = async (questionId: number, e: React.ChangeEvent<HTMLInputElement>, questionItem: any) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Parse validation_rules dari pertanyaan terkait
-    let rules: any = {};
-    if (questionItem.validation_rules) {
-        try {
-            rules = typeof questionItem.validation_rules === 'string' 
-                ? JSON.parse(questionItem.validation_rules) 
-                : questionItem.validation_rules;
-            
-            // Jika disimpan sebagai array (misal format [{...}])
-            if (Array.isArray(rules)) rules = rules[0] || {};
-        } catch (e) {
-            console.error("Gagal parsing validation rules", e);
-        }
-    }
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('question_id', String(questionId)); // <-- Kirim ID agar backend bisa baca validation_rules admin
+    formData.append('folder', 'question-files');
 
-    // 1. Cek Batasan Ukuran File (max_file_size)
-    if (rules.max_file_size) {
-        const maxBytes = parseFileSizeToBytes(rules.max_file_size);
-        if (file.size > maxBytes) {
-            triggerError(`File yang Anda kirim melebihi ukuran maksimal ${rules.max_file_size}.`);
-            e.target.value = ''; // Reset input file
-            return;
-        }
-    }
-
-    // 2. Cek Format / Tipe File yang Diizinkan (allowed_file_type)
-    if (rules.allowed_file_type && Array.isArray(rules.allowed_file_type) && rules.allowed_file_type.length > 0) {
-        const fileExtension = file.name.split('.').pop()?.toLowerCase();
-        
-        const isAllowed = rules.allowed_file_type.some((type: string) => {
-            const cleanType = type.toLowerCase().trim();
-            // Cocokkan berdasarkan kategori (IMAGE, PDF, dll) atau ekstensi file langsung
-            if (cleanType === 'image' && file.type.startsWith('image/')) return true;
-            if (cleanType === 'video' && file.type.startsWith('video/')) return true;
-            if (cleanType === 'pdf' && (file.type === 'application/pdf' || fileExtension === 'pdf')) return true;
-            if (cleanType === 'document' && (file.type.includes('word') || file.type.includes('sheet') || ['doc', 'docx', 'xls', 'xlsx', 'pdf'].includes(fileExtension || ''))) return true;
-            
-            return file.type.includes(cleanType) || cleanType === fileExtension;
+    try {
+        const response = await axios.post('/inspection-form/upload-temp', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
         });
 
-        if (!isAllowed) {
-            triggerError(`Format file tidak sesuai. Format yang diizinkan: ${rules.allowed_file_type.join(', ')}.`);
-            e.target.value = ''; // Reset input file
-            return;
+        const filePath = response.data.path;
+
+        setAnswers(prev => {
+            const currentAns = getAnswer(questionId);
+            return {
+                ...prev,
+                [questionId]: { 
+                    ...currentAns, 
+                    value: filePath 
+                }
+            };
+        });
+        setErrorMessage(null);
+        e.target.value = '';
+
+    } catch (error: any) {
+        console.error("Gagal mengunggah file:", error);
+        const serverMsg = error.response?.data?.message || "Gagal mengunggah file. Periksa ukuran dan formatnya.";
+        triggerError(serverMsg);
+    }
+};
+
+const handleAddPhoto = async (questionId: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validasi tipe file & ukuran tetap sama...
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+    if (!allowedTypes.includes(file.type)) {
+        triggerError('Format foto evidence harus berupa JPG, JPEG, atau PNG.');
+        e.target.value = '';
+        return;
+    }
+
+    const maxSizeBytes = 2 * 1024 * 1024; // 2MB
+    if (file.size > maxSizeBytes) {
+        triggerError('Ukuran foto evidence terlalu besar. Maksimal 2MB.');
+        e.target.value = '';
+        return;
+    }
+
+    // Jika sebelumnya sudah ada foto tersimpan, hapus dulu file fisiknya dari storage server
+    const currentAns = getAnswer(questionId);
+    if (currentAns.photos && typeof currentAns.photos === 'string') {
+        try {
+            await axios.post('/inspection-form/remove-file', { path: currentAns.photos });
+        } catch (error) {
+            console.error("Gagal membersihkan foto lama:", error);
         }
     }
 
-    // Jika lolos semua validasi file, simpan ke state answer
-    setAnswers(prev => ({
-        ...prev,
-        [questionId]: { ...getAnswer(questionId), value: file }
-    }));
-    setErrorMessage(null);
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('folder', 'evidence-photos');
+
+    try {
+        const response = await axios.post('/inspection-form/upload-temp', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+
+        const filePath = response.data.path; // string path tunggal
+
+        // Simpan sebagai string biasa
+        setAnswers(prev => {
+            const currentAns = getAnswer(questionId);
+            return {
+                ...prev,
+                [questionId]: { 
+                    ...currentAns, 
+                    photos: filePath // Langsung string path tunggal
+                }
+            };
+        });
+        setErrorMessage(null);
+        e.target.value = '';
+
+    } catch (error: any) {
+        console.error("Gagal mengunggah foto evidence:", error);
+        const serverMsg = error.response?.data?.message || "Gagal mengunggah foto evidence ke server.";
+        triggerError(serverMsg);
+    }
 };
 
-// 1. Khusus menghapus berkas pada pertanyaan bertipe FILE
-const handleRemoveFile = (questionId: number, fileIndex: number) => {
-    setAnswers(prev => {
-        const currentAns = prev[questionId] || { value: '', photos: [], note: '' };
-        const updatedPhotos = [...(currentAns.photos || [])];
-        updatedPhotos.splice(fileIndex, 1);
+const handleRemoveEvidencePhoto = async (questionId: number) => {
+    const currentAns = getAnswer(questionId);
+    const photoPath = currentAns.photos;
 
+    if (photoPath && typeof photoPath === 'string') {
+        try {
+            await axios.post('/inspection-form/remove-file', { path: photoPath });
+        } catch (error) {
+            console.error("Gagal menghapus file evidence fisik dari server:", error);
+        }
+    }
+
+    setAnswers(prev => {
+        const currentAns = prev[questionId] || { value: '', photos: '', note: '' };
         return {
             ...prev,
             [questionId]: {
                 ...currentAns,
-                photos: updatedPhotos
+                photos: '' 
             }
         };
     });
 };
 
+const handleRemoveFile = async (questionId: number) => {
+    const currentAns = getAnswer(questionId);
+    const filePath = currentAns.value;
 
-const handleRemoveEvidencePhoto = (questionId: number, photoIndex: number) => {
+    if (filePath && typeof filePath === 'string') {
+        try {
+            await axios.post('/inspection-form/remove-file', { path: filePath });
+        } catch (error) {
+            console.error("Gagal menghapus file fisik dari server:", error);
+        }
+    }
+
     setAnswers(prev => {
         const currentAns = prev[questionId] || { value: '', photos: [], note: '' };
-        const updatedPhotos = [...(currentAns.photos || [])];
-        updatedPhotos.splice(photoIndex, 1);
-
         return {
             ...prev,
             [questionId]: {
                 ...currentAns,
-                photos: updatedPhotos
+                value: '' 
             }
         };
     });
-};
-
-    // Helper converter ukuran file (misal "5MB" ke Bytes)
-    const parseFileSizeToBytes = (sizeStr: string): number => {
-        const unit = sizeStr.toUpperCase().replace(/[0-9]/g, '').trim();
-        const num = parseFloat(sizeStr);
-        if (unit === 'KB') return num * 1024;
-        if (unit === 'MB') return num * 1024 * 1024;
-        if (unit === 'GB') return num * 1024 * 1024 * 1024;
-        return num; // Default bytes
-    };
-
-    
+};    
 
     const handleNext = () => {
         const questions = currentSection?.questions || [];
@@ -284,6 +388,7 @@ const handleRemoveEvidencePhoto = (questionId: number, photoIndex: number) => {
         handleValueChoice,
         handlePrev,
         handleAddPhoto,
+        handleFileUpload,
         handleRemoveEvidencePhoto,
         handleRemoveFile,
         handleNext,

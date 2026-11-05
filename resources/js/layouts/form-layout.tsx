@@ -1,4 +1,5 @@
-import { Link } from "@inertiajs/react";
+import { Link, usePage } from "@inertiajs/react";
+import { useState } from "react";
 
 interface FormLayoutProps {
     children: React.ReactNode;
@@ -25,6 +26,29 @@ export default function FormLayout({
     onSubmitFinal,
     isSubmitting = false,
 }: FormLayoutProps) {
+
+    const { task, form } = usePage<any>().props;
+
+    // Cari judul form dari relasi task->form atau langsung dari props form
+    const formTitle = task?.form?.form_title || form?.form_title || 'Formulir Inspeksi';
+
+    const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+    const handleActionClick = () => {
+        if (isLastSection) {
+            // Jika di section terakhir, jangan langsung kirim, tapi buka modal konfirmasi dulu
+            setShowConfirmModal(true);
+        } else {
+            handleNext(); // Lanjut ke section berikutnya
+        }
+    };
+
+    const handleConfirmSubmit = () => {
+        setShowConfirmModal(false);
+        if (onSubmitFinal) {
+            onSubmitFinal(); // Eksekusi fungsi submit yang sebenarnya
+        }
+    };
     return (
         <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans">
             {/* Topbar Header */}
@@ -34,13 +58,13 @@ export default function FormLayout({
                     <div>
                         <span className="block text-[9px] text-slate-400">PT LELCO TRINDO NUSANTARA</span>
                         <strong className="block text-sm font-extrabold leading-tight text-white">
-                            L1 Injection Molding
+                            {formTitle}
                         </strong>
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
                     <Link
-                        href="/machines"
+                        href="/inspection-calender"
                         className="text-xs font-bold border border-slate-700 hover:bg-slate-800 text-slate-300 px-3 py-2 rounded-xl transition-colors"
                     >
                         Tutup
@@ -86,17 +110,11 @@ export default function FormLayout({
                         </div>
                     </div>
 
-                   {/* Tombol Selanjutnya / Selesai & Kirim */}
+                 {/* Tombol Selanjutnya / Selesai & Kirim */}
                     <button
                         type="button"
                         disabled={isSubmitting}
-                        onClick={() => {
-                            if (isLastSection && onSubmitFinal) {
-                                onSubmitFinal(); // Panggil fungsi submit final jika di section terakhir
-                            } else {
-                                handleNext(); // Lanjut ke section berikutnya
-                            }
-                        }}
+                        onClick={handleActionClick}
                         className={`
                             px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer active:scale-95 disabled:opacity-50
                             ${isLastSection
@@ -116,6 +134,49 @@ export default function FormLayout({
                     </button>
                 </div>
             </footer>
+           {/* --- MODAL KONFIRMASI (SIMPLE, CENTERED, WITH WARNING) --- */}
+            {showConfirmModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center space-y-4 border border-slate-100 transform transition-all scale-100">
+                        
+                        {/* Ikon Bulat Simpel */}
+                        <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto text-xl font-bold">
+                            ⚠️
+                        </div>
+
+                        {/* Teks / Informasi & Peringatan Abnormal */}
+                        <div className="space-y-2">
+                            <h3 className="text-base font-bold text-slate-900">
+                                Kirim Hasil Inspeksi?
+                            </h3>
+                            <p className="text-xs text-slate-500 leading-relaxed px-1">
+                                Pastikan data sudah benar. Jika terdapat temuan <strong className="text-rose-600 font-semibold">abnormal</strong>, sistem akan <strong className="text-slate-700">otomatis menerbitkan tiket eskalasi</strong>.
+                            </p>
+                        </div>
+
+                        {/* Tombol Aksi (Centered / Sejajar) */}
+                        <div className="flex items-center gap-2.5 pt-2">
+                            <button
+                                type="button"
+                                onClick={() => setShowConfirmModal(false)}
+                                disabled={isSubmitting}
+                                className="flex-1 px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 transition cursor-pointer"
+                            >
+                                Periksa Lagi
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmSubmit}
+                                disabled={isSubmitting}
+                                className="flex-1 px-4 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm transition active:scale-95 disabled:opacity-50 cursor-pointer"
+                            >
+                                {isSubmitting ? 'Mengirim...' : 'Ya, Kirim'}
+                            </button>
+                        </div>
+
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

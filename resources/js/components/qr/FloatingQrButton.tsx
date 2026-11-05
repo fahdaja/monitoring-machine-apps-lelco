@@ -10,26 +10,12 @@ interface Position {
 }
 
 export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProps) {
-    // 1. State Posisi Tombol (Default di kanan bawah)
-    const [position, setPosition] = useState<Position>(() => {
-        const saved = localStorage.getItem('md_qr_btn_pos_v2');
-        if (saved) {
-            try {
-                return JSON.parse(saved);
-            } catch (e) {
-                // Ignore parse error
-            }
-        }
-        return {
-            x: window.innerWidth - 80,
-            y: window.innerHeight - 100,
-        };
-    });
-
+    const [position, setPosition] = useState<Position>({ x: 20, y: 20 });
+    const [isClient, setIsClient] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
     const [isScannerOpen, setIsScannerOpen] = useState(false);
-    const [scanResult, setScanResult] = useState<string | null>(null);
-    
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
     const dragRef = useRef({
         startX: 0,
         startY: 0,
@@ -38,20 +24,39 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
         hasMoved: false,
     });
 
-    const html5QrCodeRef = useRef<any>(null);
+    const scannerInstanceRef = useRef<any>(null);
 
-    // Load Script HTML5-Qrcode CDN secara dinamis saat komponen dipasang
+    // 1. Load posisi dari localStorage & Inject Script CDN secara aman saat di client-side
     useEffect(() => {
-        if (!document.getElementById('html5-qrcode-script')) {
-            const script = document.createElement('script');
-            script.id = 'html5-qrcode-script';
-            script.src = 'https://unpkg.com/html5-qrcode';
-            script.async = true;
-            document.body.appendChild(script);
+        setIsClient(true);
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('md_qr_btn_pos_v2');
+            if (saved) {
+                try {
+                    setPosition(JSON.parse(saved));
+                } catch (e) {
+                    // Ignore
+                }
+            } else {
+                setPosition({
+                    x: window.innerWidth - 80,
+                    y: window.innerHeight - 100,
+                });
+            }
+
+            // Inject script html5-qrcode ke dokumen jika belum ada
+            // @ts-ignore
+            if (!window.Html5Qrcode && !document.getElementById('html5-qrcode-cdn')) {
+                const script = document.createElement('script');
+                script.id = 'html5-qrcode-cdn';
+                script.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
+                script.async = true;
+                document.body.appendChild(script);
+            }
         }
     }, []);
 
-    // 2. Event Handlers Dragging
+    // Dragging Handlers
     const handlePointerDown = (e: PointerEvent<HTMLButtonElement>) => {
         const button = e.currentTarget;
         button.setPointerCapture(e.pointerId);
@@ -63,7 +68,6 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
             initialY: position.y,
             hasMoved: false,
         };
-
         setIsDragging(true);
     };
 
@@ -80,11 +84,8 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
         if (!dragRef.current.hasMoved) return;
 
         const padding = 10;
-        const buttonWidth = 60;
-        const buttonHeight = 60;
-
-        const maxX = window.innerWidth - buttonWidth - padding;
-        const maxY = window.innerHeight - buttonHeight - padding;
+        const maxX = window.innerWidth - 60 - padding;
+        const maxY = window.innerHeight - 60 - padding;
 
         const newX = Math.min(maxX, Math.max(padding, dragRef.current.initialX + dx));
         const newY = Math.min(maxY, Math.max(padding, dragRef.current.initialY + dy));
@@ -94,72 +95,125 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
 
     const handlePointerUp = (e: PointerEvent<HTMLButtonElement>) => {
         if (!isDragging) return;
-
         setIsDragging(false);
         try {
             e.currentTarget.releasePointerCapture(e.pointerId);
-        } catch (err) {
-            // Safe fallback
-        }
+        } catch (err) {}
 
         if (dragRef.current.hasMoved) {
             localStorage.setItem('md_qr_btn_pos_v2', JSON.stringify(position));
         } else {
-            // Klik terdeteksi: Buka Modal Scanner Kamera
-            openScanner();
+            openScannerModal();
         }
     };
 
-    // Fungsi Membuka Kamera & Scanner
-    const openScanner = () => {
+    // 🚀 Buka Scanner Modal & Inisialisasi Kamera dengan ID String Stabil
+    const openScannerModal = () => {
         setIsScannerOpen(true);
-        setScanResult(null);
+        setErrorMessage(null);
 
+        // Beri waktu 400ms agar modal & elemen div dengan id="reader-target-box" selesai dirender React
         setTimeout(() => {
-            // Pastikan library dari CDN sudah siap
             // @ts-ignore
-            if (window.Html5Qrcode) {
-                // @ts-ignore
-                const scanner = new window.Html5Qrcode("reader-container");
-                html5QrCodeRef.current = scanner;
+            const Html5Qrcode = window.Html5Qrcode;
+
+            if (!Html5Qrcode) {
+                setErrorMessage("Modul pemindai sedang dimuat. Coba beberapa saat lagi.");
+                return;
+            }
+
+            const targetElement = document.getElementById("reader-target-box");
+            if (!targetElement) {
+                setErrorMessage("Container kamera belum siap.");
+                return;
+            }
+
+            try {
+                const scanner = new Html5Qrcode("reader-target-box");
+                scannerInstanceRef.current = scanner;
 
                 scanner.start(
                     { facingMode: "environment" },
-                    { fps: 10, qrbox: 250 },
+                    { fps: 20, qrbox: { width: 240, height: 240 } },
                     (decodedText: string) => {
-                        setScanResult(decodedText);
-                        // Matikan kamera setelah sukses
-                        scanner.stop().then(() => {
-                            setIsScannerOpen(false);
-                            if (onScanSuccess) {
-                                onScanSuccess(decodedText);
-                            }
-                        }).catch((err: any) => console.error(err));
+                        console.log("QR Berhasil Discan:", decodedText);
+                        if (decodedText && decodedText.trim() !== "") {
+                            scanner.stop().then(() => {
+                                setIsScannerOpen(false);
+                                scannerInstanceRef.current = null;
+                                if (onScanSuccess) {
+                                    onScanSuccess(decodedText.trim());
+                                }
+                            }).catch(() => {
+                                setIsScannerOpen(false);
+                            });
+                        }
                     },
                     (errorMessage: string) => {
-                        // Error scan frame (biasanya diabaikan agar tidak spam console)
+                        // Abaikan error saat frame kosong
                     }
                 ).catch((err: any) => {
-                    console.error("Gagal membuka kamera:", err);
-                    alert("Gagal mengakses kamera perangkat.");
-                    setIsScannerOpen(false);
+                    console.error("Gagal start kamera:", err);
+                    setErrorMessage("Gagal mengakses kamera. Pastikan izin kamera diizinkan (Gunakan HTTPS atau Localhost).");
                 });
+            } catch (e) {
+                console.error("Gagal inisialisasi scanner:", e);
+                setErrorMessage("Terjadi kesalahan saat membuka modul kamera.");
             }
-        }, 300);
+        }, 400);
     };
 
-    // Fungsi Menutup Scanner Manual
-    const closeScanner = () => {
-        if (html5QrCodeRef.current) {
-            html5QrCodeRef.current.stop().then(() => {
+    // 📸 Alternatif: Scan dari File Gambar / Galeri / Foto Langsung
+    const handleScanFromFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // @ts-ignore
+        const Html5Qrcode = window.Html5Qrcode;
+        if (!Html5Qrcode) {
+            alert("Modul belum siap.");
+            return;
+        }
+
+        const html5QrCode = new Html5Qrcode("reader-target-box");
+        html5QrCode.scanFile(file, true)
+            .then((decodedText: string) => {
+                console.log("QR Berhasil dari file:", decodedText);
+                
+                // 🚀 Tutup modal scanner secara otomatis setelah sukses
                 setIsScannerOpen(false);
+                
+                if (scannerInstanceRef.current) {
+                    try { scannerInstanceRef.current.clear(); } catch (e) {}
+                    scannerInstanceRef.current = null;
+                }
+
+                if (decodedText && decodedText.trim() !== "") {
+                    if (onScanSuccess) {
+                        onScanSuccess(decodedText.trim());
+                    }
+                }
+            })
+            .catch((err: any) => {
+                alert("QR Code tidak ditemukan atau tidak terbaca pada gambar tersebut.");
+            });
+    };  
+    // Tutup Scanner / Matikan Kamera
+    const closeScannerModal = () => {
+        if (scannerInstanceRef.current) {
+            scannerInstanceRef.current.stop().then(() => {
+                setIsScannerOpen(false);
+                scannerInstanceRef.current = null;
             }).catch(() => {
                 setIsScannerOpen(false);
+                scannerInstanceRef.current = null;
             });
         } else {
             setIsScannerOpen(false);
         }
     };
+
+    if (!isClient) return null;
 
     return (
         <>
@@ -183,12 +237,7 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
             >
                 <div className="w-11 h-11 bg-white text-slate-900 rounded-full flex items-center justify-center shadow-inner pointer-events-none">
                     <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M12 4v16m8-8H4"
-                        />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                     </svg>
                 </div>
                 <span className="text-xs font-extrabold text-white px-2.5 hidden sm:inline pointer-events-none">
@@ -196,28 +245,37 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
                 </span>
             </button>
 
-            {/* Modal / Popup Kamera Scanner */}
+            {/* Modal Kamera & Scanner */}
             {isScannerOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-                    <div className="bg-white rounded-2xl max-w-md w-full p-6 relative shadow-2xl flex flex-col items-center">
-                        <h3 className="text-lg font-bold text-slate-800 mb-4">Arahkan Kamera ke QR Code</h3>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4">
+                    <div className="bg-white rounded-2xl max-w-sm w-full p-5 relative shadow-2xl flex flex-col items-center">
+                        <h3 className="text-sm font-bold text-slate-800 mb-2">Scan QR Code Mesin</h3>
                         
-                        {/* Wadah Tampilan Kamera dari Html5Qrcode */}
-                        <div id="reader-container" className="w-full rounded-xl overflow-hidden bg-slate-100"></div>
+                        {/* Target Kotak Kamera dengan ID stabil */}
+                        <div id="reader-target-box" className="w-full rounded-xl overflow-hidden bg-slate-100 min-h-[260px] relative"></div>
 
-                        {scanResult && (
-                            <div className="mt-4 p-3 bg-green-50 text-green-700 rounded-lg text-sm w-full text-center font-medium">
-                                Berhasil: {scanResult}
+                        {errorMessage && (
+                            <div className="mt-3 w-full bg-rose-50 border border-rose-200 p-2.5 rounded-xl text-center">
+                                <p className="text-[11px] text-rose-600 font-medium leading-relaxed">
+                                    {errorMessage}
+                                </p>
                             </div>
                         )}
 
-                        <button
-                            type="button"
-                            onClick={closeScanner}
-                            className="mt-5 w-full py-2.5 px-4 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-colors"
-                        >
-                            Tutup Kamera
-                        </button>
+                        <div className="mt-4 w-full flex flex-col gap-2">
+                            <label className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl text-center cursor-pointer transition">
+                                📁 Upload / Foto QR dari Galeri
+                                <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleScanFromFile} />
+                            </label>
+                            
+                            <button
+                                type="button"
+                                onClick={closeScannerModal}
+                                className="w-full py-2.5 px-4 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                            >
+                                Tutup
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

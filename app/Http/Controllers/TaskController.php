@@ -16,6 +16,7 @@ use App\Models\FormQuestion;
 use App\Models\FormOption;
 use App\Models\Task;
 use App\Models\TaskSubmission;
+use App\Models\BreakdownTicket;
 use Carbon\Carbon;
 
 class TaskController extends Controller {
@@ -101,11 +102,22 @@ class TaskController extends Controller {
     public function index(){
         $tasks = Task::with(['machine', 'form', 'user'])->whereIn('status', ['UPCOMING', 'IN_PROGRESS', 'OVERDUE', 'DUE', 'COMPLETED'])->orderBy('due_date', 'asc')->get();
 
+ 
+        
         foreach ($tasks as $task) {
-        if (Carbon::now()->isAfter($task->due_date) && !in_array($task->status, ['COMPLETED', 'OVERDUE'])) {
+            if (!$task->due_date) {
+        continue;
+    }
+        if ($task->status === 'UPCOMING' && ($now->equalTo($dueDate) || $now->isAfter($dueDate))) {
+                $task->update(['status' => 'DUE']);
+                $task->refresh();
+        }
+        if ($task->due_date && Carbon::now()->isAfter($task->due_date) && !in_array($task->status, ['COMPLETED', 'OVERDUE', 'IN_PROGRESS'])) {
             $task->update(['status' => 'OVERDUE']);
+            $task->refresh(); // Refresh instance agar status terupdate di memori
         }
     }
+
     $formattedTasks = $tasks->map(function($task){
         $machine = $task->machine;
         $inspectorName = $task->user->full_name ?? 'Belum ditugaskan';
@@ -121,6 +133,7 @@ class TaskController extends Controller {
             'status' => $task->status,
             'inspectorName' => $inspectorName,
             'completedAt' => $task->completed_at ? Carbon::parse($task->completed_at)->format('H:i') : null,
+            'assignedUserId' => $task->assigned_user_id,
         ];
     });
 
@@ -140,8 +153,9 @@ class TaskController extends Controller {
     }
 
 
-    public function show($id){
-        $task = Task::with([
+    public function show($id)
+{
+    $task = Task::with([
         'form.machine',
         'form.sections' => function($query) {
             $query->orderBy('section_order', 'asc');
@@ -154,90 +168,90 @@ class TaskController extends Controller {
         }
     ])->findOrFail($id);
 
-
-    // --- OTOMATIS UPDATE STATUS & ASSIGNED USER SAAT DIBUKA ---
     $userId = auth()->id();
     $updateData = [];
 
-    // Jika task belum memiliki assigned user, tetapkan ke user yang sedang login
+    if ($task->status === 'COMPLETED') {
+        return redirect()->route('tasks.index')->with('error', 'Task ini sudah selesai dikerjakan.');
+    }
+
+    if (!is_null($task->assigned_user_id) && $task->assigned_user_id !== $userId) {
+        return redirect()->route('tasks.index')
+            ->with('error', 'Task ini sedang dikerjakan atau sudah di-assign ke teknisi lain.');
+    }
+
     if (is_null($task->assigned_user_id)) {
         $updateData['assigned_user_id'] = $userId;
     }
 
-    // Jika status awal task masih DUE / OVERDUE / UPCOMING, ubah jadi IN_PROGRESS
-    if (in_array($task->status, ['DUE', 'OVERDUE', null])) {
+    if (in_array($task->status, ['DUE', 'OVERDUE', null ])) {
         $updateData['status'] = 'IN_PROGRESS';
     }
 
-    // Lakukan update ke database jika ada perubahan status atau penugasan
     if (!empty($updateData)) {
         $task->update($updateData);
     }
-    // ---------------
 
+    // --- CARI DRAFT DENGAN AMAN ---
     $draft = TaskSubmission::where('task_id', $task->id)
-                           ->where('user_id', auth()->id())
+                           ->where('user_id', $userId)
                            ->where('status', 'DRAFT')
                            ->first();
 
     $initialAnswersMap = [];
 
-// Di dalam method show($id):
-if ($draft && isset($draft->answers_values['sections'])) {
-    foreach ($draft->answers_values['sections'] as $section) {
-        foreach ($section['questions'] as $q) {
-            $answerDetail = $q['answer_detail'] ?? [];
+    // Jika draft ditemukan, ekstrak datanya
+    if ($draft && !empty($draft->answers_values)) {
+        $answersData = $draft->answers_values;
 
-            $initialAnswersMap[$q['form_question_id']] = [
-                'value'  => $answerDetail['value'] ?? '',
-                'note'   => $answerDetail['note'] ?? '',
-                'photos' => $answerDetail['photos'] ?? [],
-            ];
+        // Mendukung struktur enterprise snapshot (yang memiliki key 'sections')
+        if (isset($answersData['sections']) && is_array($answersData['sections'])) {
+            foreach ($answersData['sections'] as $section) {
+                if (isset($section['questions']) && is_array($section['questions'])) {
+                    foreach ($section['questions'] as $q) {
+                        $qId = $q['form_question_id'] ?? null;
+                        $answerDetail = $q['answer_detail'] ?? [];
+
+                        if ($qId) {
+                            $initialAnswersMap[$qId] = [
+                                'value'  => $answerDetail['value'] ?? '',
+                                'note'   => $answerDetail['note'] ?? '',
+                                'photos' => $answerDetail['photos'] ?? '', // String tunggal foto evidence
+                            ];
+                        }
+                    }
+                }
+            }
+        } 
+        // Jikalau struktur lama berupa key-value langsung (fallback)
+        else {
+            $initialAnswersMap = $answersData;
         }
     }
-}
 
-    // Render ke halaman React yang sesuai (misal: 'tasks/show' atau 'inspection-form')
+    // Kirim ke Inertia React
     return Inertia::render('tasks/show', [
-        'task' => $task, // Kirim sebagai 'task' agar sesuai dengan komponen frontend
+        'task' => $task,
         'initialAnswers' => $initialAnswersMap
     ]);
-    }
-
+}
     public function submit(Request $request, $id)
     {
         // 1. Load task beserta relasi form, sections, questions, dan options
         $task = Task::with(['form.sections.questions.options', 'form.machine'])->findOrFail($id);
         
         // 2. Validasi input dari frontend
-        dd($request->all(), $request->allFiles());
         $validated = $request->validate([
             'answers' => 'required|array',
             'answers.*.value' => 'nullable',
             'answers.*.note' => 'nullable|string',
-            'answers.*.photos' => 'nullable|array',
-            'answers.*.photos.*' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120', // Validasi file max 5MB
+            'answers.*.photos' => 'string',
+            'answers.*.photos.*' => 'nullable|file|mimes:jpg,jpeg,png|max:5120', // Validasi file max 5MB
         ]);
         
     return DB::transaction(function () use ($request, $task, $validated) {
         $form = $task->form;
         $submittedAnswers = $validated['answers'];
-
-        // Proses upload file/photos evidence terlebih dahulu per pertanyaan
-        foreach ($submittedAnswers as $qId => &$ans) {
-            $uploadedPhotos = [];
-            
-            if ($request->hasFile("answers.{$qId}.photos")) {
-                foreach ($request->file("answers.{$qId}.photos") as $file) {
-                    $path = $file->store('evidence-photos', 'public');
-                    $uploadedPhotos[] = $path;
-                }
-            }
-            
-            // Masukkan path foto yang berhasil di-upload ke dalam array photos
-            $ans['photos'] = $uploadedPhotos;
-        }
-        unset($ans); // Putuskan referensi loop
 
         // 3. PANGGIL FUNGSI BUILD ENTERPRISE SNAPSHOT YANG SUDAH ANDA BUAT!
         $enterpriseSnapshot = $this->buildEnterpriseSnapshot($task, $submittedAnswers);
@@ -282,11 +296,11 @@ if ($draft && isset($draft->answers_values['sections'])) {
                     $ticket = BreakdownTicket::create([
                         'ticket_code'       => 'TKT-' . strtoupper(Str::random(6)),
                         'machine_id'        => $form->machine_id,
-                        'task_id'           => $task->id,
                         'source_type'       => 'AUTO_REPORT',
-                        'submission_id'     => $submission->id,
-                        'issue_description' => $issueDesc,
+                        'problem_category'  => 'Inspeksi Abnormal',
+                        'problem_descriptions' => $issueDesc,
                         'status'            => 'OPEN',
+                        'reported_at'       => now()
                     ]);
 
                     // Hubungkan submission dengan tiket eskalasi
@@ -301,8 +315,8 @@ if ($draft && isset($draft->answers_values['sections'])) {
             'completed_at' => now(),
         ]);
 
-        return redirect()->route('tasks.index')
-            ->with('success', 'Form inspeksi berhasil disubmit dengan struktur snapshot enterprise!');
+       return redirect()->route('tasks.index')
+                ->with('success', 'Form inspeksi berhasil diselesaikan dan tiket eskalasi telah diperiksa!');
     });
 }
     
@@ -311,10 +325,12 @@ public function saveDraft(Request $request, $id)
 {
     $task = Task::findOrFail($id);
     $rawAnswers = $request->input('answers', []);
+    if (!is_array($rawAnswers)) {
+        $rawAnswers = [];
+    }
 
-    // Rakit otomatis menjadi struktur enterprise snapshot
     $enterpriseSnapshot = $this->buildEnterpriseSnapshot($task, $rawAnswers);
-
+    
     $draft = TaskSubmission::firstOrCreate(
         ['task_id' => $task->id, 'status' => 'DRAFT'],
         [
@@ -332,5 +348,179 @@ public function saveDraft(Request $request, $id)
         'success' => true,
         'message' => 'Draft berhasil disimpan',
     ], 200);
+}
+
+public function uploadTempFile(Request $request)
+{
+    $folder = $request->input('folder', 'question-files');
+    $questionId = $request->input('question_id');
+
+    $maxKb = 5120; // Default 5MB
+    $allowedMimes = 'jpg,jpeg,png,pdf,doc,docx'; // Default format
+
+    // Jika ini question file dan membawa ID pertanyaan, baca validation_rules dari DB
+    if ($folder === 'question-files' && $questionId) {
+        $question = FormQuestion::find($questionId);
+        if ($question && $question->validation_rules) {
+            $rules = is_string($question->validation_rules) 
+                ? json_decode($question->validation_rules, true) 
+                : $question->validation_rules;
+            
+            // Ambil max_file_size jika ada (misal: "2MB" atau "500KB")
+            if (!empty($rules['max_file_size'])) {
+                $sizeStr = strtoupper($rules['max_file_size']);
+                $num = floatval($sizeStr);
+                if (str_contains($sizeStr, 'MB')) {
+    $maxKb = $num * 1024;
+} elseif (str_contains($sizeStr, 'KB')) {
+    $maxKb = $num;
+}
+            }
+
+            // Ambil allowed_file_type jika ada (misal: ["pdf", "jpg"] atau string)
+            if (!empty($rules['allowed_file_type'])) {
+                $types = is_array($rules['allowed_file_type']) 
+                    ? $rules['allowed_file_type'] 
+                    : explode(',', $rules['allowed_file_type']);
+                
+                $allowedMimes = implode(',', array_map('trim', $types));
+            }
+        }
+    } 
+    // Jika evidence foto, gunakan aturan statis khusus gambar
+    elseif ($folder === 'evidence-photos') {
+        $maxKb = 2048; // 2MB
+        $allowedMimes = 'jpg,jpeg,png';
+    }
+
+    // Jalankan validasi dinamis
+    $request->validate([
+        'file' => "required|file|mimes:{$allowedMimes}|max:{$maxKb}",
+    ], [
+        'file.mimes' => "Format file yang diizinkan: {$allowedMimes}.",
+        'file.max' => "Ukuran file melebihi batas maksimal yang ditentukan.",
+    ]);
+
+    if ($request->hasFile('file')) {
+        $file = $request->file('file');
+        $path = $file->store($folder, 'public');
+
+        return response()->json([
+            'success' => true,
+            'path' => $path,
+        ]);
+    }
+
+    return response()->json([
+        'success' => false,
+        'message' => 'Gagal mengunggah file.'
+    ], 400);
+}
+
+public function removeFile(Request $request)
+{
+    $request->validate([
+        'path' => 'required|string',
+    ]);
+
+    $path = $request->input('path');
+
+    // Cek apakah file benar-benar ada di disk public (mencakup folder evidence-photos / question-files)
+    if ($path && Storage::disk('public')->exists($path)) {
+        Storage::disk('public')->delete($path);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'File fisik berhasil dihapus dari storage.'
+        ]);
+    }
+
+    return response()->json([
+        'success' => false,
+        'message' => 'File tidak ditemukan di storage.'
+    ], 404);
+}
+
+
+public function apiFindTaskByMachine(Request $request, $code)
+{
+    // Bersihkan kode (jika yang diskan berupa URL lengkap, ambil bagian paling belakangnya)
+    $cleanCode = strtoupper(trim(basename($code)));
+    $userId = auth()->id();
+
+    // 1. Cari mesin berdasarkan kode atau ID
+    $machine = Machine::whereRaw('UPPER(machine_code) = ?', [$cleanCode])->first();
+
+    if (!$machine) {
+        return response()->json([
+            'success' => false,
+            'message' => "Mesin dengan kode '{$cleanCode}' tidak ditemukan di sistem."
+        ], 404);
+    }
+
+    // 2. Cari task aktif (DUE, OVERDUE, atau IN_PROGRESS) milik user ini
+    $task = Task::where('machine_id', $machine->id)
+        ->whereIn('status', ['DUE', 'OVERDUE', 'IN_PROGRESS'])
+        ->where(function($query) use ($userId) {
+            $query->where('assigned_user_id', $userId)
+                  ->orWhereNull('assigned_user_id');
+        })
+        ->orderBy('due_date', 'asc')
+        ->first();
+
+    if (!$task) {
+        return response()->json([
+            'success' => false,
+            'message' => "Tidak ada task aktif (Due/Overdue) untuk mesin {$machine->machine_name} ({$machine->machine_code})."
+        ], 404);
+    }
+
+    // 3. Kembalikan ID task yang dituju
+    return response()->json([
+        'success' => true,
+        'taskId' => $task->id,
+        'machineName' => $machine->machine_name
+    ]);
+}
+
+
+
+public function handleQrScanRedirect(Request $request, $machineCode)
+{
+    // 1. Jika user belum login, lempar ke halaman login
+    if (!auth()->check()) {
+        // Simpan URL yang ingin dituju agar setelah login bisa langsung diarahkan kembali ke sini
+        session(['url.intended' => request()->fullUrl()]);
+        return redirect()->route('login');
+    }
+
+    $userId = auth()->id();
+    $upperMachineCode = strtoupper(trim($machineCode));
+
+    // 2. Cari mesin berdasarkan kode QR
+    $machine = Machine::whereRaw('UPPER(machine_code) = ?', [$upperMachineCode])->first();
+
+    if (!$machine) {
+        return redirect()->route('tasks.index')
+            ->with('error', "Mesin dengan kode '{$machineCode}' tidak ditemukan di sistem.");
+    }
+
+    // 3. Cari task aktif (DUE, OVERDUE, IN_PROGRESS) untuk mesin ini dan user ini
+    $task = Task::where('machine_id', $machine->id)
+        ->whereIn('status', ['DUE', 'OVERDUE', 'IN_PROGRESS'])
+        ->where(function($query) use ($userId) {
+            $query->where('assigned_user_id', $userId)
+                  ->orWhereNull('assigned_user_id');
+        })
+        ->orderBy('due_date', 'asc')
+        ->first();
+
+    if (!$task) {
+        return redirect()->route('tasks.index')
+            ->with('error', "Tidak ada task aktif (Due/Overdue) untuk mesin {$machine->machine_name} ({$machine->machine_code}).");
+    }
+
+    // 4. Arahkan langsung ke halaman form inspeksi task tersebut
+    return redirect()->route('tasks.show', $task->id);
 }
 }

@@ -31,8 +31,6 @@ class BreakdownController extends Controller
                     'problem' => $ticket->description,
                     'status' => $ticket->status,
                     'pipelineStage' => $ticket->pipeline_stage,
-                    'priority' => $ticket->priority,
-                    'currentLevel' => $ticket->category,
                     'reportedAt' => $ticket->reported_at->format('Y-m-d H:i'),
                     'breakdownMinutes' => $ticket->calculated_downtime,
                 ];

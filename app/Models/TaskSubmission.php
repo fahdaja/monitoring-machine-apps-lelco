@@ -25,7 +25,7 @@ class TaskSubmission extends Model{
     ];
 
     protected $cast = [
-        'answers_values' => 'array'
+        'answers_values' => 'array',
     ];
 
     public function machine()

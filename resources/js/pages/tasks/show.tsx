@@ -10,7 +10,7 @@ import axios from "axios";
 type AnswerDetail = {
     value: any;
     note?: string;
-    photos?: File[];
+    photos?: string;
 };
 
 type AnswersMap = Record<number, AnswerDetail>;
@@ -40,6 +40,7 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
         getAnswer,
         handleValueChoice,
         handleNoteChange,
+        handleFileUpload,
         handleAddPhoto,
         handleRemoveEvidencePhoto,
         handleRemoveFile,
@@ -51,6 +52,7 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
         answers,
 
     } = useInspectionForm(sections, pageProps.initialAnswers || {});
+
 
 
     const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -101,10 +103,6 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
             return;
         }
 
-        if (!confirm("Apakah Anda yakin ingin menyelesaikan dan mengirimkan form inspeksi ini?")) {
-            return;
-        }
-
         setIsSubmitting(true);
 
         router.post(`/inspection-form/${taskId}/submit`, {
@@ -119,6 +117,8 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
             onFinish: () => setIsSubmitting(false),
         });
     };
+
+    console.log("Initial Answers dari Server:", pageProps.initialAnswers);
 
     return (
         <FormLayout
@@ -295,7 +295,8 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                                                                 <div className="flex flex-wrap gap-3">
                                                                     {question.options && question.options.length > 0 ? (
                                                                         question.options.map((opt: any) => {
-                                                                            const isSelected = ans.value === opt.id;
+                                                                            const currentAnswer = getAnswer(question.id);
+                                                                            const isSelected = currentAnswer.value === opt.id;
                                                                             return (
                                                                                 <button
                                                                                     key={opt.id}
@@ -381,35 +382,37 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                                                             );
 
                                                         case 'FILE':
-                                                            return (
-                                                                <div className="space-y-3">
-                                                                    <label className="bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 px-4 py-2.5 rounded-xl cursor-pointer inline-flex items-center gap-2 text-xs font-semibold transition">
-                                                                        <span>Pilih Berkas</span>
-                                                                        <input
-                                                                            type="file"
-                                                                            className="hidden"
-                                                                            onChange={(e) => handleAddPhoto(question.id, e, question)}
-                                                                        />
-                                                                    </label>
+    const fileValue = ans.value; // Bisa berupa string path dari server atau objek File lokal
+    const fileName = typeof fileValue === 'string' ? fileValue.split('/').pop() : (fileValue instanceof File ? fileValue.name : '');
 
-                                                                    {ans.value && ans.value.length > 0 && (
-                                                                        <div className="space-y-1 pt-1">
-                                                                            {ans.value.map((file: File, fIdx: number) => (
-                                                                                <div key={fIdx} className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-200 flex justify-between items-center">
-                                                                                    <span className="truncate max-w-[200px]">📎 {file.name}</span>
-                                                                                    <button
-                                                                                        type="button"
-                                                                                        onClick={() => handleRemoveFile(question.id, fIdx)}
-                                                                                        className="text-rose-600 font-bold hover:underline cursor-pointer"
-                                                                                    >
-                                                                                        Hapus
-                                                                                    </button>
-                                                                                </div>
-                                                                            ))}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            );
+    return (
+        <div className="space-y-3">
+            <label className="bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 px-4 py-2.5 rounded-xl cursor-pointer inline-flex items-center gap-2 text-xs font-semibold transition">
+                <span>Pilih Berkas</span>
+                <input
+                    type="file"
+                    className="hidden"
+                    onChange={(e) => handleFileUpload(question.id, e, question)}
+                />
+            </label>
+
+            {/* Cek apakah ada file (baik berupa File object maupun string path) */}
+            {fileValue && (
+                <div className="space-y-1 pt-1">
+                    <div className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-200 flex justify-between items-center">
+                        <span className="truncate max-w-[200px]">📎 {fileName}</span>
+                        <button
+                            type="button"
+                            onClick={() => handleRemoveFile(question.id)}
+                            className="text-rose-600 font-bold hover:underline cursor-pointer"
+                        >
+                            Hapus
+                        </button>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
 
                                                         case 'DATE':
                                                             return <input type="date" value={String(ans.value || '')} onChange={(e) => handleValueChoice(question.id, e.target.value)} className="w-full p-3 text-sm bg-white border border-slate-200 rounded-xl" />;
@@ -452,26 +455,26 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                                                                 <label className="block text-xs font-bold text-slate-700">Upload Evidence Foto <span className="text-rose-600">*</span></label>
                                                                 <label className="bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 px-4 py-2 rounded-xl cursor-pointer text-xs font-semibold inline-block">
                                                                     <span>Ambil / Pilih Foto</span>
-                                                                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handleAddPhoto(question.id, e, question)} />
+                                                                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handleAddPhoto(question.id, e)} />
                                                                 </label>
 
-                                                                {ans.photos && ans.photos.length > 0 && (
-                                                                    <div className="space-y-1 pt-1">
-                                                                        {ans.photos.map((photo: File, pIdx: number) => (
-                                                                            <div key={pIdx} className="flex items-center justify-between bg-white border border-slate-200 p-2.5 rounded-lg text-xs">
-                                                                                <span className="truncate max-w-[200px] font-medium text-slate-700">📎 {photo.name}</span>
-                                                                                {/* Kirim question.id dan pIdx */}
-                                                                                <button
-                                                                                    type="button"
-                                                                                    onClick={() => handleRemoveEvidencePhoto(question.id, pIdx)}
-                                                                                    className="text-rose-600 font-bold hover:underline cursor-pointer"
-                                                                                >
-                                                                                    Hapus
-                                                                                </button>
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                )}
+                                                                {ans.photos && typeof ans.photos === 'string' && (
+    <div className="relative group w-20 h-20 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 shadow-xs pt-1">
+        <img 
+            src={`/storage/${ans.photos}`} 
+            alt="Evidence" 
+            className="w-full h-full object-cover"
+        />
+        <button
+            type="button"
+            onClick={() => handleRemoveEvidencePhoto(question.id)} // Tidak perlu kirim index lagi
+            className="absolute top-1 right-1 bg-rose-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-90 hover:opacity-100 transition shadow-md cursor-pointer"
+            title="Hapus foto"
+        >
+            ✕
+        </button>
+    </div>
+)}
                                                             </div>
                                                         </div>
                                                     );

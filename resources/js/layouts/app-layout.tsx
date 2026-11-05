@@ -1,7 +1,8 @@
 import React, { useState, useEffect, ReactNode } from 'react';
-import { Link, usePage } from '@inertiajs/react';
+import { Link, router, usePage } from '@inertiajs/react';
 import FloatingQrButton from '../components/qr/FloatingQrButton';
 import { AlertCircle, CheckCircle2, X } from 'lucide-react';
+import axios from 'axios';
 
 interface AppLayoutProps {
     children: ReactNode;
@@ -31,6 +32,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
     const user = pageProps?.auth?.user;
     const { flash } = usePage<PageProps>().props;
 
+    const [scanAlertMessage, setScanAlertMessage] = useState<string | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [sidebarPinned, setSidebarPinned] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
@@ -164,6 +166,64 @@ export default function AppLayout({ children }: AppLayoutProps) {
     })
 
     const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+
+
+    const handleGlobalQrScanSuccess = async (decodedText: string) => {
+    // 🔍 1. CEK INI: Apakah teks ini muncul di Console F12 saat kamu scan?
+    console.log("=== KAMERA BERHASIL SCAN:", decodedText);
+
+    if (!decodedText) {
+        console.warn("Teks hasil scan kosong!");
+        return;
+    }
+
+    let scannedValue = decodedText.trim();
+    
+    // Pembersihan teks QR
+    if (scannedValue.includes('http://') || scannedValue.includes('https://')) {
+        try {
+            const urlObj = new URL(scannedValue);
+            const segments = urlObj.pathname.split('/').filter(Boolean);
+            scannedValue = segments[segments.length - 1] || scannedValue;
+        } catch (e) {
+            scannedValue = scannedValue.split('/').pop() || scannedValue;
+        }
+    } else if (scannedValue.includes('/')) {
+        scannedValue = scannedValue.split('/').pop() || scannedValue;
+    }
+
+    const machineCode = scannedValue.trim().toUpperCase();
+    console.log("=== KODE MESIN YANG DIKIRIM KE API:", machineCode);
+
+    try {
+        const response = await axios.get(`/api/scan-task/${encodeURIComponent(machineCode)}`, {
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        });
+        
+        console.log("=== RESPON DARI BACKEND:", response.data);
+        const data = response.data;
+
+        if (data.success && data.taskId) {
+            router.visit(`/inspection-form/${data.taskId}`);
+        } else {
+            setScanAlertMessage(data.message || `Tidak ada task aktif untuk QR Code "${machineCode}".`);
+        }
+    } catch (error: any) {
+        console.error("=== ERROR SAAT FETCH API ===", error);
+        const errorMsg = error.response?.data?.message || `Gagal memverifikasi QR Code "${machineCode}" ke server.`;
+        setScanAlertMessage(errorMsg);
+    }
+};
+    if (!user) {
+    return (
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+            <div className="text-xs font-semibold text-slate-500 animate-pulse">Memuat sesi pengguna...</div>
+        </div>
+    );
+}
 
     return (
 
@@ -308,14 +368,40 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 </main>
             </div>
 
-          <FloatingQrButton 
-    onScanSuccess={(decodedText) => {
-        console.log("Hasil scan dari tombol floating:", decodedText);
-        
-        // Di sini kamu bisa kirim datanya ke backend Laravel atau lakukan sesuatu
-        // Contoh: kirimDataKeLaravel(decodedText);
-    }} 
-/>
+          {/* 2. Floating QR Button Terhubung ke Handler Global */}
+            <FloatingQrButton onScanSuccess={handleGlobalQrScanSuccess} />
+
+            {/* 3. Modal Peringatan Custom jika Task tidak ditemukan */}
+            {scanAlertMessage && (
+                <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 text-center animate-in fade-in zoom-in duration-200">
+                        <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3 text-amber-600 font-black text-xl">
+                            ⚠️
+                        </div>
+                        <h3 className="text-lg font-extrabold text-slate-900">Task Tidak Ditemukan</h3>
+                        <p className="text-xs text-slate-500 mt-2 leading-relaxed bg-amber-50/60 p-3 rounded-xl border border-amber-200/60">
+                            {scanAlertMessage}
+                        </p>
+
+                        <div className="mt-5 space-y-2">
+                            <button
+                                type="button"
+                                onClick={() => router.visit('/inspection-calender')}
+                                className="w-full py-2.5 px-4 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer shadow-sm"
+                            >
+                                Buka Halaman Kalender Task
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setScanAlertMessage(null)}
+                                className="w-full py-2 px-4 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                            >
+                                Tutup
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
