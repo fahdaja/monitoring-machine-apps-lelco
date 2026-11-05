@@ -9,11 +9,12 @@ use App\Models\FormSection;
 use App\Models\FormQuestion;
 use App\Models\FormOption;
 use App\Models\Machine;
+use App\Models\User;
 
 class Task extends Model {
 
     protected $table = 'tasks';
-    protected $primayKey = 'id';
+    protected $primaryKey = 'id';
     public $incrementing = true;
 
     protected $fillable = [
@@ -24,9 +25,10 @@ class Task extends Model {
         'assigned_user_id',
         'status',
         'due_date',
-        'completed_date',
-        'source_type',
+        'completed_at',
     ];
+
+
     
     public function form()
     {

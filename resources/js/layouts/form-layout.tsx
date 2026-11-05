@@ -9,6 +9,8 @@ interface FormLayoutProps {
     isLastSection: boolean;
     handlePrev: () => void;
     handleNext: () => void;
+    onSubmitFinal?: () => void;       
+    isSubmitting?: boolean;           
 }
 
 export default function FormLayout({
@@ -20,6 +22,8 @@ export default function FormLayout({
     isLastSection,
     handlePrev,
     handleNext,
+    onSubmitFinal,
+    isSubmitting = false,
 }: FormLayoutProps) {
     return (
         <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans">
@@ -82,19 +86,33 @@ export default function FormLayout({
                         </div>
                     </div>
 
-                    {/* Tombol Selanjutnya / Selesai */}
+                   {/* Tombol Selanjutnya / Selesai & Kirim */}
                     <button
                         type="button"
-                        onClick={handleNext}
+                        disabled={isSubmitting}
+                        onClick={() => {
+                            if (isLastSection && onSubmitFinal) {
+                                onSubmitFinal(); // Panggil fungsi submit final jika di section terakhir
+                            } else {
+                                handleNext(); // Lanjut ke section berikutnya
+                            }
+                        }}
                         className={`
-                            px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer active:scale-95
+                            px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer active:scale-95 disabled:opacity-50
                             ${isLastSection
                                 ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/30'
                                 : 'bg-slate-900 hover:bg-slate-800 text-white shadow-slate-900/20'
                             }
                         `}
                     >
-                        <span>{isLastSection ? 'Selesai & Kirim' : 'Selanjutnya'}</span>
+                        <span>
+                            {isSubmitting 
+                                ? 'Mengirim...' 
+                                : isLastSection 
+                                    ? 'Selesai & Kirim' 
+                                    : 'Selanjutnya'
+                            }
+                        </span>
                     </button>
                 </div>
             </footer>

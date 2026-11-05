@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import { toast } from 'sonner';
+import { AlertCircle, AlertTriangle, CheckCircle2, Loader2, Trash2 } from 'lucide-react';
 
 interface User {
     id: number;
@@ -29,42 +30,84 @@ interface UserIndexProps {
     };
 }
 
+interface TargetUser {
+    id: number;
+    full_name: string;
+    role: string;
+}
+
+interface ToastPayload {
+    type: 'success' | 'error';
+    title: string;
+    description?: string;
+}
+
 export default function UserIndex({ users = [], user }: UserIndexProps) {
     const pageProps = usePage().props as any;
     const currentUser = user || pageProps?.auth?.user;
     const isAdmin = currentUser?.role?.toUpperCase() === 'ADMIN';
 
-    // Pindahkan fungsi handleDelete ke DALAM komponen agar bisa mengakses data user yang diklik
-    const handleDelete = (targetUser: User) => {
-        // Cek jika user yang mau dihapus adalah ADMIN
+   // State untuk modal konfirmasi hapus
+    const [deleteTarget, setDeleteTarget] = useState<TargetUser | null>(null);
+    // State untuk status loading saat proses hapus
+    const [isDeleting, setIsDeleting] = useState(false);
+    // State untuk toast pesan sukses/gagal di atas
+    const [toastMessage, setToastMessage] = useState<ToastPayload | null>(null);
+
+    // Efek otomatis menghilangkan toast pesan setelah 4 detik
+    useEffect(() => {
+        if (toastMessage) {
+            const timer = setTimeout(() => {
+                setToastMessage(null);
+            }, 4000);
+            return () => clearTimeout(timer);
+        }
+    }, [toastMessage]);
+
+    // Fungsi klik tombol hapus dengan pengaman role ADMIN
+    const handleDeleteClick = (targetUser: User) => {
         if (targetUser.role?.toUpperCase() === 'ADMIN') {
-            toast.error('Gagal Dihapus!', {
+            setToastMessage({
+                type: 'error',
+                title: 'Aksi Ditolak',
                 description: 'Akun dengan role ADMIN dilindungi dari penghapusan.',
             });
             return;
         }
 
-        // Konfirmasi sebelum menghapus
-        toast.warning('Konfirmasi Hapus', {
-            description: `Yakin ingin menghapus user ${targetUser.username}?`,
-            action: {
-                label: 'Ya, Hapus',
-                onClick: () => {
-                    // 3. Contoh Penggunaan toast.promise untuk proses asinkronus ke server
-                    const deletePromise = new Promise((resolve, reject) => {
-                        router.delete(`/users/${targetUser.id}`, {
-                            preserveScroll: true,
-                            onSuccess: () => resolve(true),
-                            onError: () => reject(false),
-                        });
-                    });
+        setDeleteTarget({
+            id: targetUser.id,
+            full_name: targetUser.full_name || targetUser.username,
+            role: targetUser.role,
+        });
+    };
 
-                    toast.promise(deletePromise, {
-                        loading: 'Sedang menghapus user dari sistem...',
-                        success: 'User berhasil dihapus secara permanen!',
-                        error: 'Gagal menghapus user, silakan coba lagi.',
-                    });
-                },
+    // Eksekusi hapus user setelah user klik "Ya, Hapus" di modal tengah
+    const confirmDelete = () => {
+        if (!deleteTarget) return;
+
+        setIsDeleting(true);
+        const { id, full_name } = deleteTarget;
+
+        router.delete(`/users/${id}`, {
+            preserveScroll: true,
+            onSuccess: () => {
+                setIsDeleting(false);
+                setDeleteTarget(null);
+                setToastMessage({
+                    type: 'success',
+                    title: 'Berhasil Dihapus',
+                    description: `User "${full_name}" berhasil dihapus dari sistem secara permanen.`,
+                });
+            },
+            onError: () => {
+                setIsDeleting(false);
+                setDeleteTarget(null);
+                setToastMessage({
+                    type: 'error',
+                    title: 'Gagal Dihapus',
+                    description: `Terjadi kesalahan saat menghapus user "${name}".`,
+                });
             },
         });
     };
@@ -72,6 +115,69 @@ export default function UserIndex({ users = [], user }: UserIndexProps) {
     return (
         <AppLayout>
             <Head title="Manajemen User" />
+
+            {/* 1. MODAL KONFIRMASI DI TENGAH LAYAR (MUNCUL SAAT KLIK HAPUS USER) */}
+            {deleteTarget && (
+                <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 transition-all">
+                    <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 p-6 space-y-5 text-center transform transition-all animate-scale-up">
+                        <div className="w-14 h-14 bg-rose-100 text-rose-600 rounded-2xl mx-auto flex items-center justify-center shadow-inner">
+                            <AlertTriangle className="w-7 h-7 animate-pulse" />
+                        </div>
+
+                        <div className="space-y-2">
+                            <h3 className="text-base font-extrabold text-slate-900">Hapus User Ini?</h3>
+                            <p className="text-xs text-slate-500 leading-relaxed px-4">
+                                Tindakan ini bersifat permanen. Akun <strong className="text-slate-800">"{deleteTarget.full_name}"</strong> akan dihapus dari sistem secara menyeluruh.
+                            </p>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 pt-2">
+                            <button
+                                type="button"
+                                disabled={isDeleting}
+                                onClick={() => setDeleteTarget(null)}
+                                className="w-full py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                                Batal
+                            </button>
+                            <button
+                                type="button"
+                                disabled={isDeleting}
+                                onClick={confirmDelete}
+                                className="w-full py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-colors shadow-lg shadow-rose-600/30 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            >
+                                {isDeleting ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 animate-spin" /> Menghapus...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Trash2 className="w-4 h-4" /> Ya, Hapus
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* 2. TOAST NOTIFIKASI HASIL DI KANAN BAWAH (ALA SONNER - MUNCUL SETELAH AKSI SELESAI) */}
+            {toastMessage && (
+                <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none">
+                    <div className="pointer-events-auto bg-white text-slate-900 px-4 py-3.5 rounded-2xl shadow-xl border border-slate-200/80 flex items-start gap-3 w-80 transition-all duration-300 ease-out animate-slide-up">
+                        <div className="shrink-0 mt-0.5">
+                            {toastMessage.type === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+                            {toastMessage.type === 'error' && <AlertCircle className="w-5 h-5 text-rose-500" />}
+                        </div>
+                        <div className="flex-1 space-y-1">
+                            <p className="text-xs font-bold text-slate-900">{toastMessage.title}</p>
+                            {toastMessage.description && (
+                                <p className="text-[11px] text-slate-500 leading-relaxed">{toastMessage.description}</p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="space-y-6">
                 {/* Header Section */}
@@ -158,7 +264,7 @@ export default function UserIndex({ users = [], user }: UserIndexProps) {
                                                         Edit
                                                     </Link>
                                                     <button
-                                                        onClick={() => handleDelete(item)} // Mengirim seluruh objek 'item' ke fungsi
+                                                        onClick={() => handleDeleteClick(item)} // Mengirim seluruh objek 'item' ke fungsi
                                                         className="px-3 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-xs font-bold hover:bg-rose-100 transition-all cursor-pointer"
                                                     >
                                                         Hapus

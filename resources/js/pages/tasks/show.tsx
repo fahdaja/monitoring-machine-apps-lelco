@@ -2,21 +2,32 @@ import FormLayout from "@/layouts/form-layout";
 import ZoomOutModal from "@/components/common/ZoomOutModal";
 import { InspectionsFormProps, InspectionTask } from "@/types/inspection";
 import { useInspectionForm } from "@/hooks/use-inspection-form";
-import { usePage } from "@inertiajs/react";
-import { useState } from "react";
+import { router, usePage } from "@inertiajs/react";
+import { useEffect, useRef, useState } from "react";
+import axios from "axios";
+
+
+type AnswerDetail = {
+    value: any;
+    note?: string;
+    photos?: File[];
+};
+
+type AnswersMap = Record<number, AnswerDetail>;
 
 export default function InspectionForm({ tasks }: InspectionsFormProps) {
-    const pageProps = usePage().props as unknown as { task?: InspectionTask; tasks?: InspectionTask[] };
-    
+    const pageProps = usePage().props as unknown as { task?: InspectionTask; tasks?: InspectionTask[]; initialAnswers?: Record<number, any>; };
+
     // Ambil task aktif
     const currentTask: InspectionTask | undefined = pageProps.task || (tasks && tasks.length > 0 ? tasks[0] : undefined);
-    
+
     // Ambil list sections secara dinamis dari database
     const sections = currentTask?.form?.sections || [];
 
     const [isImageZoomed, setIsImageZoomed] = useState(false);
     const [zoomedImgSrc, setZoomedImgSrc] = useState<string>("");
-
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [autoSaveStatus, setAutoSaveStatus] = useState<'saved' | 'saving...' | 'error'>('saved');
     // Panggil custom hook
     const {
         currentSectionIndex,
@@ -30,16 +41,87 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
         handleValueChoice,
         handleNoteChange,
         handleAddPhoto,
-        handleRemovePhoto,
+        handleRemoveEvidencePhoto,
+        handleRemoveFile,
         progressPercentage,
         isFirstSection,
         isLastSection,
         handlePrev,
         handleNext,
-    } = useInspectionForm(sections);
+        answers,
+
+    } = useInspectionForm(sections, pageProps.initialAnswers || {});
+
+
+    const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Auto-save menggunakan Axios POST (hanya untuk MENYIMPAN, bukan mengambil)
+    const triggerAutoSave = (currentAnswers: AnswersMap) => {
+        const taskId = currentTask?.id;
+        if (!currentTask || !taskId) return;
+
+        setAutoSaveStatus('saving...');
+
+        if (autoSaveTimerRef.current) {
+            clearTimeout(autoSaveTimerRef.current);
+        }
+
+        autoSaveTimerRef.current = setTimeout(async () => {
+            try {
+                await axios.post(
+                    `/inspection-form/${taskId}/draft`,
+                    {
+                        answers: currentAnswers,
+                    }
+                );
+                setAutoSaveStatus('saved');
+            } catch (error) {
+                console.error("Gagal auto-save draft:", error);
+                setAutoSaveStatus('error');
+            } finally {
+                autoSaveTimerRef.current = null;
+            }
+        }, 1500);
+    };
+
+    // useEffect Auto-Save (Akan jalan otomatis setiap answers berubah)
+    useEffect(() => {
+        if (!currentTask?.id) return;
+        if (Object.keys(answers).length === 0) return;
+
+        triggerAutoSave(answers);
+    }, [answers, currentTask]);
+
+
+    const handleSubmitFinal = () => {
+        const taskId = currentTask?.id; // <-- Ambil dari id
+
+        if (!currentTask || !taskId) {
+            alert("Error: Task ID tidak ditemukan!");
+            return;
+        }
+
+        if (!confirm("Apakah Anda yakin ingin menyelesaikan dan mengirimkan form inspeksi ini?")) {
+            return;
+        }
+
+        setIsSubmitting(true);
+
+        router.post(`/inspection-form/${taskId}/submit`, {
+            answers: answers,
+        }, {
+            preserveScroll: true,
+            onError: (errors) => {
+                setIsSubmitting(false);
+                console.error("Gagal submit form:", errors);
+                alert("Mohon periksa kembali form Anda. Pastikan semua field wajib terisi.");
+            },
+            onFinish: () => setIsSubmitting(false),
+        });
+    };
 
     return (
-        <FormLayout 
+        <FormLayout
             currentSectionIndex={currentSectionIndex}
             totalSections={sections.length}
             progressPercentage={progressPercentage}
@@ -47,6 +129,8 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
             isLastSection={isLastSection}
             handlePrev={handlePrev}
             handleNext={handleNext}
+            onSubmitFinal={handleSubmitFinal}
+            isSubmitting={isSubmitting}
         >
             <div className="flex gap-6 items-start w-full p-6 bg-slate-50 min-h-[calc(100vh-4rem)]">
                 {/* SIDEBAR: Progress Inspection */}
@@ -81,17 +165,15 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                                             setCurrentSectionIndex(index);
                                         }
                                     }}
-                                    className={`group flex items-start gap-3 rounded-lg p-3 text-sm transition-all ${
-                                        !isUnlocked
-                                            ? 'bg-slate-50/50 opacity-40 cursor-not-allowed'
-                                            : isActive
+                                    className={`group flex items-start gap-3 rounded-lg p-3 text-sm transition-all ${!isUnlocked
+                                        ? 'bg-slate-50/50 opacity-40 cursor-not-allowed'
+                                        : isActive
                                             ? 'bg-blue-50/60 border border-blue-200 shadow-sm cursor-pointer'
                                             : 'hover:bg-slate-50 border border-transparent cursor-pointer'
-                                    }`}
+                                        }`}
                                 >
-                                    <span className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-semibold shrink-0 mt-0.5 ${
-                                        isDone ? 'bg-emerald-600 text-white' : isActive ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-200 text-slate-700'
-                                    }`}>
+                                    <span className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-semibold shrink-0 mt-0.5 ${isDone ? 'bg-emerald-600 text-white' : isActive ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-200 text-slate-700'
+                                        }`}>
                                         {isDone ? '✓' : index + 1}
                                     </span>
                                     <div className="flex-1 min-w-0">
@@ -240,18 +322,16 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                                                                             <button
                                                                                 type="button"
                                                                                 onClick={() => handleValueChoice(question.id, 'OK')}
-                                                                                className={`flex-1 py-3 px-6 rounded-xl font-bold text-sm border transition-all ${
-                                                                                    ans.value === 'OK' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                                                                                }`}
+                                                                                className={`flex-1 py-3 px-6 rounded-xl font-bold text-sm border transition-all ${ans.value === 'OK' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                                                                                    }`}
                                                                             >
                                                                                 OK (Good)
                                                                             </button>
                                                                             <button
                                                                                 type="button"
                                                                                 onClick={() => handleValueChoice(question.id, 'NG')}
-                                                                                className={`flex-1 py-3 px-6 rounded-xl font-bold text-sm border transition-all ${
-                                                                                    ans.value === 'NG' ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                                                                                }`}
+                                                                                className={`flex-1 py-3 px-6 rounded-xl font-bold text-sm border transition-all ${ans.value === 'NG' ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                                                                                    }`}
                                                                             >
                                                                                 NG (Not Good)
                                                                             </button>
@@ -305,12 +385,27 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                                                                 <div className="space-y-3">
                                                                     <label className="bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 px-4 py-2.5 rounded-xl cursor-pointer inline-flex items-center gap-2 text-xs font-semibold transition">
                                                                         <span>Pilih Berkas</span>
-                                                                        <input type="file" className="hidden" onChange={(e) => handleAddPhoto(question.id, e, question)} />
+                                                                        <input
+                                                                            type="file"
+                                                                            className="hidden"
+                                                                            onChange={(e) => handleAddPhoto(question.id, e, question)}
+                                                                        />
                                                                     </label>
-                                                                    {ans.value instanceof File && (
-                                                                        <div className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-200 flex justify-between items-center">
-                                                                            <span>📎 {ans.value.name}</span>
-                                                                            <button type="button" onClick={() => handleRemovePhoto(question.id)} className="text-rose-600 font-bold">Hapus</button>
+
+                                                                    {ans.value && ans.value.length > 0 && (
+                                                                        <div className="space-y-1 pt-1">
+                                                                            {ans.value.map((file: File, fIdx: number) => (
+                                                                                <div key={fIdx} className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-200 flex justify-between items-center">
+                                                                                    <span className="truncate max-w-[200px]">📎 {file.name}</span>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => handleRemoveFile(question.id, fIdx)}
+                                                                                        className="text-rose-600 font-bold hover:underline cursor-pointer"
+                                                                                    >
+                                                                                        Hapus
+                                                                                    </button>
+                                                                                </div>
+                                                                            ))}
                                                                         </div>
                                                                     )}
                                                                 </div>
@@ -365,7 +460,14 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                                                                         {ans.photos.map((photo: File, pIdx: number) => (
                                                                             <div key={pIdx} className="flex items-center justify-between bg-white border border-slate-200 p-2.5 rounded-lg text-xs">
                                                                                 <span className="truncate max-w-[200px] font-medium text-slate-700">📎 {photo.name}</span>
-                                                                                <button type="button" onClick={() => handleRemovePhoto(question.id, pIdx)} className="text-rose-600 font-bold">Hapus</button>
+                                                                                {/* Kirim question.id dan pIdx */}
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => handleRemoveEvidencePhoto(question.id, pIdx)}
+                                                                                    className="text-rose-600 font-bold hover:underline cursor-pointer"
+                                                                                >
+                                                                                    Hapus
+                                                                                </button>
                                                                             </div>
                                                                         ))}
                                                                     </div>

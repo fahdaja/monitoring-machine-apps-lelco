@@ -1,6 +1,7 @@
 import React, { useState, useEffect, ReactNode } from 'react';
 import { Link, usePage } from '@inertiajs/react';
 import FloatingQrButton from '../components/qr/FloatingQrButton';
+import { AlertCircle, CheckCircle2, X } from 'lucide-react';
 
 interface AppLayoutProps {
     children: ReactNode;
@@ -12,21 +13,42 @@ interface User {
     full_name: string;
 }
 
+interface FlashMessages {
+    success?: string;
+    error?: string;
+}
+
 interface PageProps {
     auth: {
         user: User;
     };
-    flash: any;
+    flash?: FlashMessages;
+    [key: string]: any;
 }
 
 export default function AppLayout({ children }: AppLayoutProps) {
     const pageProps = usePage<PageProps>().props ;
     const user = pageProps?.auth?.user;
-    const flash = pageProps?.flash || {};
+    const { flash } = usePage<PageProps>().props;
 
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [sidebarPinned, setSidebarPinned] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
+
+    const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+    // Tangkap perubahan flash message dari backend setiap kali terjadi navigasi / redirect
+    useEffect(() => {
+        if (flash?.success) {
+            setToast({ type: 'success', message: flash.success });
+            const timer = setTimeout(() => setToast(null), 4000);
+            return () => clearTimeout(timer);
+        } else if (flash?.error) {
+            setToast({ type: 'error', message: flash.error });
+            const timer = setTimeout(() => setToast(null), 4000);
+            return () => clearTimeout(timer);
+        }
+    }, [flash]);
 
     useEffect(() => {
         const checkMobile = () => {
@@ -144,7 +166,32 @@ export default function AppLayout({ children }: AppLayoutProps) {
     const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
 
     return (
+
         <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
+            {/* TOAST GLOBAL DI LEVEL LAYOUT TERLUAR (Z-INDEX TERTINGGI) */}
+            {toast && (
+                <div className="fixed bottom-5 right-5 z-[99999] flex flex-col gap-2 pointer-events-none transition-all duration-300 ease-out">
+                    <div className="pointer-events-auto bg-white text-slate-900 px-4 py-3.5 rounded-2xl shadow-2xl border border-slate-200/80 flex items-start gap-3 w-80">
+                        <div className="shrink-0 mt-0.5">
+                            {toast.type === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+                            {toast.type === 'error' && <AlertCircle className="w-5 h-5 text-rose-500" />}
+                        </div>
+                        <div className="flex-1 space-y-1">
+                            <p className="text-xs font-bold text-slate-900">
+                                {toast.type === 'success' ? 'Berhasil!' : 'Terjadi Kesalahan'}
+                            </p>
+                            <p className="text-[11px] text-slate-500 leading-relaxed">{toast.message}</p>
+                        </div>
+                        <button 
+                            type="button" 
+                            onClick={() => setToast(null)} 
+                            className="text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
+                </div>
+            )}
             {/* Topbar Header */}
             <header className="h-16 bg-slate-900 text-white flex items-center justify-between px-4 md:px-6 sticky top-0 z-40 shadow-md">
                 <div className="flex items-center gap-3">
@@ -255,20 +302,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
                         )}
                     </div>
                 </aside>
-
                 {/* Main Content Area */}
                 <main className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full min-w-0">
-                    {flash?.success && (
-                        <div className="mb-4 p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
-                            {flash.success}
-                        </div>
-                    )}
-                    {flash?.error && (
-                        <div className="mb-4 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold">
-                            {flash.error}
-                        </div>
-                    )}
-
                     {children}
                 </main>
             </div>

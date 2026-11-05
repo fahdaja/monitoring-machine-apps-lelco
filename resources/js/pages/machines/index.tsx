@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Head, Link, usePage, router } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
-import { Edit3, Trash2, Eye, AlertTriangle, X } from 'lucide-react';
+import { Edit3, Trash2, Eye, AlertTriangle, X, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 
 interface User {
     id: number;
@@ -38,6 +38,11 @@ interface pageProps {
     [key: string]: any;
 }
 
+interface ToastPayload {
+    type: 'success' | 'error';
+    title: string;
+    description?: string;
+}
 
 export default function MachineIndex({ machines }: MachineIndexProps) {
     const [search, setSearch] = useState('');
@@ -46,17 +51,45 @@ export default function MachineIndex({ machines }: MachineIndexProps) {
     const [deleteTarget, setDeleteTarget] = useState<MachineItem | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
 
+    const [toast, setToast] = useState<ToastPayload | null>(null);
+
+
+    useEffect(() => {
+        if (toast) {
+            const timer = setTimeout(() => {
+                setToast(null);
+            }, 4000);
+            return () => clearTimeout(timer);
+        }
+    }, [toast]);
+
     const handleDelete = () => {
         if (!deleteTarget) return;
         setIsDeleting(true);
+        const machineName = deleteTarget.machineName;
+
         router.delete(`/machines/${deleteTarget.id}`, {
-            onFinish: () => {
+            preserveScroll: true,
+            onSuccess: () => {
                 setIsDeleting(false);
                 setDeleteTarget(null);
+                setToast({
+                    type: 'success',
+                    title: 'Berhasil Dihapus',
+                    description: `Mesin "${machineName}" berhasil dihapus dari sistem.`,
+                });
+            },
+            onError: () => {
+                setIsDeleting(false);
+                setDeleteTarget(null);
+                setToast({
+                    type: 'error',
+                    title: 'Gagal Dihapus',
+                    description: `Terjadi kesalahan saat menghapus mesin "${machineName}".`,
+                });
             },
         });
     };
-
     const { auth } = usePage<pageProps>().props;
 
     const userRole = auth?.user?.role?.toUpperCase();
@@ -132,10 +165,76 @@ export default function MachineIndex({ machines }: MachineIndexProps) {
         PLANNED_MAINTENANCE: allMachines.filter(m => m.status === 'PLANNED_MAINTENANCE').length,
         INACTIVE: allMachines.filter(m => m.status === 'INACTIVE').length,
     };
-
+    
     return (
         <AppLayout>
             <Head title="Machine Profile - Daftar Mesin" />
+
+            {/* MODAL KONFIRMASI HAPUS */}
+            {deleteTarget && isAdmin && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-100 flex flex-col items-center relative text-center">
+                        <button
+                            type="button"
+                            onClick={() => setDeleteTarget(null)}
+                            className="absolute top-4 right-4 w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-900 transition-colors flex items-center justify-center cursor-pointer"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                        <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mb-4">
+                            <AlertTriangle className="w-6 h-6" />
+                        </div>
+                        <h3 className="text-lg font-black text-slate-900 mb-1">Hapus Data Mesin?</h3>
+                        <p className="text-xs text-slate-500 mb-5 leading-relaxed">
+                            Apakah Anda yakin ingin menghapus mesin <span className="font-bold text-slate-800">{deleteTarget.machineName}</span> ({deleteTarget.machineCode || deleteTarget.id})? Data yang sudah dihapus tidak dapat dipulihkan.
+                        </p>
+                        <div className="w-full grid grid-cols-2 gap-3">
+                            <button
+                                type="button"
+                                disabled={isDeleting}
+                                onClick={() => setDeleteTarget(null)}
+                                className="py-2.5 px-4 rounded-xl text-xs font-bold border border-slate-200 text-slate-700 hover:bg-slate-50 transition-all cursor-pointer disabled:opacity-50"
+                            >
+                                Batal
+                            </button>
+                            <button
+                                type="button"
+                                disabled={isDeleting}
+                                onClick={handleDelete}
+                                className="w-full py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-colors shadow-lg shadow-rose-600/30 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            >
+                                {isDeleting ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 animate-spin" /> Menghapus...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Trash2 className="w-4 h-4" /> Ya, Hapus
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* --- TOAST NOTIFIKASI HASIL DI KANAN BAWAH (ALA SONNER) --- */}
+            {toast && (
+                <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none">
+                    <div className="pointer-events-auto bg-white text-slate-900 px-4 py-3.5 rounded-2xl shadow-xl border border-slate-200/80 flex items-start gap-3 w-80 transition-all duration-300 ease-out animate-slide-up">
+                        <div className="shrink-0 mt-0.5">
+                            {toast.type === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+                            {toast.type === 'error' && <AlertCircle className="w-5 h-5 text-rose-500" />}
+                        </div>
+                        <div className="flex-1 space-y-1">
+                            <p className="text-xs font-bold text-slate-900">{toast.title}</p>
+                            {toast.description && (
+                                <p className="text-[11px] text-slate-500 leading-relaxed">{toast.description}</p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Page Header */}
             <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
@@ -329,45 +428,6 @@ export default function MachineIndex({ machines }: MachineIndexProps) {
                 </div>
             )}
 
-            {/* MODAL KONFIRMASI HAPUS */}
-            {deleteTarget && isAdmin && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-4 animate-in fade-in duration-200">
-                    <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-100 flex flex-col items-center relative text-center">
-                        <button
-                            type="button"
-                            onClick={() => setDeleteTarget(null)}
-                            className="absolute top-4 right-4 w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-900 transition-colors flex items-center justify-center cursor-pointer"
-                        >
-                            <X className="w-4 h-4" />
-                        </button>
-                        <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mb-4">
-                            <AlertTriangle className="w-6 h-6" />
-                        </div>
-                        <h3 className="text-lg font-black text-slate-900 mb-1">Hapus Data Mesin?</h3>
-                        <p className="text-xs text-slate-500 mb-5 leading-relaxed">
-                            Apakah Anda yakin ingin menghapus mesin <span className="font-bold text-slate-800">{deleteTarget.machineName}</span> ({deleteTarget.machineCode || deleteTarget.id})? Data yang sudah dihapus tidak dapat dipulihkan.
-                        </p>
-                        <div className="w-full grid grid-cols-2 gap-3">
-                            <button
-                                type="button"
-                                disabled={isDeleting}
-                                onClick={() => setDeleteTarget(null)}
-                                className="py-2.5 px-4 rounded-xl text-xs font-bold border border-slate-200 text-slate-700 hover:bg-slate-50 transition-all cursor-pointer disabled:opacity-50"
-                            >
-                                Batal
-                            </button>
-                            <button
-                                type="button"
-                                disabled={isDeleting}
-                                onClick={handleDelete}
-                                className="py-2.5 px-4 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-md shadow-rose-600/20 transition-all cursor-pointer disabled:opacity-50"
-                            >
-                                {isDeleting ? 'Menghapus...' : 'Ya, Hapus Mesin'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </AppLayout>
     );
 }

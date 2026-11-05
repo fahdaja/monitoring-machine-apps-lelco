@@ -15,8 +15,13 @@ Route::get('/login', [AuthController::class, 'create']);
 Route::post('/login', [AuthController::class, 'store']);
 Route::post('/logout', [AuthController::class, 'destroy']);
 
-Route::get('/inspection-calender', [TaskController::class, 'index'])->name('tasks.index');
-Route::get('/inspection-form/{id}',[TaskController::class, 'show'])->name('tasks.show');
+Route::middleware(['auth'])->group(function () {
+    Route::get('/inspection-calender', [TaskController::class, 'index'])->name('tasks.index');
+    Route::get('/inspection-form/{id}',[TaskController::class, 'show'])->name('tasks.show');
+    Route::get('/inspection-form/{id}/draft', [TaskController::class, 'getDraft']);
+    Route::post('/inspection-form/{id}/draft', [TaskController::class, 'saveDraft']);
+    Route::post('/inspection-form/{id}/submit', [TaskController::class, 'submit']);
+});
 
 Route::get('/dashboard', function () {
     return inertia('dashboard', [

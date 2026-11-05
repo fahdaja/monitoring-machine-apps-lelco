@@ -62,7 +62,7 @@ export interface FormTemplate {
 }
 
 export interface InspectionTask {
-    task_id: number;
+    id: number;
     task_code: string;
     form: FormTemplate;
     status: string

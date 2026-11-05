@@ -24,7 +24,7 @@ return new class extends Migration
                 'READY_FOR_CLOSING', 
                 'CLOSED'
                 ])->default('OPEN');
-                
+                $table->enum('source_type', ['AUTO_REPORT', 'MANUAL_REPORT'])->nullable();
                 // pelapor
                 $table->timestamp('reported_at')->nullable();
                 

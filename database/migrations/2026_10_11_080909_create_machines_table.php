@@ -37,8 +37,6 @@ return new class extends Migration
             
             // relasi
             $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
-            $table->foreignId('escalation_ticket_id')->nullable()->references('id')->on('breakdown_tickets')->onDelete('cascade');
-            
         });
     }
 

@@ -43,12 +43,25 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
         tasks: []
     } 
 
-
+    const [scannedInput, setScannedInput] = useState('');
+    const [scanError, setScanError] = useState<string | null>(null);
     const [currentYear, setCurrentYear] = useState(currentCalendarData.year);
     const [currentMonth, setCurrentMonth] = useState(currentCalendarData.month);
     const [selectedDate, setSelectedDate] = useState<string>(currentCalendarData.today);
     const [selectedTaskForModal, setSelectedTaskForModal] = useState<InspectionTask | null>(null);
 
+    const handleVerifyAndStart = (task: InspectionTask, scannedCode: string) => {
+    // Validasi kecocokan QR code fisik dengan kode mesin di task
+    if (scannedCode.trim().toUpperCase() !== task.machineCode.trim().toUpperCase()) {
+        setScanError(`QR Code tidak valid! Anda menscan "${scannedCode}", tapi mesin yang benar adalah "${task.machineCode}".`);
+        return;
+    }
+
+    // Jika cocok, bersihkan error dan arahkan ke halaman form inspeksi
+    setScanError(null);
+    setSelectedTaskForModal(null);
+    router.visit(`/inspection-form/${task.taskId}`);
+};
     // Filter Task berdasarkan Tanggal Terpilih
     const tasksForSelectedDate = currentCalendarData.tasks.filter((t) => t.scheduledDate === selectedDate);
 
@@ -310,45 +323,63 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
             </div>
 
             {/* Modal Verifikasi QR sebelum Mulai Inspeksi */}
-            {selectedTaskForModal && (
-                <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 text-center">
-                        <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-900 font-black text-xl">
-                            <QrCode/>  
-                        </div>
-                        <h3 className="text-lg font-extrabold text-slate-900">Verifikasi QR Mesin</h3>
-                        <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                            Scan QR fisik mesin <strong className="text-slate-900">{selectedTaskForModal.machineCode}</strong> sebelum memulai pengisian lembar inspeksi.
-                        </p>
+{selectedTaskForModal && (
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 text-center">
+            <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-900 font-black text-xl">
+                <QrCode />  
+            </div>
+            <h3 className="text-lg font-extrabold text-slate-900">Verifikasi QR Mesin</h3>
+            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                Scan QR fisik mesin <strong className="text-slate-900">{selectedTaskForModal.machineCode}</strong> sebelum memulai pengisian lembar inspeksi.
+            </p>
 
-                        <div className="my-5 p-3 rounded-xl bg-slate-50 border border-slate-200 text-left text-xs">
-                            <span className="text-[10px] font-mono text-slate-400 block">{selectedTaskForModal.taskCode}</span>
-                            <strong className="block text-slate-900 text-sm font-bold mt-0.5">{selectedTaskForModal.activity}</strong>
-                            <span className="block text-slate-500 mt-1">{selectedTaskForModal.machineName} ({selectedTaskForModal.location})</span>
-                        </div>
+            <div className="my-4 p-3 rounded-xl bg-slate-50 border border-slate-200 text-left text-xs">
+                <span className="text-[10px] font-mono text-slate-400 block">{selectedTaskForModal.taskCode}</span>
+                <strong className="block text-slate-900 text-sm font-bold mt-0.5">{selectedTaskForModal.activity}</strong>
+                <span className="block text-slate-500 mt-1">{selectedTaskForModal.machineName} ({selectedTaskForModal.location})</span>
+            </div>
 
-                        <div className="space-y-2">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    router.visit(`/inspection-form/${selectedTaskForModal.taskId}`)
-                                    setSelectedTaskForModal(null);
-                                }}
-                                className="w-full py-2.5 px-4 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors"
-                            >
-                                Buka Camera Scanner
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setSelectedTaskForModal(null)}
-                                className="w-full py-2 px-4 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
-                            >
-                                Batal
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Input simulasi / hasil scan dari kamera */}
+            <div className="mb-4 text-left space-y-1">
+                <label className="text-[11px] font-bold text-slate-700">Hasil Scan / Kode QR Mesin:</label>
+                <input
+                    type="text"
+                    value={scannedInput}
+                    onChange={(e) => setScannedInput(e.target.value)}
+                    placeholder="Scan atau ketik kode mesin..."
+                    className="w-full p-2.5 text-xs bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900"
+                />
+                {scanError && (
+                    <p className="text-[11px] font-semibold text-rose-600 mt-1 bg-rose-50 p-2 rounded-lg border border-rose-200">
+                        {scanError}
+                    </p>
+                )}
+            </div>
+
+            <div className="space-y-2">
+                <button
+                    type="button"
+                    onClick={() => handleVerifyAndStart(selectedTaskForModal, scannedInput)}
+                    className="w-full py-2.5 px-4 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                >
+                    Verifikasi &amp; Mulai Inspeksi
+                </button>
+                <button
+                    type="button"
+                    onClick={() => {
+                        setSelectedTaskForModal(null);
+                        setScannedInput('');
+                        setScanError(null);
+                    }}
+                    className="w-full py-2 px-4 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                >
+                    Batal
+                </button>
+            </div>
+        </div>
+    </div>
+)}
         </AppLayout>
     );
 }

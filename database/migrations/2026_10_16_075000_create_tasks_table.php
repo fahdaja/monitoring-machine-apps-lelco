@@ -16,7 +16,6 @@ return new class extends Migration
             $table->string('task_code')->unique()->nullable(false); 
             $table->date('due_date');
             $table->enum('status', ['UPCOMING','DUE','OVERDUE', 'IN_PROGRESS', 'COMPLETED'])->nullable();
-            $table->enum('source_type', ['AUTO_REPORT', 'MANUAL_REPORT'])->nullable();
             $table->dateTime('completed_at')->nullable();
             $table->timestamps();
             

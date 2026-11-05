@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { Head, Link, useForm } from '@inertiajs/react';
+import React, { useEffect, useState } from 'react';
+import { Head, Link, router, useForm } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
-import { PlusCircle, Copy, Trash2, Layers, Eye, Image as ImageIcon, CornerDownRight, HelpCircle, ShieldCheck } from 'lucide-react';
+import { PlusCircle, Copy, Trash2, Layers, Eye, Image as ImageIcon, CornerDownRight, HelpCircle, ShieldCheck, CheckCircle2, AlertCircle } from 'lucide-react';
 
 interface ValidationRules {
     expected_answer?: string;
@@ -52,6 +52,12 @@ interface Props {
     machines: Machine[];
 }
 
+interface ToastPayload {
+    type: 'success' | 'error';
+    title: string;
+    description: string;
+}
+
 export default function FormCreate({ machines }: Props) {
     const { data, setData, post, processing } = useForm({
         metadata: {
@@ -89,21 +95,24 @@ export default function FormCreate({ machines }: Props) {
         updated_at: new Date().toISOString(),
     });
 
+    // State Toast Notifikasi ala Sonner
+    
+    
     const handleMetadataChange = (field: string, value: any) => {
         setData('metadata', { ...data.metadata, [field]: value });
     };
-
+    
     // Perbaikan: Ubah validation_rules agar mengakses elemen array index ke-0 secara aman
     const handleValidationRuleChange = (sIndex: number, qIndex: number, ruleField: keyof ValidationRules, value: any) => {
         const updated = [...data.sections];
-        const currentRules = Array.isArray(updated[sIndex].questions[qIndex].validation_rules) 
-            ? [...updated[sIndex].questions[qIndex].validation_rules] 
-            : [{}];
+        const currentRules = Array.isArray(updated[sIndex].questions[qIndex].validation_rules)
+        ? [...updated[sIndex].questions[qIndex].validation_rules]
+        : [{}];
         
         if (currentRules.length === 0) {
             currentRules.push({});
         }
-
+        
         currentRules[0] = {
             ...currentRules[0],
             [ruleField]: value,
@@ -112,7 +121,7 @@ export default function FormCreate({ machines }: Props) {
         updated[sIndex].questions[qIndex].validation_rules = currentRules;
         setData('sections', updated);
     };
-
+    
     const FILE_SIZE_OPTIONS = ['1MB', '5MB', '10MB'];
     const [activeSectionIndex, setActiveSectionIndex] = useState(0);
     const [activeFocus, setActiveFocus] = useState<string | number>('HEADER');
@@ -120,6 +129,24 @@ export default function FormCreate({ machines }: Props) {
     const [previewSectionId, setPreviewSectionId] = useState<number>(0);
     const [previewHistory, setPreviewHistory] = useState<number[]>([]);
     const [previewAnswers, setPreviewAnswers] = useState<Record<string, any>>({});
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [toastMessage, setToastMessage] = useState<ToastPayload | null>(null);
+
+    useEffect(() => {
+        if (toastMessage) {
+            const timer = setTimeout(() => setToastMessage(null), 4000);
+            return () => clearTimeout(timer);
+        }
+    }, [toastMessage]);
+
+    useEffect(() => {
+    if (errorMessage) {
+        const timer = setTimeout(() => {
+            setErrorMessage(null);
+        }, 4000); // 4000 ms = 4 detik
+        return () => clearTimeout(timer);
+    }
+}, [errorMessage]);
 
     const addSection = () => {
         const updated = [
@@ -261,37 +288,107 @@ export default function FormCreate({ machines }: Props) {
         setData('sections', updated);
     };
 
-   const submit = (e: React.FormEvent) => {
-    e.preventDefault();
+    const submit = (e: React.FormEvent) => {
+        e.preventDefault();
+        setErrorMessage(null);
 
-    // 1. Buat salinan data sections dan pastikan validation_rules di-stringify 
-    // agar aman dikirim melalui FormData multipart
-    const preparedSections = data.sections.map(section => ({
+        // 1. Validasi Metadata Mesin
+        if (!data.metadata.machine_type) {
+            setErrorMessage("Target Mesin wajib dipilih terlebih dahulu!");
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            return;
+        }
+
+        // 2. Validasi Setiap Bagian dan Pertanyaan
+        for (let sIndex = 0; sIndex < data.sections.length; sIndex++) {
+            const section = data.sections[sIndex];
+
+            if (!section.section_title || section.section_title.trim() === '') {
+                setErrorMessage(`Judul pada Bagian ${sIndex + 1} tidak boleh kosong!`);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                return;
+            }
+
+            for (let qIndex = 0; qIndex < section.questions.length; qIndex++) {
+                const q = section.questions[qIndex];
+
+                if (!q.question_text || q.question_text.trim() === '') {
+                    setErrorMessage(`Pertanyaan ke-${qIndex + 1} di Bagian ${sIndex + 1} masih kosong.`);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                    return;
+                }
+
+                if (['SELECT', 'CHECKBOX', 'DROPDOWN'].includes(q.input_type)) {
+                    if (!q.options || q.options.length === 0) {
+                        setErrorMessage(`Pertanyaan "${q.question_text}" harus memiliki minimal 1 opsi jawaban!`);
+                        return;
+                    }
+
+                    for (let oIndex = 0; oIndex < q.options.length; oIndex++) {
+                        if (!q.options[oIndex].option_text || q.options[oIndex].option_text.trim() === '') {
+                            setErrorMessage(`Teks Opsi ke-${oIndex + 1} pada Pertanyaan ke-${qIndex + 1} (Bagian ${sIndex + 1}) masih kosong!`);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Persiapan data sections & stringify validation_rules
+const preparedSections = data.sections.map(section => ({
         ...section,
         questions: section.questions.map(q => ({
             ...q,
-            // Ubah array/objek validation_rules menjadi JSON string agar tidak hancur di FormData
-            validation_rules: q.validation_rules ? JSON.stringify(q.validation_rules) : null
+            validation_rules: q.validation_rules // Biarkan tetap berupa Array/Objek
         }))
     }));
+    setData('sections', preparedSections)
 
-    // 2. Kirim data yang sudah disiapkan menggunakan router post dari Inertia
+        // 4. Kirim data ke backend
     post('/forms', {
-        data: {
-            ...data,
-            sections: preparedSections,
-        },
-        forceFormData: true,
-        onError: (errors) => {
-            console.error("Error dari Backend Laravel:", errors);
-            alert("Gagal menyimpan form! Cek console untuk detail error validasi.");
-        },
-    });
-};
-
+    forceFormData: true,
+    onSuccess: () => {
+        setToastMessage({ 
+            type: 'success', 
+            title: 'Berhasil Disimpan!', 
+            description: 'Template form baru berhasil dibuat.' 
+        });
+    },
+    onError: (errors) => {
+        console.error(errors);
+        setToastMessage({ 
+            type: 'error', 
+            title: 'Gagal Menyimpan', 
+            description: 'Periksa kembali inputan form yang belum lengkap.' 
+        });
+    },
+});
+    };
     return (
         <AppLayout>
             <Head title="Buat Template Form Pemantauan" />
+
+       {/* TOAST NOTIFIKASI */}
+{toastMessage && (
+    <div className="fixed bottom-5 right-5 z-[9999] flex flex-col gap-2">
+        <div className="bg-white text-slate-900 px-4 py-3.5 rounded-2xl shadow-2xl border border-slate-200 flex items-start gap-3 w-80">
+            <div className="shrink-0 mt-0.5">
+                {toastMessage.type === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+                {toastMessage.type === 'error' && <AlertCircle className="w-5 h-5 text-rose-500" />}
+            </div>
+            <div className="flex-1 space-y-1">
+                <p className="text-xs font-bold text-slate-900">{toastMessage.title}</p>
+                {toastMessage.description && <p className="text-[11px] text-slate-500">{toastMessage.description}</p>}
+            </div>
+        </div>
+    </div>
+)}
+
+            {errorMessage && (
+                <div className="fixed bottom-5 right-5 z-50 transition-all duration-300 ease-in-out animate-slide-up bg-rose-600 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2.5 text-xs font-bold border border-rose-700">
+        <span>⚠️ {errorMessage}</span>
+    </div>
+            )}
 
             <div className="max-w-3xl mx-auto mb-6 flex items-center justify-between">
                 <div>
@@ -392,7 +489,7 @@ export default function FormCreate({ machines }: Props) {
                                                 placeholder={`Pertanyaan ${qIndex + 1}`}
                                                 className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 bg-slate-50/50 outline-none focus:border-emerald-600"
                                             />
-                                            
+
                                             {/* Tombol Upload Gambar Soal */}
                                             <input
                                                 type="file"
@@ -472,10 +569,10 @@ export default function FormCreate({ machines }: Props) {
 
                                         {q.question_image_url && (
                                             <div className="relative mt-2">
-                                                <img 
-                                                    src={q.question_image_url} 
-                                                    alt="Preview Soal" 
-                                                    className="w-full h-auto rounded-lg border border-slate-200 bg-slate-50 object-contain" 
+                                                <img
+                                                    src={q.question_image_url}
+                                                    alt="Preview Soal"
+                                                    className="w-full h-auto rounded-lg border border-slate-200 bg-slate-50 object-contain"
                                                 />
                                                 <button
                                                     type="button"
@@ -559,12 +656,12 @@ export default function FormCreate({ machines }: Props) {
                                                         )}
 
                                                         {q.options.length > 1 && (
-                                                            <button 
-                                                                type="button" 
+                                                            <button
+                                                                type="button"
                                                                 onClick={() => {
                                                                     const opts = q.options.filter((_, i) => i !== oIndex);
                                                                     handleQuestionChange(sIndex, qIndex, 'options', opts);
-                                                                }} 
+                                                                }}
                                                                 className="text-slate-400 hover:text-rose-600 px-1.5 font-bold cursor-pointer"
                                                             >
                                                                 &times;
@@ -606,49 +703,49 @@ export default function FormCreate({ machines }: Props) {
                                         )}
 
                                         {q.input_type === 'FILE' && (
-    <div className="space-y-2 bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <div>
-                <span className="font-semibold text-slate-700 block mb-1">Tipe File yang Diperbolehkan:</span>
-                <div className="flex flex-wrap gap-2">
-                    {['IMAGE', 'VIDEO', 'PDF', 'DOCUMENT'].map(type => {
-                        const currentAllowed = q.validation_rules?.[0]?.allowed_file_type || [];
-                        const isChecked = currentAllowed.includes(type);
-                        return (
-                            <label key={type} className="flex items-center gap-1.5 bg-white px-2 py-1 rounded border border-slate-200 cursor-pointer text-[11px] font-medium">
-                                <input
-                                    type="checkbox"
-                                    checked={isChecked}
-                                    onChange={e => {
-                                        let updatedTypes = [...currentAllowed];
-                                        if (e.target.checked) {
-                                            updatedTypes.push(type);
-                                        } else {
-                                            updatedTypes = updatedTypes.filter(t => t !== type);
-                                        }
-                                        handleValidationRuleChange(sIndex, qIndex, 'allowed_file_type', updatedTypes);
-                                    }}
-                                    className="rounded border-slate-300 text-emerald-600 w-3 h-3"
-                                />
-                                {type}
-                            </label>
-                        );
-                    })}
-                </div>
-            </div>
-            <div>
-                <span className="font-semibold text-slate-700 block mb-1">Maksimal Ukuran:</span>
-                <select
-                    value={q.validation_rules?.[0]?.max_file_size || '10MB'}
-                    onChange={e => handleValidationRuleChange(sIndex, qIndex, 'max_file_size', e.target.value)}
-                    className="border border-slate-200 rounded px-2 py-1 bg-white text-xs font-semibold outline-none"
-                >
-                    {FILE_SIZE_OPTIONS.map(sz => <option key={sz} value={sz}>{sz}</option>)}
-                </select>
-            </div>
-        </div>
-    </div>
-)}
+                                            <div className="space-y-2 bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs">
+                                                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                                                    <div>
+                                                        <span className="font-semibold text-slate-700 block mb-1">Tipe File yang Diperbolehkan:</span>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {['IMAGE', 'VIDEO', 'PDF', 'DOCUMENT'].map(type => {
+                                                                const currentAllowed = q.validation_rules?.[0]?.allowed_file_type || [];
+                                                                const isChecked = currentAllowed.includes(type);
+                                                                return (
+                                                                    <label key={type} className="flex items-center gap-1.5 bg-white px-2 py-1 rounded border border-slate-200 cursor-pointer text-[11px] font-medium">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={isChecked}
+                                                                            onChange={e => {
+                                                                                let updatedTypes = [...currentAllowed];
+                                                                                if (e.target.checked) {
+                                                                                    updatedTypes.push(type);
+                                                                                } else {
+                                                                                    updatedTypes = updatedTypes.filter(t => t !== type);
+                                                                                }
+                                                                                handleValidationRuleChange(sIndex, qIndex, 'allowed_file_type', updatedTypes);
+                                                                            }}
+                                                                            className="rounded border-slate-300 text-emerald-600 w-3 h-3"
+                                                                        />
+                                                                        {type}
+                                                                    </label>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <span className="font-semibold text-slate-700 block mb-1">Maksimal Ukuran:</span>
+                                                        <select
+                                                            value={q.validation_rules?.[0]?.max_file_size || '10MB'}
+                                                            onChange={e => handleValidationRuleChange(sIndex, qIndex, 'max_file_size', e.target.value)}
+                                                            className="border border-slate-200 rounded px-2 py-1 bg-white text-xs font-semibold outline-none"
+                                                        >
+                                                            {FILE_SIZE_OPTIONS.map(sz => <option key={sz} value={sz}>{sz}</option>)}
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
 
                                         <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
                                             <label className="flex items-center gap-1.5 font-semibold text-slate-700 cursor-pointer">
@@ -748,30 +845,30 @@ export default function FormCreate({ machines }: Props) {
 
                                     {q.question_image_url && (
                                         <div className="pt-1">
-                                            <img 
-                                                src={q.question_image_url} 
-                                                alt="Preview Soal" 
-                                                className="w-full h-auto rounded-lg border border-slate-200 bg-slate-50 object-contain" 
+                                            <img
+                                                src={q.question_image_url}
+                                                alt="Preview Soal"
+                                                className="w-full h-auto rounded-lg border border-slate-200 bg-slate-50 object-contain"
                                             />
                                         </div>
                                     )}
 
                                     {q.input_type === 'TEXT' && (
-                                        <input 
-                                            type="text" 
-                                            placeholder="Ketik jawaban singkat di sini..." 
+                                        <input
+                                            type="text"
+                                            placeholder="Ketik jawaban singkat di sini..."
                                             value={previewAnswers[`q_${previewSectionId}_${qIndex}`] || ''}
                                             onChange={e => setPreviewAnswers(prev => ({ ...prev, [`q_${previewSectionId}_${qIndex}`]: e.target.value }))}
-                                            className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white text-slate-800 outline-none focus:border-emerald-600" 
+                                            className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white text-slate-800 outline-none focus:border-emerald-600"
                                         />
                                     )}
                                     {q.input_type === 'TEXTAREA' && (
-                                        <textarea 
-                                            rows={2} 
-                                            placeholder="Ketik jawaban paragraf di sini..." 
+                                        <textarea
+                                            rows={2}
+                                            placeholder="Ketik jawaban paragraf di sini..."
                                             value={previewAnswers[`q_${previewSectionId}_${qIndex}`] || ''}
                                             onChange={e => setPreviewAnswers(prev => ({ ...prev, [`q_${previewSectionId}_${qIndex}`]: e.target.value }))}
-                                            className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white text-slate-800 outline-none focus:border-emerald-600 resize-none" 
+                                            className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white text-slate-800 outline-none focus:border-emerald-600 resize-none"
                                         />
                                     )}
                                     {q.input_type === 'FILE' && (
@@ -781,26 +878,26 @@ export default function FormCreate({ machines }: Props) {
                                         </div>
                                     )}
                                     {q.input_type === 'DATE' && (
-                                        <input 
-                                            type="date" 
+                                        <input
+                                            type="date"
                                             value={previewAnswers[`q_${previewSectionId}_${qIndex}`] || ''}
                                             onChange={e => setPreviewAnswers(prev => ({ ...prev, [`q_${previewSectionId}_${qIndex}`]: e.target.value }))}
-                                            className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white text-slate-800 outline-none focus:border-emerald-600" 
+                                            className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white text-slate-800 outline-none focus:border-emerald-600"
                                         />
                                     )}
                                     {q.input_type === 'TIME' && (
-                                        <input 
-                                            type="time" 
+                                        <input
+                                            type="time"
                                             value={previewAnswers[`q_${previewSectionId}_${qIndex}`] || ''}
                                             onChange={e => setPreviewAnswers(prev => ({ ...prev, [`q_${previewSectionId}_${qIndex}`]: e.target.value }))}
-                                            className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white text-slate-800 outline-none focus:border-emerald-600" 
+                                            className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white text-slate-800 outline-none focus:border-emerald-600"
                                         />
                                     )}
 
                                     {(['SELECT', 'CHECKBOX', 'DROPDOWN'] as string[]).includes(q.input_type) && (
                                         <div className="space-y-1.5 pt-1">
                                             {q.input_type === 'DROPDOWN' ? (
-                                                <select 
+                                                <select
                                                     value={previewAnswers[`q_${previewSectionId}_${qIndex}`] || ''}
                                                     onChange={e => setPreviewAnswers(prev => ({ ...prev, [`q_${previewSectionId}_${qIndex}`]: e.target.value }))}
                                                     className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white text-slate-800 outline-none focus:border-emerald-600 font-medium"
@@ -816,19 +913,19 @@ export default function FormCreate({ machines }: Props) {
                                                 q.options.map((opt, oIdx) => (
                                                     <div key={oIdx} className="flex items-center justify-between text-xs text-slate-700 p-2 bg-white rounded-lg border border-slate-200 hover:border-slate-300">
                                                         <label className="flex items-center gap-2 cursor-pointer flex-1">
-                                                            <input 
-                                                                type={q.input_type === 'CHECKBOX' ? 'checkbox' : 'radio'} 
-                                                                name={`prev_${previewSectionId}_${qIndex}`} 
+                                                            <input
+                                                                type={q.input_type === 'CHECKBOX' ? 'checkbox' : 'radio'}
+                                                                name={`prev_${previewSectionId}_${qIndex}`}
                                                                 checked={previewAnswers[`q_${previewSectionId}_${qIndex}`] === opt.option_text}
                                                                 onChange={() => {
-                                                                    setPreviewAnswers(prev => ({ 
-                                                                        ...prev, 
+                                                                    setPreviewAnswers(prev => ({
+                                                                        ...prev,
                                                                         [`q_${previewSectionId}_${qIndex}`]: opt.option_text,
-                                                                        [`goto_${previewSectionId}_${qIndex}`]: opt.goto_form_section_id 
+                                                                        [`goto_${previewSectionId}_${qIndex}`]: opt.goto_form_section_id
                                                                     }));
                                                                 }}
-                                                                className="text-emerald-600 rounded cursor-pointer" 
-                                                            /> 
+                                                                className="text-emerald-600 rounded cursor-pointer"
+                                                            />
                                                             <span className="font-medium text-slate-800">{opt.option_text}</span>
                                                         </label>
                                                         <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${opt.is_normal ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
@@ -861,7 +958,7 @@ export default function FormCreate({ machines }: Props) {
                                 onClick={() => {
                                     let nextTarget = previewSectionId + 1;
                                     const currentSecQuestions = data.sections[previewSectionId]?.questions || [];
-                                    
+
                                     for (let i = 0; i < currentSecQuestions.length; i++) {
                                         const gotoVal = previewAnswers[`goto_${previewSectionId}_${i}`];
                                         if (gotoVal !== undefined && gotoVal !== '') {

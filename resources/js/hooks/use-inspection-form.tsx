@@ -1,7 +1,9 @@
 import { useRef, useState } from "react";
 
 
-export function useInspectionForm(sections: any[]) {
+export function useInspectionForm(sections: any[], initialAnswers: Record<number, any> = {}) {
+
+    // 
 
     const [targetJumpSectionId, setTargetJumpSectionId] = useState<number | null>(null);
     // cari index aktif
@@ -15,7 +17,7 @@ export function useInspectionForm(sections: any[]) {
     const [maxCompletedIndex, setMaxCompletedIndex] = useState(-1);
 
     // state untuk menampung jawaban
-    const [answer, setAnswer] = useState<Record<number, any>>({});
+    const [answers, setAnswers] = useState<Record<number, any>>(initialAnswers);
 
     // Section dan pertanyaan yang sedang aktif
     const currentSection = sections[currentSectionIndex];
@@ -27,17 +29,23 @@ export function useInspectionForm(sections: any[]) {
     const progressPercentage = sections.length > 0 ? Math.round((completedCount / sections.length) * 100) : 0;
 
     // Handler untuk mengubah catatan / notes abnormality
-    const handleNoteChange = (questionId: number, noteText: string) => {
-        setAnswer(prev => ({
+const handleNoteChange = (questionId: number, noteText: string) => {
+    setAnswers(prev => {
+        const currentAnswer = getAnswer(questionId);
+        return {
             ...prev,
-            [questionId]: { ...getAnswer(questionId), note: noteText }
-        }));
-        if (noteText.trim() !== '') setErrorMessage(null);
-    };
+            [questionId]: {
+                ...currentAnswer,
+                note: noteText // Khusus untuk teks catatan/notes
+            }
+        };
+    });
+    if (noteText.trim() !== '') setErrorMessage(null);
+};
 
     // Helper untuk mengambil objek jawaban per pertanyaan secara aman
     const getAnswer = (questionId: number) => {
-        return answer[questionId] || { value: '', photos: [], note: '' };
+        return answers[questionId] || { value: '', photos: [], note: '' };
     };
 
     // Helper untuk menampilkan error dan otomatis menggeser layar ke atas
@@ -50,18 +58,22 @@ export function useInspectionForm(sections: any[]) {
 
 // 2. Modifikasi handleValueChoice
 const handleValueChoice = (questionId: number, val: any, selectedOption?: any) => {
-    setAnswer(prev => ({
-        ...prev,
-        [questionId]: { ...getAnswer(questionId), value: val }
-    }));
+    setAnswers(prev => {
+        const currentAnswer = getAnswer(questionId);
+        return {
+            ...prev,
+            [questionId]: {
+                ...currentAnswer,
+                value: val // Teks input, pilihan select, dll masuk ke sini
+            }
+        };
+    });
     setErrorMessage(null);
 
-    // Jika opsi yang dipilih memiliki aturan jump section, catat sebagai intent (niat lompat)
-    // tapi JANGAN langsung pindah section dulu!
+    // Jika opsi yang dipilih memiliki aturan jump section
     if (selectedOption && selectedOption.goto_form_section_id) {
         setTargetJumpSectionId(selectedOption.goto_form_section_id);
     } else {
-        // Kalau user mengubah pilihan yang tidak ada jump logic-nya, reset target jump
         setTargetJumpSectionId(null);
     }
 };
@@ -126,20 +138,46 @@ const handleAddPhoto = (questionId: number, e: React.ChangeEvent<HTMLInputElemen
     }
 
     // Jika lolos semua validasi file, simpan ke state answer
-    setAnswer(prev => ({
+    setAnswers(prev => ({
         ...prev,
         [questionId]: { ...getAnswer(questionId), value: file }
     }));
     setErrorMessage(null);
 };
 
-    // Handler untuk menghapus file / foto
-    const handleRemovePhoto = (questionId: number) => {
-        setAnswer(prev => ({
+// 1. Khusus menghapus berkas pada pertanyaan bertipe FILE
+const handleRemoveFile = (questionId: number, fileIndex: number) => {
+    setAnswers(prev => {
+        const currentAns = prev[questionId] || { value: '', photos: [], note: '' };
+        const updatedPhotos = [...(currentAns.photos || [])];
+        updatedPhotos.splice(fileIndex, 1);
+
+        return {
             ...prev,
-            [questionId]: { ...getAnswer(questionId), value: null }
-        }));
-    };
+            [questionId]: {
+                ...currentAns,
+                photos: updatedPhotos
+            }
+        };
+    });
+};
+
+
+const handleRemoveEvidencePhoto = (questionId: number, photoIndex: number) => {
+    setAnswers(prev => {
+        const currentAns = prev[questionId] || { value: '', photos: [], note: '' };
+        const updatedPhotos = [...(currentAns.photos || [])];
+        updatedPhotos.splice(photoIndex, 1);
+
+        return {
+            ...prev,
+            [questionId]: {
+                ...currentAns,
+                photos: updatedPhotos
+            }
+        };
+    });
+};
 
     // Helper converter ukuran file (misal "5MB" ke Bytes)
     const parseFileSizeToBytes = (sizeStr: string): number => {
@@ -235,7 +273,7 @@ const handleAddPhoto = (questionId: number, e: React.ChangeEvent<HTMLInputElemen
         errorMessage,
         errorRef,
         maxCompletedIndex,
-        answer,
+        answers,
         currentSection,
         isFirstSection,
         isLastSection,
@@ -246,7 +284,8 @@ const handleAddPhoto = (questionId: number, e: React.ChangeEvent<HTMLInputElemen
         handleValueChoice,
         handlePrev,
         handleAddPhoto,
-        handleRemovePhoto,
+        handleRemoveEvidencePhoto,
+        handleRemoveFile,
         handleNext,
         triggerError
     }

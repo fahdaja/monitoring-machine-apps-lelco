@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Head, Link, useForm, usePage, router } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
+import { AlertCircle, AlertTriangle, CheckCircle2, Loader2, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface Machine {
     id: number;
@@ -37,19 +39,54 @@ interface PageProps {
     [key: string]: any;
 }
 
+interface TargetForm {
+    id: number;
+    form_title: string;
+}
+
+interface ToastPayload{
+    type: 'success' | 'error'
+    title: string;
+    description: string;
+}
+
 export default function FormIndex({ forms }: Props) {
     const { auth } = usePage<PageProps>().props;
     const userRole = auth?.user?.role?.toUpperCase();
     const isAdmin = userRole === 'ADMIN';
 
-    // Fungsi konfirmasi dan hapus form
-    const handleDelete = (formId: number, formTitle: string) => {
-        if (confirm(`Apakah Anda yakin ingin menghapus template form "${formTitle}" beserta seluruh pertanyaan dan task terkait?`)) {
-            router.delete(`/forms/${formId}`, {
-                preserveScroll: true,
-            });
+    
+const [isDeleting, setIsDeleting] = useState(false);
+    const [deleteTarget, setDeleteTarget] = useState<TargetForm | null>(null);
+   const [toastMessage, setToastMessage] = useState<ToastPayload | null>(null);
+
+    // Efek otomatis menghilangkan toast setelah 4 detik
+    useEffect(() => {
+        if (toastMessage) {
+            const timer = setTimeout(() => {
+                setToastMessage(null);
+            }, 4000);
+            return () => clearTimeout(timer);
         }
-    };
+    }, [toastMessage]);
+
+const confirmDelete = () => {
+    if (!deleteTarget) return;
+
+    const { id, form_title } = deleteTarget;
+    
+    router.delete(`/forms/${id}`, {
+        preserveScroll: true,
+        onSuccess: () => {
+            setToastMessage({ type: 'success', title: 'Berhasil Dihapus', description: `Template form "${form_title}" berhasil dihapus!` });
+            setDeleteTarget(null);
+        },
+        onError: () => {
+            setToastMessage({ type: 'error', title: 'Gagal Menghapus', description: `Gagal menghapus template form "${form_title}".` });
+            setDeleteTarget(null);
+        }
+    });
+};
 
     // Helper format tanggal
     const formatDate = (dateStr?: string) => {
@@ -66,6 +103,63 @@ export default function FormIndex({ forms }: Props) {
         <AppLayout>
             <Head title="Manajemen Template Form" />
 
+{/* TOAST NOTIFIKASI */}
+            {toastMessage && (
+                <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none">
+                    <div className="pointer-events-auto bg-white text-slate-900 px-4 py-3.5 rounded-2xl shadow-xl border border-slate-200/80 flex items-start gap-3 w-80">
+                        <div className="shrink-0 mt-0.5">
+                            {toastMessage.type === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+                            {toastMessage.type === 'error' && <AlertCircle className="w-5 h-5 text-rose-500" />}
+                        </div>
+                        <div className="flex-1 space-y-1">
+                            <p className="text-xs font-bold text-slate-900">{toastMessage.title}</p>
+                            {toastMessage.description && <p className="text-[11px] text-slate-500">{toastMessage.description}</p>}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL KONFIRMASI HAPUS */}
+            {deleteTarget && (
+                <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 p-6 space-y-5 text-center">
+                        <div className="w-14 h-14 bg-rose-100 text-rose-600 rounded-2xl mx-auto flex items-center justify-center">
+                            <AlertTriangle className="w-7 h-7 animate-pulse" />
+                        </div>
+                        <div className="space-y-2">
+                            <h3 className="text-base font-extrabold text-slate-900">Konfirmasi Hapus</h3>
+                            <p className="text-xs text-slate-500 leading-relaxed px-4">{deleteTarget.form_title}</p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 pt-2">
+                            <button
+                                type="button"
+                                disabled={isDeleting}
+                                onClick={() => setDeleteTarget(null)}
+                                className="w-full py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                                Batal
+                            </button>
+                            <button
+                                type="button"
+                                disabled={isDeleting}
+                                onClick={confirmDelete}
+                                className="w-full py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-colors shadow-lg shadow-rose-600/30 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            >
+                                {isDeleting ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 animate-spin" /> Menghapus...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Trash2 className="w-4 h-4" /> Ya, Hapus
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
             <div className="space-y-6">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
@@ -133,7 +227,7 @@ export default function FormIndex({ forms }: Props) {
                                                 {isAdmin && (
                                                     <button
                                                         type="button"
-                                                        onClick={() => handleDelete(f.id, f.form_title)}
+                                                        onClick={() => setDeleteTarget({ id: f.id, form_title: f.form_title })}
                                                         className="px-3 py-1.5 rounded-lg bg-rose-50 text-rose-600 border border-rose-200 font-bold hover:bg-rose-100 transition-colors cursor-pointer"
                                                     >
                                                         Hapus

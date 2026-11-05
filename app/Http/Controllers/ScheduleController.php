@@ -18,7 +18,7 @@ class ScheduleController extends Controller
     public function index()
     {
         $schedules = Schedule::with(['form', 'machine'])->latest()->get();
-        $forms = Form::select('id', 'form_title', 'form_code')->where('is_active', true)->get();
+        $forms = Form::select('id', 'form_title', 'form_code')->where('id')->get();
         $machines = Machine::select('id', 'machine_type')->get();
 
         return Inertia::render('schedules/index', [

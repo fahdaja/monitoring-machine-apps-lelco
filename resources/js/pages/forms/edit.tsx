@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Head, Link, router, useForm } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import { PlusCircle, Copy, Trash2, Layers, Eye, Image as ImageIcon, CornerDownRight, HelpCircle, ShieldCheck } from 'lucide-react';
@@ -64,6 +64,12 @@ interface Props {
     machines: Machine[];
 }
 
+
+interface ToastPayload{
+    type: 'success' | 'error'
+    title: string;
+    description: string;
+}
 export default function FormEdit({ form, machines }: Props) {
     const { data, setData, put, post, processing, errors } = useForm({
         metadata: {
@@ -160,6 +166,19 @@ export default function FormEdit({ form, machines }: Props) {
     const [previewSectionId, setPreviewSectionId] = useState<number>(0);
     const [previewHistory, setPreviewHistory] = useState<number[]>([]);
     const [previewAnswers, setPreviewAnswers] = useState<Record<string, any>>({});
+
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [toastMessage, setToast] = useState<ToastPayload | null>(null)
+
+// Efek otomatis menghilangkan toast setelah 4 detik
+useEffect(() => {
+    if (errorMessage) {
+        const timer = setTimeout(() => {
+            setErrorMessage(null);
+        }, 4000);
+        return () => clearTimeout(timer);
+    }
+}, [errorMessage]);
 
     const addSection = () => {
         const updated = [
@@ -317,23 +336,93 @@ export default function FormEdit({ form, machines }: Props) {
 
     const submit = (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage(null); // Reset pesan error
 
-    post(`/forms/${form.id}`, {
-        forceFormData: true,
-        data: {
-            ...data,
-            _method: 'PUT', // Wajib ada agar route PUT di Laravel menerima request multipart/form-data
-        },
-        onError: (errs) => {
-            console.error("Error dari Backend Laravel:", errs);
-            alert("Gagal memperbarui form! Periksa kembali input yang berwarna merah.");
-        },
-    });
-    };
+    console.log("Payload yang dikirim:", data);
 
+    // 1. Validasi Metadata Mesin
+    if (!data.metadata.machine_type) {
+        setErrorMessage("Target Mesin wajib dipilih terlebih dahulu!");
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+    }
+
+    // 2. Validasi Judul Form Utama
+    if (!data.metadata.form_title || data.metadata.form_title.trim() === '') {
+        setErrorMessage("Judul Formulir tidak boleh kosong!");
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+    }
+
+    // 3. Validasi Setiap Bagian dan Pertanyaan
+    for (let sIndex = 0; sIndex < data.sections.length; sIndex++) {
+        const section = data.sections[sIndex];
+        
+        if (!section.section_title || section.section_title.trim() === '') {
+            setErrorMessage(`Judul pada Bagian ${sIndex + 1} tidak boleh kosong!`);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            return;
+        }
+
+        for (let qIndex = 0; qIndex < section.questions.length; qIndex++) {
+            const q = section.questions[qIndex];
+            
+            if (!q.question_text || q.question_text.trim() === '') {
+                setErrorMessage(`Pertanyaan ke-${qIndex + 1} di Bagian ${sIndex + 1} masih kosong.`);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                return;
+            }
+
+            if (['SELECT', 'CHECKBOX', 'DROPDOWN'].includes(q.input_type)) {
+                if (!q.options || q.options.length === 0) {
+                    setErrorMessage(`Pertanyaan "${q.question_text}" harus memiliki minimal 1 opsi jawaban!`);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                    return;
+                }
+                
+                for (let oIndex = 0; oIndex < q.options.length; oIndex++) {
+                    if (!q.options[oIndex].option_text || q.options[oIndex].option_text.trim() === '') {
+                        setErrorMessage(`Teks Opsi ke-${oIndex + 1} pada Pertanyaan ke-${qIndex + 1} (Bagian ${sIndex + 1}) masih kosong!`);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    // 4. Persiapan data sections & stringify validation_rules
+const preparedSections = data.sections.map(section => ({
+        ...section,
+        questions: section.questions.map(q => ({
+            ...q,
+            validation_rules: q.validation_rules // Biarkan tetap berupa Array/Objek
+        }))
+    }));
+
+router.post(`/forms/${form.id}`, {
+    _method: 'PUT', //
+    ...data,
+    sections: preparedSections,
+}, {
+    forceFormData: true,
+            onSuccess: () => {
+                setToast({ type: 'success', title: 'Berhasil Disimpan', description: 'Template form berhasil diperbarui.' });
+            },
+            onError: () => {
+                setToast({ type: 'error', title: 'Gagal Menyimpan', description: 'Periksa kembali inputan Anda.' });
+            },
+});
+    }
     return (
         <AppLayout>
             <Head title={`Edit Template Form - ${form?.form_title || ''}`} />
+
+            {errorMessage && (
+                <div className="fixed bottom-5 right-5 z-50 transition-all duration-300 ease-in-out animate-slide-up bg-rose-600 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2.5 text-xs font-bold border border-rose-700">
+        <span>⚠️ {errorMessage}</span>
+    </div>
+            )}
 
             <div className="max-w-3xl mx-auto mb-6 flex items-center justify-between">
                 <div>

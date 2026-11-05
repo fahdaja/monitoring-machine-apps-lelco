@@ -160,12 +160,10 @@ class FormController extends Controller
                 'task_code'            => 'TSK-' . strtoupper(uniqid()), 
                 'due_date'             => now()->addDays(1)->format('Y-m-d'),
                 'status'               => 'DUE',
-                'source_type'          => null,
                 'assigned_user_id'     => null,
             ]);
 
-            return redirect()->route('forms.index')
-                ->with('success', 'Template form berhasil dibuat!');
+           return redirect()->route('forms.index')->with('success', 'Template form baru berhasil dibuat!');
         });
     }
 
@@ -223,6 +221,8 @@ class FormController extends Controller
                 'form_title'       => $meta['form_title'],
                 'form_description' => $meta['form_description'] ?? '-',
             ]);
+
+            $form->touch();
 
             $existingSectionIds = [];
             // Array untuk memetakan index section di frontend ke ID database asli

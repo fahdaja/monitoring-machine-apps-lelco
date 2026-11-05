@@ -38,7 +38,7 @@ class BreakdownTicket extends Model
         'corrective_action',
         
         // task di verifikasi oleh siapa
-        'source_task_id',
+        'task_id',
         'verified_by',
         'verified_at',
         'verification_notes',
@@ -72,7 +72,7 @@ class BreakdownTicket extends Model
      */
     public function task(): BelongsTo
     {
-        return $this->belongsTo(Task::class, 'source_task_id', 'task_id');
+        return $this->belongsTo(Task::class, 'task_id', 'id');
     }
 
     /**

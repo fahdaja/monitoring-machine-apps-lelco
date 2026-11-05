@@ -15,10 +15,10 @@ return new class extends Migration
             $table->id();
             $table->string('submission_code')->unique()->nullable(false); 
             $table->enum('status', ['DRAFT', 'SUBMITTED'])->default('DRAFT');
-            $table->jsonb('answers_value')->nullable(); 
+            $table->jsonb('answers_values')->nullable(); 
             $table->dateTime('submitted_at')->nullable();
             //relasi
-            $table->foreignId('tasks_id')->nullable()->references('id')->on('tasks')->onDelete('cascade');
+            $table->foreignId('task_id')->nullable()->references('id')->on('tasks')->onDelete('cascade');
             $table->foreignId('user_id')->nullable()->references('id')->on('users')->onDelete('cascade');
             $table->foreignId('escalation_ticket_id')->nullable()->references('id')->on('breakdown_tickets')->onDelete('cascade');
         });
