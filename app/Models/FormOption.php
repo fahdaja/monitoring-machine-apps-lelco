@@ -4,18 +4,29 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Models\FormQuestion;
+use App\Models\FormSection;
 
 class FormOption extends Model
 {
     protected $table = 'form_options';
-
-    // Karena di migrasi tabel form_options tidak ada kolom created_at & updated_at
+    public $incrementing = true;
     public $timestamps = false;
 
     protected $guarded = ['id'];
 
+    protected $fillable = [
+        'form_question_id',
+        'option_code',
+        'option_text',
+        'is_normal',
+        'option_order',
+        'goto_form_section_id'
+    ];
+
     protected $casts = [
         'is_normal' => 'boolean',
+        'goto_form_section_id' => 'integer',
         'option_order' => 'integer',
     ];
 

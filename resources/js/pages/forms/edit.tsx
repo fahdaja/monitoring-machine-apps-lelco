@@ -102,7 +102,9 @@ export default function FormEdit({ form, machines }: Props) {
                     option_text: opt.option_text || '',
                     is_normal: Boolean(opt.is_normal),
                     option_order: opt.option_order || oIdx + 1,
-                    goto_form_section_id: opt.goto_form_section_id ?? null,
+                    goto_form_section_id: opt.goto_form_section_id !== undefined && opt.goto_form_section_id !== null 
+        ? Number(opt.goto_form_section_id) 
+        : null,
                 })) : [
                     { option_text: 'Normal (OK)', is_normal: true, option_order: 1, goto_form_section_id: null },
                     { option_text: 'Rusak (NG)', is_normal: false, option_order: 2, goto_form_section_id: null }
@@ -211,7 +213,10 @@ useEffect(() => {
 
     const addQuestionToActiveSection = () => {
         const updated = [...data.sections];
-        const targetIdx = activeSectionIndex < updated.length ? activeSectionIndex : 0;
+        const targetIdx = 
+            activeSectionIndex >= 0 && activeSectionIndex < updated.length 
+                ? activeSectionIndex 
+                : updated.length - 1;
         const newQ: QuestionItem = {
             question_text: '',
             question_order: updated[targetIdx].questions.length + 1,
@@ -396,7 +401,13 @@ const preparedSections = data.sections.map(section => ({
         ...section,
         questions: section.questions.map(q => ({
             ...q,
-            validation_rules: q.validation_rules // Biarkan tetap berupa Array/Objek
+            validation_rules: q.validation_rules,
+            options: q.options.map(opt => ({
+            option_text: opt.option_text,
+            is_normal: opt.is_normal,
+            option_order: opt.option_order,
+            goto_form_section_id: opt.goto_form_section_id ? Number(opt.goto_form_section_id) : null
+            }))
         }))
     }));
 
@@ -741,7 +752,7 @@ router.post(`/forms/${form.id}`, {
             <div>
                 <span className="font-semibold text-slate-700 block mb-1">Tipe File yang Diperbolehkan:</span>
                 <div className="flex flex-wrap gap-2">
-                    {['IMAGE', 'VIDEO', 'PDF', 'DOCUMENT'].map(type => {
+                    {['jpg', 'jpeg', 'png', 'pdf'].map(type => {
                         const currentAllowed = q.validation_rules?.[0]?.allowed_file_type || [];
                         const isChecked = currentAllowed.includes(type);
                         return (
@@ -801,7 +812,7 @@ router.post(`/forms/${form.id}`, {
                                 <div className="text-center pt-2">
                                     <button
                                         type="button"
-                                        onClick={addQuestionToActiveSection}
+                                        onClick={ () => {setActiveSectionIndex(sIndex); addQuestionToActiveSection();}}
                                         className="px-4 py-2 bg-white border border-emerald-200 hover:bg-emerald-50 text-emerald-700 rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1.5 cursor-pointer"
                                     >
                                         <PlusCircle className="w-4 h-4" /> Tambah Pertanyaan

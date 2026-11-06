@@ -17,21 +17,23 @@ class BreakdownController extends Controller
      */
     public function index(): Response
     {
-        $breakdowns = BreakdownTicket::with(['machine', 'reporter', 'technician'])
-            ->where('status', '!=', 'CLOSED')
+        $breakdowns = BreakdownTicket::with(['machines', 'tasks', 'users'])
+            ->where('status', ['OPEN', 'ACKNOWLEDGED', 'IN_PROGRESS', 'WAITING_SPAREPART', 'WAITING_VENDOR', 'READY_FOR_CLOSING', 'CLOSED'])
             ->latest('reported_at')
             ->get()
             ->map(function ($ticket) {
                 return [
                     'id' => $ticket->id,
-                    'ticketId' => $ticket->ticket_id,
-                    'machineId' => $ticket->machine_id,
-                    'machineName' => $ticket->machine->machine_name ?? $ticket->machine_id,
+                    'ticket_code' => $ticket->ticket_code,
+                    'machine_id' => $ticket->machine_id,
+                    'machine_code' => $ticket->machine_code,
+                    'machine_name' => $ticket->machine->machine_name,
                     'location' => $ticket->machine->location ?? '-',
                     'problem' => $ticket->description,
                     'status' => $ticket->status,
-                    'pipelineStage' => $ticket->pipeline_stage,
-                    'reportedAt' => $ticket->reported_at->format('Y-m-d H:i'),
+                    'source_type' => $ticket->source_type,
+                    'pipeline_stage' => $ticket->pipeline_stage,
+                    'reported_at' => $ticket->reported_at->format('Y-m-d H:i'),
                     'breakdownMinutes' => $ticket->calculated_downtime,
                 ];
             });

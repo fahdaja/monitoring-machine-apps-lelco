@@ -41,13 +41,15 @@ class TaskController extends Controller {
             $note = $userAns['note'] ?? '';
             $photos = $userAns['photos'] ?? [];
 
-            // Mapping selected options (bisa single value atau array untuk checkbox)
+            // Mapping selected options (mendukung single value atau array untuk checkbox/dropdown)
             $selectedOptionsSnapshot = [];
             $valueArray = is_array($rawValue) ? $rawValue : [$rawValue];
 
             if (!empty($rawValue)) {
-                // Cari opsi yang dipilih berdasarkan ID atau text
-                $matchedOptions = $question->options->whereIn('id', $valueArray);
+                // 🔥 PERBAIKAN: Cocokkan opsi berdasarkan ID ATAU text opsi (agar checkbox & dropdown terbaca)
+                $matchedOptions = $question->options->filter(function($opt) use ($valueArray) {
+                    return in_array($opt->id, $valueArray) || in_array($opt->option_text, $valueArray);
+                });
                 
                 foreach ($matchedOptions as $opt) {
                     $selectedOptionsSnapshot[] = [
@@ -55,7 +57,7 @@ class TaskController extends Controller {
                         'option_code'          => $opt->option_code,
                         'option_text'          => $opt->option_text,
                         'option_order'         => $opt->option_order,
-                        'is_normal'            => (bool) $opt->is_normal,
+                        'is_normal'            => (bool) $opt->is_normal, // Properti is_normal sekarang dijamin ikut terbawa!
                         'goto_form_section_id' => $opt->goto_form_section_id,
                     ];
                 }
@@ -71,7 +73,7 @@ class TaskController extends Controller {
                 'answer_detail'    => [
                     'value'  => $rawValue,
                     'note'   => $note,
-                    'photos' => $photos, // Bisa berupa path file setelah di-upload
+                    'photos' => $photos,
                 ],
                 'selected_options' => $selectedOptionsSnapshot,
             ];
@@ -245,8 +247,7 @@ class TaskController extends Controller {
             'answers' => 'required|array',
             'answers.*.value' => 'nullable',
             'answers.*.note' => 'nullable|string',
-            'answers.*.photos' => 'string',
-            'answers.*.photos.*' => 'nullable|file|mimes:jpg,jpeg,png|max:5120', // Validasi file max 5MB
+            'answers.*.photos' => 'nullable|string',
         ]);
         
     return DB::transaction(function () use ($request, $task, $validated) {
@@ -344,6 +345,11 @@ public function saveDraft(Request $request, $id)
         'answers_values' => $enterpriseSnapshot
     ]);
 
+    if ($request->has('current_section_index')) {
+        $task->current_section_index = $request->current_section_index;
+        $task->save();
+    }
+
     return response()->json([
         'success' => true,
         'message' => 'Draft berhasil disimpan',
@@ -355,50 +361,82 @@ public function uploadTempFile(Request $request)
     $folder = $request->input('folder', 'question-files');
     $questionId = $request->input('question_id');
 
-    $maxKb = 5120; // Default 5MB
-    $allowedMimes = 'jpg,jpeg,png,pdf,doc,docx'; // Default format
+    // Inisialisasi awal kosong (tanpa default bebas untuk question-files)
+    $maxKb = null;
+    $allowedMimes = null;
+    $maxSizeLabel = '';
+    $allowedTypesLabel = '';
 
-    // Jika ini question file dan membawa ID pertanyaan, baca validation_rules dari DB
-    if ($folder === 'question-files' && $questionId) {
+    // Jika ini question file dan membawa ID pertanyaan, baca validation_rules murni dari DB
+   if ($folder === 'question-files' && $questionId) {
         $question = FormQuestion::find($questionId);
         if ($question && $question->validation_rules) {
-            $rules = is_string($question->validation_rules) 
+            $parsedRules = is_string($question->validation_rules) 
                 ? json_decode($question->validation_rules, true) 
                 : $question->validation_rules;
             
-            // Ambil max_file_size jika ada (misal: "2MB" atau "500KB")
-            if (!empty($rules['max_file_size'])) {
-                $sizeStr = strtoupper($rules['max_file_size']);
-                $num = floatval($sizeStr);
-                if (str_contains($sizeStr, 'MB')) {
-    $maxKb = $num * 1024;
-} elseif (str_contains($sizeStr, 'KB')) {
-    $maxKb = $num;
-}
+            // Amankan berbagai bentuk struktur: objek langsung, array bersarang [0], atau key tunggal
+            $rules = [];
+            if (is_array($parsedRules)) {
+                $rules = isset($parsedRules[0]) && is_array($parsedRules[0]) ? $parsedRules[0] : $parsedRules;
             }
 
-            // Ambil allowed_file_type jika ada (misal: ["pdf", "jpg"] atau string)
-            if (!empty($rules['allowed_file_type'])) {
-                $types = is_array($rules['allowed_file_type']) 
-                    ? $rules['allowed_file_type'] 
-                    : explode(',', $rules['allowed_file_type']);
+            // 1. Tangkap max_file_size (mendukung berbagai variasi penulisan key)
+            $rawMaxSize = $rules['max_file_size'] ?? $rules['max_size'] ?? $rules['size'] ?? null;
+            if (!empty($rawMaxSize)) {
+                $sizeStr = strtoupper(trim($rawMaxSize));
+                $maxSizeLabel = $rawMaxSize;
+                $num = floatval($sizeStr);
                 
-                $allowedMimes = implode(',', array_map('trim', $types));
+                if (str_contains($sizeStr, 'MB')) {
+                    $maxKb = intval($num * 1024);
+                } elseif (str_contains($sizeStr, 'KB')) {
+                    $maxKb = intval($num);
+                }
+            }
+
+            // 2. Tangkap allowed_file_type (mendukung berbagai variasi penulisan key & format array/string)
+            $rawAllowed = $rules['allowed_file_type'] ?? $rules['allowed_types'] ?? $rules['file_types'] ?? null;
+            if (!empty($rawAllowed)) {
+                $types = is_array($rawAllowed) 
+                    ? $rawAllowed 
+                    : explode(',', $rawAllowed);
+                
+                $filteredTypes = array_filter(array_map('trim', $types), function($t) {
+                    return strtoupper($t) !== 'IMAGE' && !empty($t);
+                });
+
+                if (!empty($filteredTypes)) {
+                    $allowedTypesLabel = implode(', ', $filteredTypes);
+                    $allowedMimes = implode(',', $filteredTypes);
+                }
             }
         }
-    } 
-    // Jika evidence foto, gunakan aturan statis khusus gambar
+    }
+    // Jika evidence foto, gunakan aturan statis khusus gambar (maks 2MB)
     elseif ($folder === 'evidence-photos') {
         $maxKb = 2048; // 2MB
         $allowedMimes = 'jpg,jpeg,png';
+        $maxSizeLabel = '2MB';
+        $allowedTypesLabel = 'jpg, jpeg, png';
     }
 
-    // Jalankan validasi dinamis
+    // Validasi jika rules dari admin belum lengkap diset
+    if (!$maxKb || !$allowedMimes) {
+        return response()->json([
+            'success' => false,
+            'errors' => [
+                'file' => ['Konfigurasi validasi file (ukuran/format) belum diatur oleh admin pada pertanyaan ini.']
+            ]
+        ], 422);
+    }
+
+    // Jalankan validasi dinamis berdasarkan data murni dari admin
     $request->validate([
         'file' => "required|file|mimes:{$allowedMimes}|max:{$maxKb}",
     ], [
-        'file.mimes' => "Format file yang diizinkan: {$allowedMimes}.",
-        'file.max' => "Ukuran file melebihi batas maksimal yang ditentukan.",
+        'file.mimes' => "Format file tidak sesuai. Format yang diizinkan: {$allowedTypesLabel}.",
+        'file.max' => "Ukuran file terlalu besar. Batas maksimal ukuran file adalah {$maxSizeLabel}.",
     ]);
 
     if ($request->hasFile('file')) {

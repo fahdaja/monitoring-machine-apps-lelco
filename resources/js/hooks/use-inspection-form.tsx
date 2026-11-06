@@ -1,25 +1,20 @@
 import axios from "axios";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
+export function useInspectionForm(sections: any[], initialAnswers: Record<number, any> = {}, initialSectionIndex: number = 0, taskId?: number) {
 
-export function useInspectionForm(sections: any[], initialAnswers: Record<number, any> = {}) {
-
-    // 
     const storageKey = `inspection_answers_${window.location.pathname}`;
 
     const parseAnswersData = (rawData: any) => {
         let mapped: Record<number, any> = {};
 
-        // Jika bentuknya sudah key-value map standar (misal: { 1: {value: ...} })
         if (rawData && !rawData.sections && !Array.isArray(rawData) && Object.keys(rawData).length > 0) {
-            // Cek apakah key-nya berupa ID angka pertanyaan
             const firstKey = Object.keys(rawData)[0];
             if (!isNaN(Number(firstKey))) {
                 return rawData;
             }
         }
 
-        // Jika bentuknya snapshot enterprise (memiliki key 'sections')
         const sectionsList = rawData?.sections || (Array.isArray(rawData) ? rawData : []);
         if (sectionsList.length > 0) {
             sectionsList.forEach((sec: any) => {
@@ -42,33 +37,57 @@ export function useInspectionForm(sections: any[], initialAnswers: Record<number
     };
 
     const [targetJumpSectionId, setTargetJumpSectionId] = useState<number | null>(null);
-    // cari index aktif
-    const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
     
-    // pesan error untuk validasi
-    const [errorMessage, setErrorMessage] = useState<string | null>(null);
-    const errorRef = useRef<HTMLDivElement>(null);
+    // Cari index aktif
+    const [currentSectionIndex, setCurrentSectionIndex] = useState<number>(() => {
+        if (initialSectionIndex > 0) return initialSectionIndex;
+        
+        const storageSectionKey = taskId ? `inspection_section_${taskId}` : `inspection_section_index`;
+        const savedLocal = localStorage.getItem(storageSectionKey);
+        return savedLocal ? parseInt(savedLocal, 10) : 0;
+    });
+    
+    // 💡 STATE ERROR PER PERTANYAAN (Ganti errorMessage global)
+    const [questionErrors, setQuestionErrors] = useState<Record<number, string>>({});
 
-    // batas section terjauh yang sudah berhasil di selesaikan
-    const [maxCompletedIndex, setMaxCompletedIndex] = useState(-1);
+    const setQuestionError = (questionId: number, msg: string) => {
+        setQuestionErrors(prev => ({ ...prev, [questionId]: msg }));
+    };
 
-    // state untuk menampung jawaban
+    const clearQuestionError = (questionId: number) => {
+        setQuestionErrors(prev => {
+            if (!prev[questionId]) return prev;
+            const updated = { ...prev };
+            delete updated[questionId];
+            return updated;
+        });
+    };
 
-   const [answers, setAnswers] = useState<Record<number, any>>(() => {
+    // Batas section terjauh yang sudah berhasil diselesaikan/dilewati
+    const [maxCompletedIndex, setMaxCompletedIndex] = useState<number>(() => {
+        if (!taskId) return -1;
+        const savedMax = localStorage.getItem(`inspection_max_completed_${taskId}`);
+        if (savedMax !== null) {
+            return parseInt(savedMax, 10);
+        }
+        return currentSectionIndex > 0 ? currentSectionIndex - 1 : -1;
+    });
+
+    // State untuk menampung jawaban
+    const [answers, setAnswers] = useState<Record<number, any>>(() => {
         try {
             const savedLocal = localStorage.getItem(storageKey);
             if (savedLocal) {
                 const parsedLocal = JSON.parse(savedLocal);
                 const converted = parseAnswersData(parsedLocal);
                 if (Object.keys(converted).length > 0) {
-                    return converted; // Berhasil merestore dari LocalStorage!
+                    return converted;
                 }
             }
         } catch (e) {
             console.error("Gagal membaca LocalStorage:", e);
         }
 
-        // Fallback ke initialAnswers dari database jika local kosong
         return parseAnswersData(initialAnswers);
     });
 
@@ -83,232 +102,251 @@ export function useInspectionForm(sections: any[], initialAnswers: Record<number
         }
     }, [answers, storageKey]);
 
-    // Section dan pertanyaan yang sedang aktif
+    useEffect(() => {
+        if (taskId && currentSectionIndex >= 0) {
+            localStorage.setItem(`inspection_section_${taskId}`, currentSectionIndex.toString());
+        }
+    }, [currentSectionIndex, taskId]);
+
+    useEffect(() => {
+        if (taskId && maxCompletedIndex >= -1) {
+            localStorage.setItem(`inspection_max_completed_${taskId}`, maxCompletedIndex.toString());
+        }
+    }, [maxCompletedIndex, taskId]);
+
     const currentSection = sections[currentSectionIndex];
     const isFirstSection = currentSectionIndex === 0;
     const isLastSection = currentSectionIndex === sections.length - 1;
 
-    // Kalkulasi progress bar
     const completedCount = maxCompletedIndex + 1;
     const progressPercentage = sections.length > 0 ? Math.round((completedCount / sections.length) * 100) : 0;
 
-    // Handler untuk mengubah catatan / notes abnormality
-const handleNoteChange = (questionId: number, noteText: string) => {
-    setAnswers(prev => {
-        const currentAnswer = getAnswer(questionId);
-        return {
-            ...prev,
-            [questionId]: {
-                ...currentAnswer,
-                note: noteText // Khusus untuk teks catatan/notes
-            }
-        };
-    });
-    if (noteText.trim() !== '') setErrorMessage(null);
-};
+    const handleNoteChange = (questionId: number, noteText: string) => {
+        setAnswers(prev => {
+            const currentAnswer = getAnswer(questionId);
+            return {
+                ...prev,
+                [questionId]: {
+                    ...currentAnswer,
+                    note: noteText
+                }
+            };
+        });
+        if (noteText.trim() !== '') clearQuestionError(questionId);
+    };
 
-    // Helper untuk mengambil objek jawaban per pertanyaan secara aman
     const getAnswer = (questionId: number) => {
         return answers[questionId] || { value: '', photos: [], note: '' };
     };
 
-    // Helper untuk menampilkan error dan otomatis menggeser layar ke atas
-    const triggerError = (msg: string) => {
-        setErrorMessage(msg);
-        if (errorRef.current) {
-            errorRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const handleValueChoice = (questionId: number, val: any, selectedOption?: any) => {
+        setAnswers(prev => {
+            const currentAnswer = getAnswer(questionId);
+            return {
+                ...prev,
+                [questionId]: {
+                    ...currentAnswer,
+                    value: val
+                }
+            };
+        });
+        clearQuestionError(questionId);
+
+        if (selectedOption && selectedOption.goto_form_section_id) {
+            setTargetJumpSectionId(selectedOption.goto_form_section_id);
+        } else {
+            setTargetJumpSectionId(null);
         }
     };
 
-// 2. Modifikasi handleValueChoice
-const handleValueChoice = (questionId: number, val: any, selectedOption?: any) => {
-    setAnswers(prev => {
-        const currentAnswer = getAnswer(questionId);
-        return {
-            ...prev,
-            [questionId]: {
-                ...currentAnswer,
-                value: val // Teks input, pilihan select, dll masuk ke sini
-            }
-        };
-    });
-    setErrorMessage(null);
-
-    // Jika opsi yang dipilih memiliki aturan jump section
-    if (selectedOption && selectedOption.goto_form_section_id) {
-        setTargetJumpSectionId(selectedOption.goto_form_section_id);
-    } else {
-        setTargetJumpSectionId(null);
-    }
-};
-
-    // fungsi untuk mengecek section pertama
     const handlePrev = () => {
         if (!isFirstSection) {
             setCurrentSectionIndex(prev => prev - 1);
-            setErrorMessage(null);
+            setQuestionErrors({});
         }
     };
 
-const handleFileUpload = async (questionId: number, e: React.ChangeEvent<HTMLInputElement>, questionItem: any) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const handleFileUpload = async (questionId: number, e: React.ChangeEvent<HTMLInputElement>, questionItem: any) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
 
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('question_id', String(questionId)); // <-- Kirim ID agar backend bisa baca validation_rules admin
-    formData.append('folder', 'question-files');
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('question_id', String(questionId)); 
+        formData.append('folder', 'question-files');
 
-    try {
-        const response = await axios.post('/inspection-form/upload-temp', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' }
-        });
+        try {
+            const response = await axios.post('/inspection-form/upload-temp', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
 
-        const filePath = response.data.path;
+            const filePath = response.data.path;
 
-        setAnswers(prev => {
-            const currentAns = getAnswer(questionId);
-            return {
-                ...prev,
-                [questionId]: { 
-                    ...currentAns, 
-                    value: filePath 
-                }
-            };
-        });
-        setErrorMessage(null);
-        e.target.value = '';
+            setAnswers(prev => {
+                const currentAns = getAnswer(questionId);
+                return {
+                    ...prev,
+                    [questionId]: { 
+                        ...currentAns, 
+                        value: filePath 
+                    }
+                };
+            });
+            clearQuestionError(questionId);
+            e.target.value = '';
 
-    } catch (error: any) {
-        console.error("Gagal mengunggah file:", error);
-        const serverMsg = error.response?.data?.message || "Gagal mengunggah file. Periksa ukuran dan formatnya.";
-        triggerError(serverMsg);
-    }
-};
+        } catch (error: any) {
+            console.error("Gagal mengunggah file:", error);
+            
+            const serverErrors = error.response?.data?.errors;
+            let serverMsg = "Gagal mengunggah file. Periksa ukuran dan formatnya.";
+
+            if (serverErrors && serverErrors.file && serverErrors.file.length > 0) {
+                serverMsg = serverErrors.file[0];
+            } else if (error.response?.data?.message) {
+                serverMsg = error.response.data.message;
+            }
+            
+            setQuestionError(questionId, serverMsg);
+            e.target.value = '';
+        }
+    };
 
 const handleAddPhoto = async (questionId: number, e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+        const file = e.target.files?.[0];
+        if (!file) return;
 
-    // Validasi tipe file & ukuran tetap sama...
-    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
-    if (!allowedTypes.includes(file.type)) {
-        triggerError('Format foto evidence harus berupa JPG, JPEG, atau PNG.');
-        e.target.value = '';
-        return;
-    }
-
-    const maxSizeBytes = 2 * 1024 * 1024; // 2MB
-    if (file.size > maxSizeBytes) {
-        triggerError('Ukuran foto evidence terlalu besar. Maksimal 2MB.');
-        e.target.value = '';
-        return;
-    }
-
-    // Jika sebelumnya sudah ada foto tersimpan, hapus dulu file fisiknya dari storage server
-    const currentAns = getAnswer(questionId);
-    if (currentAns.photos && typeof currentAns.photos === 'string') {
-        try {
-            await axios.post('/inspection-form/remove-file', { path: currentAns.photos });
-        } catch (error) {
-            console.error("Gagal membersihkan foto lama:", error);
+        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+        if (!allowedTypes.includes(file.type)) {
+            setQuestionError(questionId, 'Format foto evidence harus berupa JPG, JPEG, atau PNG.');
+            e.target.value = '';
+            return;
         }
-    }
 
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('folder', 'evidence-photos');
+        // Batasan ukuran client-side 2MB
+        const maxSizeBytes = 2 * 1024 * 1024; 
+        if (file.size > maxSizeBytes) {
+            setQuestionError(questionId, 'Ukuran foto evidence terlalu besar. Maksimal 2MB.');
+            e.target.value = '';
+            return;
+        }
 
-    try {
-        const response = await axios.post('/inspection-form/upload-temp', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' }
-        });
+        const currentAns = getAnswer(questionId);
+        if (currentAns.photos && typeof currentAns.photos === 'string') {
+            try {
+                await axios.post('/inspection-form/remove-file', { path: currentAns.photos });
+            } catch (error) {
+                console.error("Gagal membersihkan foto lama:", error);
+            }
+        }
 
-        const filePath = response.data.path; // string path tunggal
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('folder', 'evidence-photos');
 
-        // Simpan sebagai string biasa
+        try {
+            const response = await axios.post('/inspection-form/upload-temp', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+
+            const filePath = response.data.path;
+
+            setAnswers(prev => {
+                const currentAns = getAnswer(questionId);
+                return {
+                    ...prev,
+                    [questionId]: { 
+                        ...currentAns, 
+                        photos: filePath 
+                    }
+                };
+            });
+            clearQuestionError(questionId);
+            e.target.value = '';
+
+        } catch (error: any) {
+            console.error("Gagal mengunggah foto evidence:", error);
+            
+            // 🔍 Tangkap pesan spesifik dari validasi errors Laravel (file.max atau file.mimes)
+            const serverErrors = error.response?.data?.errors;
+            let serverMsg = "Gagal mengunggah foto evidence ke server.";
+
+            if (serverErrors && serverErrors.file && serverErrors.file.length > 0) {
+                serverMsg = serverErrors.file[0]; // Mengambil pesan kustom dari backend
+            } else if (error.response?.data?.message) {
+                serverMsg = error.response.data.message;
+            }
+            
+            setQuestionError(questionId, serverMsg);
+            e.target.value = '';
+        }
+    };
+
+    const handleRemoveEvidencePhoto = async (questionId: number) => {
+        const currentAns = getAnswer(questionId);
+        const photoPath = currentAns.photos;
+
+        if (photoPath && typeof photoPath === 'string') {
+            try {
+                await axios.post('/inspection-form/remove-file', { path: photoPath });
+            } catch (error) {
+                console.error("Gagal menghapus file evidence fisik dari server:", error);
+            }
+        }
+
         setAnswers(prev => {
-            const currentAns = getAnswer(questionId);
+            const currentAns = prev[questionId] || { value: '', photos: '', note: '' };
             return {
                 ...prev,
-                [questionId]: { 
-                    ...currentAns, 
-                    photos: filePath // Langsung string path tunggal
+                [questionId]: {
+                    ...currentAns,
+                    photos: '' 
                 }
             };
         });
-        setErrorMessage(null);
-        e.target.value = '';
+    };
 
-    } catch (error: any) {
-        console.error("Gagal mengunggah foto evidence:", error);
-        const serverMsg = error.response?.data?.message || "Gagal mengunggah foto evidence ke server.";
-        triggerError(serverMsg);
-    }
-};
+    const handleRemoveFile = async (questionId: number) => {
+        const currentAns = getAnswer(questionId);
+        const filePath = currentAns.value;
 
-const handleRemoveEvidencePhoto = async (questionId: number) => {
-    const currentAns = getAnswer(questionId);
-    const photoPath = currentAns.photos;
-
-    if (photoPath && typeof photoPath === 'string') {
-        try {
-            await axios.post('/inspection-form/remove-file', { path: photoPath });
-        } catch (error) {
-            console.error("Gagal menghapus file evidence fisik dari server:", error);
-        }
-    }
-
-    setAnswers(prev => {
-        const currentAns = prev[questionId] || { value: '', photos: '', note: '' };
-        return {
-            ...prev,
-            [questionId]: {
-                ...currentAns,
-                photos: '' 
+        if (filePath && typeof filePath === 'string') {
+            try {
+                await axios.post('/inspection-form/remove-file', { path: filePath });
+            } catch (error) {
+                console.error("Gagal menghapus file fisik dari server:", error);
             }
-        };
-    });
-};
-
-const handleRemoveFile = async (questionId: number) => {
-    const currentAns = getAnswer(questionId);
-    const filePath = currentAns.value;
-
-    if (filePath && typeof filePath === 'string') {
-        try {
-            await axios.post('/inspection-form/remove-file', { path: filePath });
-        } catch (error) {
-            console.error("Gagal menghapus file fisik dari server:", error);
         }
-    }
 
-    setAnswers(prev => {
-        const currentAns = prev[questionId] || { value: '', photos: [], note: '' };
-        return {
-            ...prev,
-            [questionId]: {
-                ...currentAns,
-                value: '' 
-            }
-        };
-    });
-};    
+        setAnswers(prev => {
+            const currentAns = prev[questionId] || { value: '', photos: [], note: '' };
+            return {
+                ...prev,
+                [questionId]: {
+                    ...currentAns,
+                    value: '' 
+                }
+            };
+        });
+    };    
 
     const handleNext = () => {
         const questions = currentSection?.questions || [];
+        let hasError = false;
 
-        // Validasi per pertanyaan di section aktif secara menyeluruh
+        // Reset error section ini sebelum validasi ulang
+        setQuestionErrors({});
+
+        // 1. Validasi per pertanyaan secara menyeluruh
         for (const q of questions) {
             const ans = getAnswer(q.id);
 
-            // 1. Cek Pertanyaan Wajib Diisi (is_required)
             if (q.is_required && (!ans.value || (Array.isArray(ans.value) && ans.value.length === 0))) {
-                triggerError(`Pertanyaan "${q.question_text}" wajib diisi.`);
-                return;
+                setQuestionError(q.id, `Pertanyaan "${q.question_text}" wajib diisi.`);
+                hasError = true;
+                continue;
             }
 
-            // Parse validation_rules secara aman (mendukung format array maupun objek tunggal)
             let rules: any = {};
             if (q.validation_rules) {
                 try {
@@ -322,60 +360,71 @@ const handleRemoveFile = async (questionId: number) => {
                 }
             }
 
-            // 2. Validasi Berdasarkan Tipe INPUT: TEXT / TEXTAREA (Expected Answer)
             if ((q.input_type === 'TEXT' || q.input_type === 'TEXTAREA') && ans.value) {
                 if (rules.expected_answer && String(ans.value).trim() !== String(rules.expected_answer).trim()) {
-                    // Ambil validation_error_message dari rules, atau gunakan pesan default
                     const customErrorMsg = rules.validation_error_message && rules.validation_error_message.trim() !== ''
                         ? rules.validation_error_message 
                         : `Jawaban untuk "${q.question_text}" tidak sesuai dengan standar.`;
                     
-                    triggerError(customErrorMsg);
-                    return;
+                    setQuestionError(q.id, customErrorMsg);
+                    hasError = true;
                 }
             }
         }
 
-      setErrorMessage(null);
-    if (currentSectionIndex > maxCompletedIndex) {
-        setMaxCompletedIndex(currentSectionIndex);
-    }
+        // Jika ada error pada pertanyaan, hentikan proses next (tidak pindah section)
+        if (hasError) {
+            return;
+        }
 
-    // Cek apakah ada opsi yang dipilih di section ini yang memiliki 'goto_form_section_id'
+        // 2. Cek apakah ada opsi di section ini yang memiliki instruksi 'goto_form_section_id' (Jump Section)
         let targetJumpSectionId = null;
         for (const q of questions) {
             const ans = getAnswer(q.id);
-            if (ans.value && q.options) {
-                const selectedOpt = q.options.find((o: any) => o.id === ans.value);
+            if (ans.value !== undefined && ans.value !== '' && q.options) {
+                const selectedOpt = q.options.find((o: any) => Number(o.id) === Number(ans.value));
                 if (selectedOpt && selectedOpt.goto_form_section_id) {
                     targetJumpSectionId = selectedOpt.goto_form_section_id;
-                    break; // Ambil instruksi lompat pertama yang ditemukan
+                    break; 
                 }
             }
         }
 
-        // Jika ada target lompat, eksekusi pemindahan section (Gunakan Number() untuk amankan tipe data)
+        // 3. Eksekusi perpindahan section (Menangani Jump maupun Normal Next)
         if (targetJumpSectionId !== null) {
             const targetIndex = sections.findIndex(sec => Number(sec.id) === Number(targetJumpSectionId));
             if (targetIndex !== -1) {
+                const furthestIndex = Math.max(currentSectionIndex, targetIndex - 1, maxCompletedIndex);
+                setMaxCompletedIndex(furthestIndex);
+                if (taskId) {
+                    localStorage.setItem(`inspection_max_completed_${taskId}`, furthestIndex.toString());
+                }
+
                 setCurrentSectionIndex(targetIndex);
                 return;
             }
         }
 
-    // Jika tidak ada aturan jump, lanjut ke section berikutnya secara normal
-    if (!isLastSection) {
-        setCurrentSectionIndex(prev => prev + 1);
-    } else {
-        alert('Semua section inspeksi selesai!');
-    }
+        // Jika alur normal (tidak ada jump)
+        if (currentSectionIndex > maxCompletedIndex) {
+            const newMax = currentSectionIndex;
+            setMaxCompletedIndex(newMax);
+            if (taskId) {
+                localStorage.setItem(`inspection_max_completed_${taskId}`, newMax.toString());
+            }
+        }
+
+        if (!isLastSection) {
+            setCurrentSectionIndex(prev => prev + 1);
+        } else {
+            alert('Semua section inspeksi selesai!');
+        }
     };
 
     return {
         currentSectionIndex,
         setCurrentSectionIndex,
-        errorMessage,
-        errorRef,
+        questionErrors, // 👈 Ekspor ini untuk dipakai di UI
         maxCompletedIndex,
         answers,
         currentSection,
@@ -392,6 +441,6 @@ const handleRemoveFile = async (questionId: number) => {
         handleRemoveEvidencePhoto,
         handleRemoveFile,
         handleNext,
-        triggerError
+        clearQuestionError,
     }
 }

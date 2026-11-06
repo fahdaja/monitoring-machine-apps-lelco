@@ -26,23 +26,47 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
 
     const scannerInstanceRef = useRef<any>(null);
 
-    // 1. Load posisi dari localStorage & Inject Script CDN secara aman saat di client-side
+    // Perkiraan ukuran tombol (lebar & tinggi dalam pixel)
+    const BUTTON_WIDTH = 110; 
+    const BUTTON_HEIGHT = 60;
+    const PADDING = 16; // Jarak aman dari pinggir layar
+
+    // Fungsi utilitas untuk memastikan posisi tidak pernah keluar layar
+    const clampPosition = (x: number, y: number) => {
+        if (typeof window === 'undefined') return { x, y };
+        
+        const maxX = window.innerWidth - BUTTON_WIDTH - PADDING;
+        const maxY = window.innerHeight - BUTTON_HEIGHT - PADDING;
+
+        return {
+            x: Math.min(Math.max(PADDING, x), Math.max(PADDING, maxX)),
+            y: Math.min(Math.max(PADDING, y), Math.max(PADDING, maxY)),
+        };
+    };
+
+    // 1. Load posisi dari localStorage & atur posisi awal / resize listener
     useEffect(() => {
         setIsClient(true);
         if (typeof window !== 'undefined') {
             const saved = localStorage.getItem('md_qr_btn_pos_v2');
             if (saved) {
                 try {
-                    setPosition(JSON.parse(saved));
+                    const parsed = JSON.parse(saved);
+                    // Validasi agar posisi lama tidak di luar layar
+                    setPosition(clampPosition(parsed.x, parsed.y));
                 } catch (e) {
-                    // Ignore
+                    setPosition(clampPosition(window.innerWidth - BUTTON_WIDTH - 20, window.innerHeight - BUTTON_HEIGHT - 40));
                 }
             } else {
-                setPosition({
-                    x: window.innerWidth - 80,
-                    y: window.innerHeight - 100,
-                });
+                setPosition(clampPosition(window.innerWidth - BUTTON_WIDTH - 20, window.innerHeight - BUTTON_HEIGHT - 40));
             }
+
+            // Handler jika ukuran layar berubah (misal rotasi HP / resize window)
+            const handleResize = () => {
+                setPosition((prev) => clampPosition(prev.x, prev.y));
+            };
+
+            window.addEventListener('resize', handleResize);
 
             // Inject script html5-qrcode ke dokumen jika belum ada
             // @ts-ignore
@@ -53,6 +77,10 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
                 script.async = true;
                 document.body.appendChild(script);
             }
+
+            return () => {
+                window.removeEventListener('resize', handleResize);
+            };
         }
     }, []);
 
@@ -83,14 +111,13 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
 
         if (!dragRef.current.hasMoved) return;
 
-        const padding = 10;
-        const maxX = window.innerWidth - 60 - padding;
-        const maxY = window.innerHeight - 60 - padding;
+        // Hitung posisi baru berdasarkan pergerakan kursor/sentuhan
+        const rawX = dragRef.current.initialX + dx;
+        const rawY = dragRef.current.initialY + dy;
 
-        const newX = Math.min(maxX, Math.max(padding, dragRef.current.initialX + dx));
-        const newY = Math.min(maxY, Math.max(padding, dragRef.current.initialY + dy));
-
-        setPosition({ x: newX, y: newY });
+        // Batasi dengan fungsi clamp agar tidak bisa keluar layar saat digeser
+        const clamped = clampPosition(rawX, rawY);
+        setPosition(clamped);
     };
 
     const handlePointerUp = (e: PointerEvent<HTMLButtonElement>) => {
@@ -107,12 +134,11 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
         }
     };
 
-    // 🚀 Buka Scanner Modal & Inisialisasi Kamera dengan ID String Stabil
+    // 🚀 Buka Scanner Modal & Inisialisasi Kamera
     const openScannerModal = () => {
         setIsScannerOpen(true);
         setErrorMessage(null);
 
-        // Beri waktu 400ms agar modal & elemen div dengan id="reader-target-box" selesai dirender React
         setTimeout(() => {
             // @ts-ignore
             const Html5Qrcode = window.Html5Qrcode;
@@ -136,7 +162,6 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
                     { facingMode: "environment" },
                     { fps: 20, qrbox: { width: 240, height: 240 } },
                     (decodedText: string) => {
-                        console.log("QR Berhasil Discan:", decodedText);
                         if (decodedText && decodedText.trim() !== "") {
                             scanner.stop().then(() => {
                                 setIsScannerOpen(false);
@@ -146,24 +171,21 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
                                 }
                             }).catch(() => {
                                 setIsScannerOpen(false);
+                                scannerInstanceRef.current = null;
                             });
                         }
                     },
-                    (errorMessage: string) => {
-                        // Abaikan error saat frame kosong
-                    }
+                    (errorMessage: string) => {}
                 ).catch((err: any) => {
-                    console.error("Gagal start kamera:", err);
                     setErrorMessage("Gagal mengakses kamera. Pastikan izin kamera diizinkan (Gunakan HTTPS atau Localhost).");
                 });
             } catch (e) {
-                console.error("Gagal inisialisasi scanner:", e);
                 setErrorMessage("Terjadi kesalahan saat membuka modul kamera.");
             }
         }, 400);
     };
 
-    // 📸 Alternatif: Scan dari File Gambar / Galeri / Foto Langsung
+    // 📸 Alternatif: Scan dari File Gambar / Galeri
     const handleScanFromFile = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -178,36 +200,36 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
         const html5QrCode = new Html5Qrcode("reader-target-box");
         html5QrCode.scanFile(file, true)
             .then((decodedText: string) => {
-                console.log("QR Berhasil dari file:", decodedText);
-                
-                // 🚀 Tutup modal scanner secara otomatis setelah sukses
                 setIsScannerOpen(false);
-                
                 if (scannerInstanceRef.current) {
                     try { scannerInstanceRef.current.clear(); } catch (e) {}
                     scannerInstanceRef.current = null;
                 }
-
                 if (decodedText && decodedText.trim() !== "") {
-                    if (onScanSuccess) {
-                        onScanSuccess(decodedText.trim());
-                    }
+                    if (onScanSuccess) onScanSuccess(decodedText.trim());
                 }
             })
             .catch((err: any) => {
                 alert("QR Code tidak ditemukan atau tidak terbaca pada gambar tersebut.");
             });
-    };  
+    }; 
+
     // Tutup Scanner / Matikan Kamera
     const closeScannerModal = () => {
-        if (scannerInstanceRef.current) {
-            scannerInstanceRef.current.stop().then(() => {
-                setIsScannerOpen(false);
+        const currentScanner = scannerInstanceRef.current;
+        if (currentScanner) {
+            try {
+                currentScanner.stop().then(() => {
+                    scannerInstanceRef.current = null;
+                    setIsScannerOpen(false);
+                }).catch(() => {
+                    scannerInstanceRef.current = null;
+                    setIsScannerOpen(false);
+                });
+            } catch (e) {
                 scannerInstanceRef.current = null;
-            }).catch(() => {
                 setIsScannerOpen(false);
-                scannerInstanceRef.current = null;
-            });
+            }
         } else {
             setIsScannerOpen(false);
         }
@@ -251,7 +273,6 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
                     <div className="bg-white rounded-2xl max-w-sm w-full p-5 relative shadow-2xl flex flex-col items-center">
                         <h3 className="text-sm font-bold text-slate-800 mb-2">Scan QR Code Mesin</h3>
                         
-                        {/* Target Kotak Kamera dengan ID stabil */}
                         <div id="reader-target-box" className="w-full rounded-xl overflow-hidden bg-slate-100 min-h-[260px] relative"></div>
 
                         {errorMessage && (

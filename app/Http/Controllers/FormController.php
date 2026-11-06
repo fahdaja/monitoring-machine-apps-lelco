@@ -35,7 +35,7 @@ class FormController extends Controller
 {
     return DB::transaction(function () use ($request) {
 
-        $validated = $request->validate([
+        $validate = $request->validate([
             'metadata.machine_type'              => 'required|string|exists:machines,machine_type',
             'metadata.form_title'                => 'required|string|max:255',
             'metadata.form_description'          => 'nullable|string',
@@ -56,12 +56,12 @@ class FormController extends Controller
             'sections.*.questions.*.options.*.id'  => 'nullable|exists:form_options,id',
             'sections.*.questions.*.options.*.option_text' => 'required|string',
             'sections.*.questions.*.options.*.is_normal' => 'required|boolean',
-            'sections.*.questions.*.options.*.goto_form_section_id' => 'nullable',
+            'sections.*.questions.*.options.*.goto_form_section_id' => 'nullable|integer',
             'sections.*.questions.*.is_required'   => 'required|boolean',
             'sections.*.questions.*.validation_rules' => 'nullable',
         ]);
 
-        $meta = $validated['metadata'];
+        $meta = $validate['metadata'];
         $machine = Machine::where('machine_type', $meta['machine_type'])->firstOrFail();
         $machineTypePrefix = substr(strtoupper($machine->machine_type), 0, 3);
 
@@ -81,7 +81,7 @@ class FormController extends Controller
         $createdSectionIds = [];
 
         // 2. Simpan Sections Terlebih Dahulu agar Mendapatkan ID Database
-        foreach ($validated['sections'] as $sIndex => $sectionData) {
+        foreach ($validate['sections'] as $sIndex => $sectionData) {
             $section = FormSection::create([
                 'form_id'             => $form->id,
                 'section_code'        => "SEC-" . strtoupper(uniqid()),
@@ -95,7 +95,7 @@ class FormController extends Controller
         }
 
         // 3. Simpan Questions & Options
-        foreach ($validated['sections'] as $sIndex => $sectionData) {
+        foreach ($validate['sections'] as $sIndex => $sectionData) {
             // Ambil section yang bersangkutan berdasarkan form_id dan urutannya
             $section = FormSection::where('form_id', $form->id)
                 ->where('section_order', $sIndex + 1)
@@ -127,19 +127,23 @@ class FormController extends Controller
                 ]);
 
                 if (isset($questionData['options']) && is_array($questionData['options'])) {
-                    foreach ($questionData['options'] as $oIndex => $optionData) {
-                        
-                        // Konversi index section dari frontend menjadi ID database asli
-                        $targetSectionIndex = $optionData['goto_form_section_id'] ?? null;
-                        $realSectionId = null;
+                        foreach ($questionData['options'] as $oIndex => $optionData) {
+                            
+                            // 🛠️ Perbaikan Logika Konversi `goto_form_section_id` yang Konsisten
+                            $targetSectionValue = $optionData['goto_form_section_id'] ?? null;
+                            $realSectionId = null;
 
-                        if ($targetSectionIndex !== '' && $targetSectionIndex !== null) {
-                            // Cek apakah index tersebut ada di array mapping kita
-                            $numericIndex = (int) $targetSectionIndex;
-                            if (isset($createdSectionIds[$numericIndex])) {
-                                $realSectionId = $createdSectionIds[$numericIndex];
+                            if ($targetSectionValue !== '' && $targetSectionValue !== null) {
+                                $numericVal = (int) $targetSectionValue;
+                                
+                                if (isset($createdSectionIds[$numericVal])) {
+                                    // Jika dikirim berupa index array dari frontend (0, 1, 2)
+                                    $realSectionId = $createdSectionIds[$numericVal];
+                                } else {
+                                    // Jika sudah berupa ID database mentah
+                                    $realSectionId = $numericVal;
+                                }
                             }
-                        }
 
                         FormOption::create([
                             'form_question_id'     => $question->id,
@@ -147,7 +151,7 @@ class FormController extends Controller
                             'option_text'          => $optionData['option_text'],
                             'option_order'         => $oIndex + 1,
                             'is_normal'            => $optionData['is_normal'] ?? false,
-                            'goto_form_section_id' => $realSectionId, // Disimpan dengan ID database yang valid
+                            'goto_form_section_id' => $realSectionId,
                         ]);
                     }
                 }
@@ -184,7 +188,7 @@ class FormController extends Controller
         return DB::transaction(function () use ($request, $id) {
             $form = Form::findOrFail($id);
 
-            $validated = $request->validate([
+            $validate = $request->validate([
                 'metadata.machine_type'              => 'required|string|exists:machines,machine_type',
                 'metadata.form_title'                => 'required|string|max:255',
                 'metadata.form_description'          => 'nullable|string',
@@ -207,12 +211,12 @@ class FormController extends Controller
                 'sections.*.questions.*.options.*.id'  => 'nullable|exists:form_options,id',
                 'sections.*.questions.*.options.*.option_text' => 'required|string',
                 'sections.*.questions.*.options.*.is_normal' => 'required|boolean',
-                'sections.*.questions.*.options.*.goto_form_section_id' => 'nullable', // Tambahan validasi untuk goto section
+                'sections.*.questions.*.options.*.goto_form_section_id' => 'nullable|integer|exists:form_sections,id', // Tambahan validasi untuk goto section
                 'sections.*.questions.*.is_required'   => 'required|boolean',
                 'sections.*.questions.*.validation_rules' => 'nullable',
             ]);
 
-            $meta = $validated['metadata'];
+            $meta = $validate['metadata'];
             $machine = Machine::where('machine_type', $meta['machine_type'])->firstOrFail();
 
             // Update info utama form
@@ -229,7 +233,7 @@ class FormController extends Controller
             $createdSectionIds = [];
 
             // 1. Simpan / Update Sections Terlebih Dahulu
-            foreach ($validated['sections'] as $sIndex => $sectionData) {
+            foreach ($validate['sections'] as $sIndex => $sectionData) {
                 $section = FormSection::updateOrCreate(
                     ['id' => $sectionData['id'] ?? null, 'form_id' => $form->id],
                     [
@@ -246,7 +250,7 @@ class FormController extends Controller
             }
 
             // 2. Simpan / Update Questions & Options
-            foreach ($validated['sections'] as $sIndex => $sectionData) {
+            foreach ($validate['sections'] as $sIndex => $sectionData) {
                 // Ambil section berdasarkan form_id dan urutannya yang valid
                 $section = FormSection::where('form_id', $form->id)
                     ->where('section_order', $sIndex + 1)
@@ -277,8 +281,10 @@ class FormController extends Controller
                     }
 
                     $question = FormQuestion::updateOrCreate(
-                        ['id' => $questionId, 'form_id' => $form->id, 'form_section_id' => $section->id],
+                       ['id' => $questionData['id'] ?? null, 'form_section_id' => $section->id, 'form_id' => $form->id ],
                         [
+                            'form_id'         => $form->id,
+                            'form_section_id'  => $section->id,
                             'question_code'    => $questionData['question_code'] ?? "QST-" . strtoupper(uniqid()),
                             'question_text'    => $questionData['question_text'],
                             'input_type'       => $questionData['input_type'],
@@ -299,6 +305,10 @@ class FormController extends Controller
                     if (isset($questionData['options']) && is_array($questionData['options'])) {
                         $existingOptionIds = [];
 
+                        if (!$question || !$question->id) {
+    throw new \Exception("Gagal menyimpan pertanyaan, ID kosong.");
+}
+
                         foreach ($questionData['options'] as $oIndex => $optionData) {
                             
                             // Konversi index target section dari frontend menjadi ID database asli
@@ -313,13 +323,18 @@ class FormController extends Controller
                             }
 
                             $option = FormOption::updateOrCreate(
-                                ['id' => $optionData['id'] ?? null, 'form_question_id' => $question->id],
+                                ['id'               => $optionData['id'] ?? null,
+                                'form_question_id' => $question->id
+                                 ], 
                                 [
+                                    'form_question_id'     => $question->id,
                                     'option_code'          => $optionData['option_code'] ?? "OPT-" . strtoupper(uniqid()),
                                     'option_text'          => $optionData['option_text'],
                                     'option_order'         => $oIndex + 1,
                                     'is_normal'            => $optionData['is_normal'] ?? false,
-                                    'goto_form_section_id' => $realSectionId, // Disimpan dengan ID database yang valid
+                                    'goto_form_section_id' => !empty($optionData['goto_form_section_id']) 
+            ? intval($optionData['goto_form_section_id']) 
+            : null,
                                 ]
                             );
                             $existingOptionIds[] = $option->id;

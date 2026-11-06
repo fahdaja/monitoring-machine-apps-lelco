@@ -18,6 +18,7 @@ return new class extends Migration
             $table->text('problem_descriptions');
             $table->enum('status', [
                 'OPEN', 
+                'ACKNOWLEDGED',
                 'IN_PROGRESS', 
                 'WAITING_SPAREPART', 
                 'WAITING_VENDOR', 

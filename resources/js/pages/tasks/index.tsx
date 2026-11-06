@@ -288,10 +288,8 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
 
                                     <h4 className="font-extrabold text-slate-900 text-sm leading-snug">{t.activity}</h4>
 
-                                    <div className="mt-2 text-xs text-slate-600">
-                                        <Link href={`/machines/${t.machineId}`} className="font-bold text-slate-900 hover:underline">
+                                    <div className="mt-2 text-xs text-slate-600 font-bold">
                                             {t.machineName}
-                                        </Link>
                                         <span className="block text-[11px] text-slate-400 mt-0.5">{t.machineCode} &bull; {t.location}</span>
                                     </div>
 
@@ -338,7 +336,6 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                                                     type="button"
                                                     onClick={() => {
                                                         if (t.status === 'IN_PROGRESS') {
-                                                            // 🚀 Jika sudah In Progress, langsung masuk ke form tanpa scan QR lagi
                                                             router.visit(`/inspection-form/${t.taskId}`);
                                                         } else {
                                                             // Jika status DUE / OVERDUE, tetap wajib verifikasi scan QR dulu
