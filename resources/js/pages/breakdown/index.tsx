@@ -2,17 +2,17 @@ import React, { useState, FormEvent } from 'react';
 import { Head, useForm, router } from '@inertiajs/react';
 import AppLayout from '../../layouts/app-layout';
 
-
 export interface BreakdownTicket {
   id: number;
-  ticketId: string;
-  machineId: string;
-  machineName: string;
+  ticket_code: string;
+  machine_id: number;
+  machine_code: string;
+  machine_name: string;
   location: string;
   problem: string;
-  status: 'OPEN' | 'IN_PROGRESS' | 'UNDER_REPAIR' | 'WAITING_SPAREPART' | 'WAITING_VENDOR' | 'READY_FOR_CLOSING' | 'CLOSED';
+  status: 'OPEN' | 'IN_PROGRESS' | 'ACKNOWLEDGED' | 'UNDER_REPAIR' | 'WAITING_SPAREPART' | 'WAITING_VENDOR' | 'READY_FOR_CLOSING' | 'CLOSED';
   pipelineStage: 'REPORT' | 'REPAIR' | 'WAITING' | 'CLOSING' | 'VERIFICATION';
-  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  source_type: string;
   currentLevel?: string;
   reportedAt: string;
   breakdownMinutes: number;
@@ -39,7 +39,6 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
   const [selectedStages, setSelectedStages] = useState<BreakdownTicket['pipelineStage'][]>([]);
   const [activeCloseTicket, setActiveCloseTicket] = useState<BreakdownTicket | null>(null);
 
-  // Strongly-typed Form State untuk Inertia
   const { data, setData, post, processing, errors, reset } = useForm<{
     root_cause: string;
     corrective_action: string;
@@ -68,7 +67,7 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
     e.preventDefault();
     if (!activeCloseTicket) return;
 
-    post(`/breakdowns/${activeCloseTicket.ticketId}/close`, {
+    post(`/breakdowns/${activeCloseTicket.ticket_code}/close`, {
       onSuccess: () => {
         setActiveCloseTicket(null);
         reset();
@@ -76,8 +75,22 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
     });
   };
 
-  const formatDowntime = (minutes: number): string => {
-    const m = Number(minutes || 0);
+  // Fungsi untuk Acknowledge / Menerima Tiket (Report -> Repair)
+  const handleAcknowledge = (ticketCode: string) => {
+    router.post(`/breakdowns/${ticketCode}/acknowledge`, {}, {
+      preserveScroll: true,
+    });
+  };
+
+  // Fungsi untuk Memperbarui Status Pending (Repair -> Waiting Sparepart / Vendor)
+  const handleUpdateStatus = (ticketCode: string, newStatus: string) => {
+    router.put(`/breakdowns/${ticketCode}/status`, { status: newStatus }, {
+      preserveScroll: true,
+    });
+  };
+
+const formatDowntime = (minutes: number): string => {
+    const m = Math.round(Number(minutes || 0)); // Dibulatkan agar tidak ada desimal panjang
     if (m < 60) return `${m} min`;
     const h = Math.floor(m / 60);
     const r = m % 60;
@@ -90,6 +103,7 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
         return 'bg-amber-100 text-amber-800 border-amber-200';
       case 'IN_PROGRESS':
       case 'UNDER_REPAIR':
+      case 'ACKNOWLEDGED':
         return 'bg-blue-100 text-blue-800 border-blue-200';
       case 'WAITING_SPAREPART':
       case 'WAITING_VENDOR':
@@ -138,7 +152,14 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
         {/* Baris Tombol Filter */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {BREAKDOWN_STAGES.map((stg) => {
-            const count = breakdowns.filter((b) => (b.pipelineStage || 'REPORT') === stg.key).length;
+            const count = breakdowns.filter((b) => {
+              const currentStage = b.pipelineStage || 'REPORT';
+              if (stg.key === 'REPORT') {
+                return currentStage === 'REPORT' && b.status === 'OPEN';
+              }
+              return currentStage === stg.key;
+            }).length;
+
             const isActive = selectedStages.includes(stg.key);
 
             return (
@@ -166,10 +187,16 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
         </div>
       </div>
 
-      {/* Kanban Pipeline Board - gap-6 untuk memberi jarak antar kolom stage */}
+      {/* Kanban Pipeline Board */}
       <div className={`flex gap-6 overflow-x-auto pb-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-${visibleStages.length}`}>
         {visibleStages.map((stage) => {
-          const items = breakdowns.filter((b) => (b.pipelineStage || 'REPORT') === stage.key);
+          const items = breakdowns.filter((b) => {
+            const currentStage = b.pipelineStage || 'REPORT';
+            if (stage.key === 'REPORT') {
+              return currentStage === 'REPORT' && b.status === 'OPEN';
+            }
+            return currentStage === stage.key;
+          });
 
           return (
             <div key={stage.key} className="w-[300px] shrink-0 bg-slate-100/80 border border-slate-200 rounded-2xl p-3.5 flex flex-col shadow-xs">
@@ -189,11 +216,20 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
                     <article key={b.id} className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-sm hover:shadow-md transition-shadow">
                       <div className="flex items-start justify-between gap-2 mb-2">
                         <div>
-                          <span className="text-[10px] font-extrabold font-mono text-slate-500 block">
-                            {b.ticketId} &bull; {b.currentLevel || 'GENERAL'}
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-extrabold font-mono text-slate-500">
+                              {b.ticket_code}
+                            </span>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                              {b.source_type}
+                            </span>
+                          </div>
+
+                          <h4 className="font-extrabold text-slate-900 text-sm leading-snug mt-0.5">{b.machine_name}</h4>
+                          
+                          <span className="text-[11px] text-slate-400 block mt-0.5">
+                            {b.machine_code} &bull; {b.location}
                           </span>
-                          <h4 className="font-extrabold text-slate-900 text-sm leading-snug mt-0.5">{b.machineName}</h4>
-                          <span className="text-[11px] text-slate-400 block mt-0.5">{b.machineId} &bull; {b.location}</span>
                         </div>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${getBadgeClass(b.status)}`}>
                           {b.status}
@@ -213,21 +249,75 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
 
                       <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed mb-3">{b.problem}</p>
 
-                      <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
-                        <button
-                          type="button"
-                          onClick={() => router.get(`/machines/${b.machineId}`)}
-                          className="flex-1 py-1.5 px-2 text-[11px] font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg text-center transition-colors"
-                        >
-                          Lihat Mesin
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setActiveCloseTicket(b)}
-                          className="flex-1 py-1.5 px-2 text-[11px] font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg text-center transition-colors"
-                        >
-                          Close Ticket
-                        </button>
+                      {/* Tombol Aksi Berdasarkan Tahap Pipeline */}
+                      <div className="space-y-2 pt-2 border-t border-slate-100">
+                        {/* Tahap REPORT (Status OPEN): Tombol Terima Tiket */}
+                        {b.pipelineStage === 'REPORT' && b.status === 'OPEN' && (
+                          <button
+                            type="button"
+                            onClick={() => handleAcknowledge(b.ticket_code)}
+                            className="w-full py-1.5 px-2 text-[11px] font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg text-center transition-colors shadow-xs"
+                          >
+                            Terima & Mulai Repair
+                          </button>
+                        )}
+
+                        {/* Tahap REPAIR: Opsi Menunggu Sparepart / Vendor */}
+                        {b.pipelineStage === 'REPAIR' && (
+                          <div className="flex gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateStatus(b.ticket_code, 'WAITING_SPAREPART')}
+                              className="flex-1 py-1 px-1 text-[10px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded border border-purple-200 text-center"
+                              title="Pindah ke tahap Waiting (Sparepart)"
+                            >
+                              Tunggu Sparepart
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateStatus(b.ticket_code, 'WAITING_VENDOR')}
+                              className="flex-1 py-1 px-1 text-[10px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded border border-purple-200 text-center"
+                              title="Pindah ke tahap Waiting (Vendor)"
+                            >
+                              Tunggu Vendor
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Tahap CLOSING: Tombol untuk Verifikasi & Selesaikan (CLOSED) */}
+{b.pipelineStage === 'CLOSING' && (
+  <button
+    type="button"
+    onClick={() => {
+      router.put(`/breakdowns/${b.ticket_code}/verify-close`, {}, {
+        preserveScroll: true,
+      });
+    }}
+    className="w-full py-1.5 px-2 text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg text-center transition-colors shadow-xs"
+  >
+    Verifikasi & Selesaikan (Closed)
+  </button>
+)}
+
+
+
+                        {/* Tombol Umum: Lihat Mesin & Close Ticket */}
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => router.get(`/machines/${b.machine_id}`)}
+                            className="flex-1 py-1.5 px-2 text-[11px] font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg text-center transition-colors"
+                          >
+                            Lihat Mesin
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setActiveCloseTicket(b)}
+                            className="flex-1 py-1.5 px-2 text-[11px] font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg text-center transition-colors"
+                          >
+                            Close Ticket
+                          </button>
+                        </div>
                       </div>
                     </article>
                   ))
@@ -249,7 +339,7 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
               <div>
                 <h3 className="text-lg font-extrabold text-slate-900">Close Ticket Breakdown</h3>
-                <p className="text-xs text-slate-500 font-mono mt-0.5">{activeCloseTicket.ticketId} &bull; {activeCloseTicket.machineName}</p>
+                <p className="text-xs text-slate-500 font-mono mt-0.5">{activeCloseTicket.ticket_code} &bull; {activeCloseTicket.machine_name}</p>
               </div>
               <button
                 type="button"

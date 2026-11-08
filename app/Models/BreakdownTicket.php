@@ -19,30 +19,24 @@ class BreakdownTicket extends Model
 
 
     protected $fillable = [ 
-        // ticket information
-        'id',
         'ticket_code',
-        'machine_id',
         'problem_category',
         'problem_descriptions',
-        'source_type',
         'status',
+        'source_type',
+        'pipeline_stage', // Jika kolom ini ada di database atau virtual
         'reported_at',
         'reported_by',
-
-        // teknisi yang menangani
         'assigned_to',
         'started_at',
         'closed_at',
-
-        // permasalahan dan aksi untuk menyelesaikan permasalahan
         'root_cause',
         'corrective_action',
-
-
+        'breakdown_minutes', // Pastikan kolom ini sudah ada di migration jika dipakai
         'verified_by',
         'verified_at',
         'verification_notes',
+        'machine_id',
     ];
 
     protected $casts = [
@@ -50,20 +44,33 @@ class BreakdownTicket extends Model
 
         // untuk enum
         'status' => TicketStatus::class,
-
-        // untuk tanggal 
         'reported_at' => 'datetime',
         'started_at' => 'datetime',
         'closed_at' => 'datetime',
         'verified_at' => 'datetime',
     ];
 
+
+    public function getCalculatedDowntimeAttribute()
+    {
+        if (isset($this->attributes['breakdown_minutes']) && $this->attributes['breakdown_minutes']) {
+            return $this->breakdown_minutes;
+        }
+
+        if ($this->reported_at) {
+            $endTime = $this->closed_at ?? now();
+            return $this->reported_at->diffInMinutes($endTime);
+        }
+
+        return 0;
+    }
+
     /**
      * Relasi ke Machine
      */
     public function machine(): BelongsTo
     {
-        return $this->belongsTo(Machine::class, 'machine_id', 'machine_id');
+        return $this->belongsTo(Machine::class, 'machine_id', 'id');
     }
 
     /**
@@ -86,11 +93,11 @@ class BreakdownTicket extends Model
      */
     public function assignee(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'assigned_to', 'user_id');
+        return $this->belongsTo(User::class, 'assigned_to', 'id'); // Ubah 'user_id' jadi 'id'
     }
 
     public function verifier(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'verified_by', 'user_id');
+        return $this->belongsTo(User::class, 'verified_by', 'id'); // Ubah 'user_id' jadi 'id'
     }
 }

@@ -9,6 +9,7 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\TaskController;
+use App\Http\Controllers\BreakdownController;
 
 // Auth Routes
 Route::get('/login', [AuthController::class, 'create']);
@@ -18,7 +19,7 @@ Route::get('/scan/machine/{machineCode}', [TaskController::class, 'handleQrScanR
 Route::get('/inspection-calender', [TaskController::class, 'index'])->name('tasks.index')->middleware(['auth', 'role:ADMIN,OPERATOR']);
 Route::get('/api/scan-task/{code}', [TaskController::class, 'apiFindTaskByMachine']);
 
-Route::middleware(['auth', 'role:OPERATOR'])->group(function () {
+Route::middleware(['auth', 'role:ADMIN,OPERATOR'])->group(function () {
     Route::get('/inspection-form/{id}',[TaskController::class, 'show'])->name('tasks.show');
     Route::post('/inspection-form/upload-temp', [TaskController::class, 'uploadTempFile']);
     Route::post('/inspection-form/remove-file', [TaskController::class, 'removeFile']);
@@ -57,10 +58,11 @@ Route::middleware(['auth', 'role:ADMIN'])->group(function () {
 Route::get('/machines/{machineId}', [MachineController::class, 'show'])->name('machines.show');
 
 
-Route::get('/breakdowns',function(){
-    return inertia('breakdown/index');
-})->name('breakdowns.index');
-
+Route::get('/breakdowns', [BreakdownController::class, 'index'])->name('breakdowns.index');
+Route::post('/breakdowns/{ticketCode}/acknowledge', [BreakdownController::class, 'acknowledge'])->name('breakdowns.acknowledge');
+Route::put('/breakdowns/{ticketCode}/status', [BreakdownController::class, 'updateStatus'])->name('breakdowns.updateStatus');
+Route::post('/breakdowns/{ticketCode}/close', [BreakdownController::class, 'close'])->name('breakdowns.close');
+Route::put('/breakdowns/{ticketCode}/verify-close', [BreakdownController::class, 'verifyClose'])->name('breakdowns.verifyClose');
 
 
 Route::middleware(['auth', 'role:ADMIN'])->group(function () {
