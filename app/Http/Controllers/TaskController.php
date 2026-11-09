@@ -249,7 +249,60 @@ class TaskController extends Controller {
             'answers.*.note' => 'nullable|string',
             'answers.*.photos' => 'nullable|string',
         ]);
-        
+
+        $submittedAnswers = $request->input('answers', []);
+    $customErrors = [];
+
+    // Flatten atau petingakan semua questions dari form untuk pengecekan cepat
+    $allQuestions = $task->form->sections->flatMap->questions;
+
+    // 3. Validasi kondisional per pertanyaan (Hanya wajibkan note & photos jika abnormal)
+    foreach ($submittedAnswers as $questionId => $answer) {
+        $question = $allQuestions->firstWhere('id', $questionId);
+        if (!$question) continue;
+
+        $value = $answer['value'] ?? null;
+        $note = trim($answer['note'] ?? '');
+        $photos = trim($answer['photos'] ?? '');
+
+        // 💡 1. Cek jika pertanyaan ini sifatnya wajib (is_required) tapi belum dijawab sama sekali
+        $isEmptyValue = empty($value) && $value !== '0' && $value !== 0;
+        if (is_array($value) && count($value) === 0) {
+            $isEmptyValue = true;
+        }
+
+        if ($question->is_required && $isEmptyValue) {
+            $customErrors["answers.{$questionId}.value"] = "Pertanyaan \"{$question->question_text}\" wajib diisi.";
+            continue; // Lanjut ke pertanyaan berikutnya jika kosong
+        }
+
+        // 💡 2. Cek apakah jawaban ini abnormal berdasarkan is_normal == false
+        $isAbnormal = false;
+
+        if (!$isEmptyValue) {
+            $valueArray = is_array($value) ? $value : [$value];
+
+            $matchedAbnormalOptions = $question->options->filter(function($opt) use ($valueArray) {
+                return (in_array($opt->id, $valueArray) || in_array($opt->option_text, $valueArray))
+                    && ($opt->is_normal === false || $opt->is_normal == 0);
+            });
+
+            if ($matchedAbnormalOptions->isNotEmpty()) {
+                $isAbnormal = true;
+            }
+        }
+
+        // Jika kondisinya abnormal, maka note dan photos mutlak wajib diisi!
+        if ($isAbnormal) {
+            if (empty($note)) {
+                $customErrors["answers.{$questionId}.note"] = 'Catatan wajib diisi untuk temuan abnormal.';
+            }
+            if (empty($photos)) {
+                $customErrors["answers.{$questionId}.photos"] = 'Foto evidence wajib diisi untuk temuan abnormal.';
+            }
+        }
+    }
+
     return DB::transaction(function () use ($request, $task, $validated) {
         $form = $task->form;
         $submittedAnswers = $validated['answers'];
@@ -435,7 +488,7 @@ public function uploadTempFile(Request $request)
     $request->validate([
         'file' => "required|file|mimes:{$allowedMimes}|max:{$maxKb}",
     ], [
-        'file.mimes' => "Format file tidak sesuai. Format yang diizinkan: {$allowedTypesLabel}.",
+        'file.mimes' => "Format file tidak sesuai dengan: {$allowedTypesLabel}.",
         'file.max' => "Ukuran file terlalu besar. Batas maksimal ukuran file adalah {$maxSizeLabel}.",
     ]);
 

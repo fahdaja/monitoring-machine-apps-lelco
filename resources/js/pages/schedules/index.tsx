@@ -141,7 +141,7 @@ export default function ScheduleIndex({ schedules, forms }: Props) {
             <div className="space-y-6">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
-                        <h1 className="text-2xl font-extrabold text-slate-900">Manajemen Jadwal Pemantauan</h1>
+                        <h1 className="text-3xl font-extrabold text-slate-900">Manajemen Jadwal Pemantauan</h1>
                         <p className="text-xs text-slate-500 mt-1">Atur jadwal berkala untuk template form agar task teknisi ter-generate otomatis.</p>
                     </div>
                     {isAdmin && (

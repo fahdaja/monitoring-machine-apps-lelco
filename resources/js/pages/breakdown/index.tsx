@@ -1,5 +1,5 @@
 import React, { useState, FormEvent } from 'react';
-import { Head, useForm, router } from '@inertiajs/react';
+import { Head, useForm, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../layouts/app-layout';
 
 export interface BreakdownTicket {
@@ -12,9 +12,17 @@ export interface BreakdownTicket {
   problem: string;
   status: 'OPEN' | 'IN_PROGRESS' | 'ACKNOWLEDGED' | 'UNDER_REPAIR' | 'WAITING_SPAREPART' | 'WAITING_VENDOR' | 'READY_FOR_CLOSING' | 'CLOSED';
   pipelineStage: 'REPORT' | 'REPAIR' | 'WAITING' | 'CLOSING' | 'VERIFICATION';
-  source_type: string;
-  currentLevel?: string;
-  reportedAt: string;
+  source_type: 'AUTO_REPORT' | 'MANUAL_REPORT';
+  reported_by_name?: string;  
+  assigned_to_name?: string;  
+  verified_by_name?: string;  
+  root_cause?: string;
+  corrective_action?: string;
+  verification_notes?: string;
+  reported_at: string;
+  started_at?: string;
+  closed_at?: string;         // <-- Pastikan ada
+  verified_at?: string;       // <-- Pastikan ada
   breakdownMinutes: number;
 }
 
@@ -75,22 +83,20 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
     });
   };
 
-  // Fungsi untuk Acknowledge / Menerima Tiket (Report -> Repair)
   const handleAcknowledge = (ticketCode: string) => {
     router.post(`/breakdowns/${ticketCode}/acknowledge`, {}, {
       preserveScroll: true,
     });
   };
 
-  // Fungsi untuk Memperbarui Status Pending (Repair -> Waiting Sparepart / Vendor)
   const handleUpdateStatus = (ticketCode: string, newStatus: string) => {
     router.put(`/breakdowns/${ticketCode}/status`, { status: newStatus }, {
       preserveScroll: true,
     });
   };
 
-const formatDowntime = (minutes: number): string => {
-    const m = Math.round(Number(minutes || 0)); // Dibulatkan agar tidak ada desimal panjang
+  const formatDowntime = (minutes: number): string => {
+    const m = Math.round(Number(minutes || 0));
     if (m < 60) return `${m} min`;
     const h = Math.floor(m / 60);
     const r = m % 60;
@@ -117,15 +123,19 @@ const formatDowntime = (minutes: number): string => {
     }
   };
 
+  const { auth } = usePage<PageProps>().props;
+  const userRole = auth?.user?.role?.toUpperCase();
+  const isAdmin = userRole === 'ADMIN';
+
   return (
     <AppLayout>
       <Head title="Machine Breakdown Pipeline" />
 
       {/* Header Halaman */}
       <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight">Machine Breakdown</h1>
+        <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight">Breakdown Mesin</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Corrective maintenance pipeline. Durasi breakdown dihitung sejak laporan Operator sampai mesin diverifikasi RUNNING kembali.
+          Corrective maintenance pipeline. Durasi breakdown dihitung sejak laporan masuk sampai mesin diverifikasi RUNNING kembali.
         </p>
       </div>
 
@@ -149,17 +159,9 @@ const formatDowntime = (minutes: number): string => {
           </button>
         </div>
 
-        {/* Baris Tombol Filter */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {BREAKDOWN_STAGES.map((stg) => {
-            const count = breakdowns.filter((b) => {
-              const currentStage = b.pipelineStage || 'REPORT';
-              if (stg.key === 'REPORT') {
-                return currentStage === 'REPORT' && b.status === 'OPEN';
-              }
-              return currentStage === stg.key;
-            }).length;
-
+            const count = breakdowns.filter((b) => b.pipelineStage === stg.key).length;
             const isActive = selectedStages.includes(stg.key);
 
             return (
@@ -188,18 +190,12 @@ const formatDowntime = (minutes: number): string => {
       </div>
 
       {/* Kanban Pipeline Board */}
-      <div className={`flex gap-6 overflow-x-auto pb-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-${visibleStages.length}`}>
+      <div className="flex gap-6 overflow-x-auto pb-6">
         {visibleStages.map((stage) => {
-          const items = breakdowns.filter((b) => {
-            const currentStage = b.pipelineStage || 'REPORT';
-            if (stage.key === 'REPORT') {
-              return currentStage === 'REPORT' && b.status === 'OPEN';
-            }
-            return currentStage === stage.key;
-          });
+          const items = breakdowns.filter((b) => b.pipelineStage === stage.key);
 
           return (
-            <div key={stage.key} className="w-[300px] shrink-0 bg-slate-100/80 border border-slate-200 rounded-2xl p-3.5 flex flex-col shadow-xs">
+            <div key={stage.key} className="w-[340px] shrink-0 bg-slate-100/80 border border-slate-200 rounded-2xl p-3.5 flex flex-col shadow-xs">
               <div className="flex items-center justify-between border-b border-slate-200 pb-2.5 mb-3 px-1">
                 <div>
                   <span className="text-[9px] font-black tracking-wider uppercase text-slate-400 block">PIPELINE</span>
@@ -214,19 +210,24 @@ const formatDowntime = (minutes: number): string => {
                 {items.length > 0 ? (
                   items.map((b) => (
                     <article key={b.id} className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-sm hover:shadow-md transition-shadow">
+                      {/* Header Tiket */}
                       <div className="flex items-start justify-between gap-2 mb-2">
                         <div>
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="text-[10px] font-extrabold font-mono text-slate-500">
                               {b.ticket_code}
                             </span>
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
-                              {b.source_type}
-                            </span>
-                          </div>
+                            {/* Badge Source Type */}
+        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+          b.source_type === 'AUTO_REPORT'
+            ? 'bg-indigo-50 text-indigo-700 border-indigo-200' 
+            : 'bg-amber-50 text-amber-700 border-amber-200'
+        }`}>
+          {b.source_type === 'AUTO_REPORT' ? '🤖 Auto Report' : '👤 Manual Report'}
+        </span>
+      </div>
 
-                          <h4 className="font-extrabold text-slate-900 text-sm leading-snug mt-0.5">{b.machine_name}</h4>
-                          
+                          <h4 className="font-extrabold text-slate-900 text-sm leading-snug mt-1">{b.machine_name}</h4>
                           <span className="text-[11px] text-slate-400 block mt-0.5">
                             {b.machine_code} &bull; {b.location}
                           </span>
@@ -236,22 +237,76 @@ const formatDowntime = (minutes: number): string => {
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2 my-2.5 p-2 bg-slate-50 rounded-lg text-[11px]">
-                        <div>
-                          <span className="text-[9px] text-slate-400 block">Reported</span>
-                          <span className="font-semibold text-slate-700 block mt-0.5">{b.reportedAt || '-'}</span>
+                      {/* Deskripsi Masalah */}
+                      <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100 mb-2.5">
+                        <strong className="text-slate-700">Problem:</strong> {b.problem}
+                      </p>
+
+                      {/* Informasi Personil & Waktu (Dibuat Dinamis Sesuai Data yang Tersedia) */}
+                      <div className="mb-2.5 text-[11px] text-slate-500 space-y-1 bg-slate-50/50 p-2.5 rounded-lg border border-slate-100">
+                        {/* Pelapor (Hanya untuk Manual Report) */}
+                        {b.source_type === 'MANUAL_REPORT' && (
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Pelapor:</span>
+                            <strong className="text-slate-700">{b.reported_by_name || 'Operator'}</strong>
+                          </div>
+                        )}
+
+                        {/* Teknisi yang Menangani */}
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Assigned To:</span>
+                          <strong className="text-blue-600">{b.assigned_to_name || 'Belum ditugaskan'}</strong>
                         </div>
-                        <div>
-                          <span className="text-[9px] text-slate-400 block">Downtime</span>
-                          <span className="font-bold text-slate-900 block mt-0.5">{formatDowntime(b.breakdownMinutes)}</span>
-                        </div>
+
+                        {/* Verifikator (Jika sudah masuk tahap Closing / Verified) */}
+                        {b.verified_by_name && (
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Verified By:</span>
+                            <strong className="text-emerald-700">{b.verified_by_name}</strong>
+                          </div>
+                        )}
                       </div>
 
-                      <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed mb-3">{b.problem}</p>
+                      {/* Metrik Waktu & Downtime */}
+                      <div className="grid grid-cols-2 gap-2 my-2.5 p-2 bg-slate-50 rounded-lg text-[11px]">
+                        <div>
+                          <span className="text-[9px] text-slate-400 block">Reported At</span>
+                          <span className="font-semibold text-slate-700 block mt-0.5">{b.reported_at || '-'}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-slate-400 block">Total Downtime</span>
+                          <span className="font-bold text-slate-900 block mt-0.5">{formatDowntime(b.breakdownMinutes)}</span>
+                        </div>
+                        {b.started_at && (
+                          <div>
+                            <span className="text-[9px] text-slate-400 block">Started Repair</span>
+                            <span className="font-semibold text-slate-700 block mt-0.5">{b.started_at || '-'}</span>
+                          </div>
+                        )}
+                        {b.closed_at && (
+                          <div>
+                            <span className="text-[9px] text-slate-400 block">Closed At</span>
+                            <span className="font-semibold text-slate-700 block mt-0.5">{b.closed_at || '-'}</span>
+                          </div>
+                        )}
+                        {b.verified_at && (
+                          <div>
+                            <span className="text-[9px] text-slate-400 block">Verified At</span>
+                            <span className="font-semibold text-slate-700 block mt-0.5">{b.verified_at || '-'}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Root Cause & Corrective Action */}
+                      {(b.root_cause || b.corrective_action) && (
+                        <div className="mb-3 p-2 rounded-lg bg-emerald-50/50 border border-emerald-100 text-[11px] space-y-1">
+                          {b.root_cause && <p><strong className="text-emerald-800">Root Cause:</strong> {b.root_cause}</p>}
+                          {b.corrective_action && <p><strong className="text-emerald-800">Action:</strong> {b.corrective_action}</p>}
+                        </div>
+                      )}
 
                       {/* Tombol Aksi Berdasarkan Tahap Pipeline */}
                       <div className="space-y-2 pt-2 border-t border-slate-100">
-                        {/* Tahap REPORT (Status OPEN): Tombol Terima Tiket */}
                         {b.pipelineStage === 'REPORT' && b.status === 'OPEN' && (
                           <button
                             type="button"
@@ -262,14 +317,12 @@ const formatDowntime = (minutes: number): string => {
                           </button>
                         )}
 
-                        {/* Tahap REPAIR: Opsi Menunggu Sparepart / Vendor */}
                         {b.pipelineStage === 'REPAIR' && (
                           <div className="flex gap-1.5">
                             <button
                               type="button"
                               onClick={() => handleUpdateStatus(b.ticket_code, 'WAITING_SPAREPART')}
                               className="flex-1 py-1 px-1 text-[10px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded border border-purple-200 text-center"
-                              title="Pindah ke tahap Waiting (Sparepart)"
                             >
                               Tunggu Sparepart
                             </button>
@@ -277,31 +330,26 @@ const formatDowntime = (minutes: number): string => {
                               type="button"
                               onClick={() => handleUpdateStatus(b.ticket_code, 'WAITING_VENDOR')}
                               className="flex-1 py-1 px-1 text-[10px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded border border-purple-200 text-center"
-                              title="Pindah ke tahap Waiting (Vendor)"
                             >
                               Tunggu Vendor
                             </button>
                           </div>
                         )}
 
-                        {/* Tahap CLOSING: Tombol untuk Verifikasi & Selesaikan (CLOSED) */}
-{b.pipelineStage === 'CLOSING' && (
-  <button
-    type="button"
-    onClick={() => {
-      router.put(`/breakdowns/${b.ticket_code}/verify-close`, {}, {
-        preserveScroll: true,
-      });
-    }}
-    className="w-full py-1.5 px-2 text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg text-center transition-colors shadow-xs"
-  >
-    Verifikasi & Selesaikan (Closed)
-  </button>
-)}
+                        {b.pipelineStage === 'CLOSING' && isAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              router.put(`/breakdowns/${b.ticket_code}/verify-close`, {}, {
+                                preserveScroll: true,
+                              });
+                            }}
+                            className="w-full py-1.5 px-2 text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg text-center transition-colors shadow-xs"
+                          >
+                            Verifikasi & Selesaikan (Closed)
+                          </button>
+                        )}
 
-
-
-                        {/* Tombol Umum: Lihat Mesin & Close Ticket */}
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
@@ -310,6 +358,8 @@ const formatDowntime = (minutes: number): string => {
                           >
                             Lihat Mesin
                           </button>
+                          {b.pipelineStage === 'WAITING' && (
+
                           <button
                             type="button"
                             onClick={() => setActiveCloseTicket(b)}
@@ -317,6 +367,7 @@ const formatDowntime = (minutes: number): string => {
                           >
                             Close Ticket
                           </button>
+                          )}
                         </div>
                       </div>
                     </article>

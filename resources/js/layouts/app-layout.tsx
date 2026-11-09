@@ -363,9 +363,9 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     </div>
                 </aside>
                 {/* Main Content Area */}
-                <main className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full min-w-0">
-                    {children}
-                </main>
+                <main className="flex-1 p-4 md:p-8 max-w-[117rem] mx-auto w-full min-w-0">
+    {children}
+</main>
             </div>
 
           {/* 2. Floating QR Button Terhubung ke Handler Global */}

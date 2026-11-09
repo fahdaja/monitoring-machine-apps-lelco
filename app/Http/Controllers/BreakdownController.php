@@ -19,12 +19,12 @@ class BreakdownController extends Controller
      */
     public function index(): Response
     {
-        $breakdowns = BreakdownTicket::with(['machine'])
+        $breakdowns = BreakdownTicket::with(['reporter', 'assignee', 'verifier','machine'])
             ->whereIn('status', ['OPEN', 'ACKNOWLEDGED', 'IN_PROGRESS', 'WAITING_SPAREPART', 'WAITING_VENDOR', 'READY_FOR_CLOSING', 'CLOSED'])
             ->latest('reported_at')
             ->get()
             ->map(function ($ticket) {
-  $statusVal = is_object($ticket->status) ? ($ticket->status->value ?? (string)$ticket->status) : (string)$ticket->status;
+                $statusVal = is_object($ticket->status) ? ($ticket->status->value ?? (string)$ticket->status) : (string)$ticket->status;
                 $statusVal = strtoupper(trim($statusVal));
 
                 $pipelineStage = 'REPORT'; 
@@ -42,17 +42,25 @@ class BreakdownController extends Controller
                 }
                 return [
                     'id' => $ticket->id,
-                    'ticket_code' => $ticket->ticket_code,
-                    'machine_id' => $ticket->machine_id,
-                    'machine_code' => $ticket->machine->machine_code ?? '-',
-                    'machine_name' => $ticket->machine->machine_name ?? '-',
-                    'location' => $ticket->machine->location ?? '-',
-                    'problem' => $ticket->problem_descriptions,
-                    'status' => $statusVal,
-                    'source_type' => $ticket->source_type,
-                    'pipelineStage' => $pipelineStage, // Dibuat camelCase agar cocok dengan FE
-                    'reportedAt' => $ticket->reported_at ? $ticket->reported_at->format('Y-m-d H:i') : '-', // Dibuat camelCase
-                    'breakdownMinutes' => $ticket->calculated_downtime,
+            'ticket_code' => $ticket->ticket_code,
+            'machine_id' => $ticket->machine_id,
+            'machine_code' => $ticket->machine->machine_code ?? '-',
+            'machine_name' => $ticket->machine->machine_name ?? '-',
+            'location' => $ticket->machine->location ?? '-',
+            'problem' => $ticket->problem_descriptions,
+            'status' => $ticket->status,
+            'pipelineStage' => $pipelineStage,
+            'source_type' => $ticket->source_type,
+            'reported_by_name' => $ticket->reporter->full_name ?? null,
+            'assigned_to_name' => $ticket->assignee->full_name ?? null,
+            'verified_by_name' => $ticket->verifier->full_name ?? null,
+            'root_cause' => $ticket->root_cause,
+            'corrective_action' => $ticket->corrective_action,
+            'reported_at' => $ticket->reported_at?->format('Y-m-d H:i'),
+            'started_at' => $ticket->started_at?->format('Y-m-d H:i'),
+            'closed_at' => $ticket->closed_at?->format('Y-m-d H:i'),
+            'verified_at' => $ticket->verified_at?->format('Y-m-d H:i'),
+            'breakdownMinutes' => $ticket->reported_at?->diffInMinutes($ticket->closed_at ?? now()) ?? 0,
                 ];
             });
 
@@ -106,7 +114,7 @@ class BreakdownController extends Controller
         $ticket = BreakdownTicket::where('ticket_code', $ticketCode)->firstOrFail();
         
         $closedAt = now();
-        $downtime = $ticket->reported_at ? $ticket->reported_at->diffInMinutes($closedAt) : 0;
+        $downtime = $ticket->reported_at ? $ticket->reported_at->diffInMinutes($closedAt) : 0 ;
 
         $ticket->update([
             'root_cause' => $validated['root_cause'],

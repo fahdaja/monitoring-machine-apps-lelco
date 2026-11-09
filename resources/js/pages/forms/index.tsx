@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Head, Link, useForm, usePage, router } from '@inertiajs/react';
+import { Head, Link, usePage, router } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import { AlertCircle, AlertTriangle, CheckCircle2, Loader2, Trash2 } from 'lucide-react';
-import { toast } from 'sonner';
 
 interface Machine {
     id: number;
@@ -22,8 +21,25 @@ interface FormItem {
     updated_at?: string;
 }
 
+// Struktur data standar pagination Laravel / Inertia
+interface PaginationLink {
+    url: string | null;
+    label: string;
+    active: boolean;
+}
+
+interface PaginatedResponse<T> {
+    data: T[];
+    links: PaginationLink[];
+    current_page: number;
+    last_page: number;
+    from: number;
+    to: number;
+    total: number;
+}
+
 interface Props {
-    forms: FormItem[];
+    forms: PaginatedResponse<FormItem>; // Diubah menjadi PaginatedResponse
 }
 
 interface User {
@@ -44,8 +60,8 @@ interface TargetForm {
     form_title: string;
 }
 
-interface ToastPayload{
-    type: 'success' | 'error'
+interface ToastPayload {
+    type: 'success' | 'error';
     title: string;
     description: string;
 }
@@ -55,10 +71,9 @@ export default function FormIndex({ forms }: Props) {
     const userRole = auth?.user?.role?.toUpperCase();
     const isAdmin = userRole === 'ADMIN';
 
-    
-const [isDeleting, setIsDeleting] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState<TargetForm | null>(null);
-   const [toastMessage, setToastMessage] = useState<ToastPayload | null>(null);
+    const [toastMessage, setToastMessage] = useState<ToastPayload | null>(null);
 
     // Efek otomatis menghilangkan toast setelah 4 detik
     useEffect(() => {
@@ -70,23 +85,26 @@ const [isDeleting, setIsDeleting] = useState(false);
         }
     }, [toastMessage]);
 
-const confirmDelete = () => {
-    if (!deleteTarget) return;
+    const confirmDelete = () => {
+        if (!deleteTarget) return;
 
-    const { id, form_title } = deleteTarget;
-    
-    router.delete(`/forms/${id}`, {
-        preserveScroll: true,
-        onSuccess: () => {
-            setToastMessage({ type: 'success', title: 'Berhasil Dihapus', description: `Template form "${form_title}" berhasil dihapus!` });
-            setDeleteTarget(null);
-        },
-        onError: () => {
-            setToastMessage({ type: 'error', title: 'Gagal Menghapus', description: `Gagal menghapus template form "${form_title}".` });
-            setDeleteTarget(null);
-        }
-    });
-};
+        const { id, form_title } = deleteTarget;
+        setIsDeleting(true);
+        
+        router.delete(`/forms/${id}`, {
+            preserveScroll: true,
+            onSuccess: () => {
+                setToastMessage({ type: 'success', title: 'Berhasil Dihapus', description: `Template form "${form_title}" berhasil dihapus!` });
+                setDeleteTarget(null);
+                setIsDeleting(false);
+            },
+            onError: () => {
+                setToastMessage({ type: 'error', title: 'Gagal Menghapus', description: `Gagal menghapus template form "${form_title}".` });
+                setDeleteTarget(null);
+                setIsDeleting(false);
+            }
+        });
+    };
 
     // Helper format tanggal
     const formatDate = (dateStr?: string) => {
@@ -103,7 +121,7 @@ const confirmDelete = () => {
         <AppLayout>
             <Head title="Manajemen Template Form" />
 
-{/* TOAST NOTIFIKASI */}
+            {/* TOAST NOTIFIKASI */}
             {toastMessage && (
                 <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none">
                     <div className="pointer-events-auto bg-white text-slate-900 px-4 py-3.5 rounded-2xl shadow-xl border border-slate-200/80 flex items-start gap-3 w-80">
@@ -163,7 +181,7 @@ const confirmDelete = () => {
             <div className="space-y-6">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
-                        <h1 className="text-2xl font-extrabold text-slate-900">Manajemen Template Form</h1>
+                        <h1 className="text-3xl font-extrabold text-slate-900">Manajemen Template Form</h1>
                         <p className="text-xs text-slate-500 mt-1">Kelola cetak biru (blueprint) pertanyaan inspeksi mesin secara mandiri.</p>
                     </div>
                     {isAdmin && (
@@ -190,8 +208,8 @@ const confirmDelete = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                            {forms && forms.length > 0 ? (
-                                forms.map((f) => (
+                            {forms.data && forms.data.length > 0 ? (
+                                forms.data.map((f) => (
                                     <tr key={f.id} className="hover:bg-slate-50">
                                         <td className="p-4">
                                             <div className="font-bold text-slate-900">{f.form_title}</div>
@@ -215,7 +233,6 @@ const confirmDelete = () => {
                                         </td>
                                         <td className="p-4 text-center">
                                             <div className="flex items-center justify-center gap-2">
-                                                {/* Tombol Atur / Edit Pertanyaan */}
                                                 <Link
                                                     href={`/forms/${f.id}/edit`} 
                                                     className="px-3 py-1.5 rounded-lg bg-slate-900 text-white font-bold hover:bg-slate-800 transition-colors inline-block shadow-xs"
@@ -223,7 +240,6 @@ const confirmDelete = () => {
                                                     Edit / Atur
                                                 </Link>
 
-                                                {/* Tombol Hapus Form */}
                                                 {isAdmin && (
                                                     <button
                                                         type="button"
@@ -244,6 +260,48 @@ const confirmDelete = () => {
                             )}
                         </tbody>
                     </table>
+
+                    {/* PAGINATION FOOTER */}
+                    {forms.links && forms.links.length > 3 && (
+                        <div className="flex flex-col sm:flex-row items-center justify-between p-4 border-t border-slate-200 bg-slate-50/50 gap-4">
+                            <div className="text-xs text-slate-500">
+                                Menampilkan <span className="font-bold text-slate-700">{forms.from || 0}</span> sampai <span className="font-bold text-slate-700">{forms.to || 0}</span> dari <span className="font-bold text-slate-700">{forms.total}</span> data
+                            </div>
+                            
+                            <div className="flex flex-wrap items-center gap-1.5">
+                                {forms.links.map((link, idx) => {
+                                    // Menangani label teks html dari laravel paginator seperti &laquo; Previous &raquo; Next
+                                    const cleanLabel = link.label
+                                        .replace('&laquo;', '«')
+                                        .replace('&raquo;', '»');
+
+                                    if (!link.url) {
+                                        return (
+                                            <span
+                                                key={idx}
+                                                className="px-3 py-1.5 text-xs font-bold text-slate-400 bg-slate-100 rounded-lg cursor-not-allowed border border-slate-200"
+                                                dangerouslySetInnerHTML={{ __html: cleanLabel }}
+                                            />
+                                        );
+                                    }
+
+                                    return (
+                                        <Link
+                                            key={idx}
+                                            href={link.url}
+                                            preserveScroll
+                                            className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-colors ${
+                                                link.active
+                                                    ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                                                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                                            }`}
+                                            dangerouslySetInnerHTML={{ __html: cleanLabel }}
+                                        />
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </AppLayout>

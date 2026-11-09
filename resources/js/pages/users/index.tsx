@@ -183,7 +183,7 @@ export default function UserIndex({ users = [], user }: UserIndexProps) {
                 {/* Header Section */}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>
-                        <h1 className="text-2xl font-black text-slate-900">Manajemen User</h1>
+                        <h1 className="text-3xl font-black text-slate-900">Manajemen User</h1>
                         <p className="text-xs text-slate-500 font-medium">
                             Kelola akun pengguna, hak akses, dan peran dalam sistem monitoring mesin.
                         </p>

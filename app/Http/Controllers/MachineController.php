@@ -58,26 +58,45 @@ class MachineController extends Controller
     {
         $machine = Machine::findOrFail($id);
 
+
         // Ambil riwayat breakdown aktif dan histori penanganan
         $breakdowns = BreakdownTicket::with(['reporter', 'assignee'])
-            ->where('machine_id', $id)
-            ->latest('reported_at')
-            ->get()
-            ->map(function ($ticket) {
-                return [
-                    'ticketId'         => $ticket->ticket_code ?? $ticket->id,
-                    'category'         => $ticket->problem_category ?? '-',
+        ->where('machine_id', $id)
+        ->latest('reported_at')
+        ->get()
+        ->map(function ($ticket) {
+            $closed_at = now();
+            $downtime = $ticket->reported_at ? $ticket->reported_at->diffInMinutes($closed_at) : 0;
+            return [
+                'ticket_code'         => $ticket->ticket_code,
+                'category'         => $ticket->problem_category ?? '-',
                     'priority'         => $ticket->priority,
-                    'problem'          => $ticket->problem_description ?? '-',
+                    'problem'          => $ticket->problem_descriptions ?? '-',
                     'status'           => $ticket->status,
                     'pipelineStage'    => $ticket->status,
-                    'reportedAt'       => $ticket->reported_at ? $ticket->reported_at->format('Y-m-d H:i') : '-',
-                    'closedAt'         => $ticket->closed_at ? $ticket->closed_at->format('Y-m-d H:i') : null,
-                    'breakdownMinutes' => 0,
+                    'reported_at'       => $ticket->reported_at ? $ticket->reported_at->format('Y-m-d H:i') : '-',
+                    'closed_at'         => $ticket->closed_at ? $ticket->closed_at->format('Y-m-d H:i') : null,
+                    'breakdownMinutes' => $downtime,
                     'rootCause'        => $ticket->root_cause,
                     'correctiveAction' => $ticket->corrective_action,
                 ];
             });
+
+            $inspections = $machine->tasks ?? []; // atau query dari model Task / TaskSubmission Anda
+            $formattedInspections = collect($inspections)->map(function ($task) {
+        return [
+            'id'             => $task->id ?? 1,
+            'task_code'      => $task->task_code ?? 'TSK-001',
+            'title'          => $task->title ?? 'Pemeliharaan Berkala',
+            'inspectorName'  => $task->user->full_name ?? '-',
+            'status'         => $task->status ?? 'COMPLETED',
+            'resultStatus'   => $task->result_status ?? 'PASSED',
+            'started_at'     => $task->started_at ? date('Y-m-d H:i', strtotime($task->started_at)) : '-',
+            'next_schedule_at' => $task->next_schedule_at ?? '-',
+            'findings'       => $task->findings ?? null,
+            'notes'          => $task->notes ?? null,
+        ];
+    });
 
         return Inertia::render('machines/show', [
             'machine' => [
@@ -100,7 +119,7 @@ class MachineController extends Controller
                 'qrId'              => $machine->qr_value ?? $machine->qr_id ?? $machine->machine_code,
             ],
             'breakdowns'  => $breakdowns,
-            'inspections' => [],
+            'inspections' => $formattedInspections,
         ]);
     }
 

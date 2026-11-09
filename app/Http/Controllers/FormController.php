@@ -17,7 +17,7 @@ class FormController extends Controller
 {
     public function index()
     {
-        $forms = Form::with('machine','sections.questions.options')->latest()->get();
+        $forms = Form::with('machine','sections.questions.options')->latest()->paginate(10);
         return Inertia::render('forms/index', [
             'forms' => $forms,
         ]);

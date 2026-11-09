@@ -41,14 +41,14 @@ export interface MachineDetail {
 
 export interface BreakdownHistoryItem {
     id: number;
-    ticketId: string;
+    ticket_code: string;
     category: string;
     priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-    problem: string;
+    problem?: string;
     status: 'OPEN' | 'IN_PROGRESS' | 'UNDER_REPAIR' | 'WAITING_SPAREPART' | 'WAITING_VENDOR' | 'READY_FOR_CLOSING' | 'CLOSED';
     pipelineStage: 'REPORT' | 'REPAIR' | 'WAITING' | 'CLOSING' | 'VERIFICATION';
-    reportedAt: string;
-    closedAt?: string;
+    reported_at: string;
+    closed_at?: string | null;
     breakdownMinutes: number;
     rootCause?: string;
     correctiveAction?: string;
@@ -56,13 +56,13 @@ export interface BreakdownHistoryItem {
 
 export interface PreventiveInspectionItem {
     id: number;
-    inspectionCode: string;
+    task_code: string;
     title: string;
     inspectorName?: string;
-    status: 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+    status: 'UPCOMING' | 'DUE' | 'OVERDUE' | 'IN_PROGRESS' | 'COMPLETED';
     resultStatus?: 'PASSED' | 'WARNING' | 'FAILED';
-    inspectedAt?: string;
-    nextScheduleAt?: string;
+    started_at?: string;
+    next_schedule_at?: string;
     findings?: string;
     notes?: string;
 }
@@ -136,6 +136,15 @@ export default function MachineShow({
         link.download = `QR_${currentMachine.machineCode}.png`;
         link.click();
     };
+
+    const formatDowntime = (minutes: number): string => {
+    const m = Math.round(Number(minutes || 0)); // Dibulatkan agar tidak ada desimal panjang
+    if (m < 60) return `${m} min`;
+    const h = Math.floor(m / 60);
+    const r = m % 60;
+    return `${h}j ${r}m`;
+  };
+
 
     const handlePrintSticker = () => {
         const canvas = modalCanvasRef.current || heroCanvasRef.current;
@@ -273,13 +282,7 @@ export default function MachineShow({
         });
     };
 
-    const formatDowntime = (minutes: number): string => {
-        const m = Number(minutes || 0);
-        if (m < 60) return `${m} min`;
-        const h = Math.floor(m / 60);
-        const r = m % 60;
-        return `${h}j ${r}m`;
-    };
+
 
     const getStatusBadge = (status: MachineDetail['status']) => {
         switch (status) {
@@ -347,6 +350,8 @@ export default function MachineShow({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
+                    {isAdmin  && (
+                     <>
                     <button
                         type="button"
                         onClick={() => setShowQrModal(true)}
@@ -355,8 +360,6 @@ export default function MachineShow({
                         <QrCode className="w-4 h-4 text-emerald-600" />
                         <span>Stiker & QR</span>
                     </button>
-                    {isAdmin  && (
-                     <>
                     <Link
                         href={`/machines/${currentMachine.id}/edit`}
                         className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl shadow-xs border border-slate-200 transition-all"
@@ -409,6 +412,8 @@ export default function MachineShow({
                     </div>
 
                     {/* QR Code Quick Badge & Status */}
+                    {isAdmin && (
+                        
                     <div className="flex flex-wrap items-center gap-4 bg-slate-800/80 border border-slate-700/80 p-3 rounded-2xl shadow-inner backdrop-blur-xs">
                         <div className="bg-white p-2 rounded-xl shadow-sm flex items-center justify-center">
                             <QRCodeCanvas
@@ -450,6 +455,7 @@ export default function MachineShow({
                             </span>
                         </div>
                     </div>
+                    )}
                 </div>
 
                 {/* Informasi Operasional & Lokasi */}
@@ -535,58 +541,73 @@ export default function MachineShow({
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 
                 {/* Riwayat Breakdown & Maintenance Section */}
-                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
-                    <div>
-                        <div className="flex items-center justify-between mb-4">
+<div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
+    <div>
+        <div className="flex items-center justify-between mb-4">
+            <div>
+                <h3 className="text-base font-bold text-slate-900">Riwayat Corrective & Breakdown</h3>
+                <p className="text-xs text-slate-500">Histori perbaikan dan laporan kendala teknis ({breakdowns.length} total).</p>
+            </div>
+            <Link href="/breakdowns" className="text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors">
+                Lihat Board &rarr;
+            </Link>
+        </div>
+
+        {/* Container Scrollable agar list panjang bisa ditampilkan semua */}
+        {breakdowns && breakdowns.length > 0 ? (
+            <div className="max-h-[420px] overflow-y-auto pr-1 divide-y divide-slate-100 scrollbar-thin scrollbar-thumb-slate-200">
+                {breakdowns.map((b) => (
+                    <div key={b.id} className="py-3.5 first:pt-0 last:pb-0">
+                        {/* Item card breakdown */}
+                        <div className="flex items-start justify-between gap-3 mb-1.5">
                             <div>
-                                <h3 className="text-base font-bold text-slate-900">Riwayat Corrective & Breakdown</h3>
-                                <p className="text-xs text-slate-500">Histori perbaikan dan laporan kendala teknis.</p>
+                                <span className="text-[12px] font-mono font-bold text-slate-500">{b.ticket_code}</span>
+                                <p className="text-xs font-extrabold text-slate-900 leading-snug">{b.problem}</p>
                             </div>
-                            <Link href="/breakdowns" className="text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors">
-                                Lihat Board &rarr;
-                            </Link>
+                            <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full border bg-slate-100 text-slate-700 border-slate-200 shrink-0">
+                                {b.status}
+                            </span>
                         </div>
+                       <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-500">
+    <span>Laporan: <strong className="text-slate-700">{b.reported_at}</strong></span>
+    
+    {/* Pastikan menggunakan b.closed_at */}
+    {b.closed_at ? (
+        <span>Selesai: <strong className="text-slate-700">{b.closed_at}</strong></span>
+    ) : (
+        <span>Selesai: <strong className="text-slate-700">-</strong></span>
+    )}
+    
+    <span>Total Downtime: <strong className="text-slate-900">{formatDowntime(b.breakdownMinutes)}</strong></span>
+</div>
 
-                        {breakdowns && breakdowns.length > 0 ? (
-                            <div className="divide-y divide-slate-100">
-                                {breakdowns.map((b) => (
-                                    <div key={b.id} className="py-3.5 first:pt-0 last:pb-0">
-                                        <div className="flex items-start justify-between gap-3 mb-1.5">
-                                            <div>
-                                                <span className="text-[10px] font-mono font-bold text-slate-500">{b.ticketId}</span>
-                                                <p className="text-xs font-extrabold text-slate-900 leading-snug">{b.problem}</p>
-                                            </div>
-                                            <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full border bg-slate-100 text-slate-700 border-slate-200 shrink-0">
-                                                {b.status}
-                                            </span>
-                                        </div>
-
-                                        <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-500">
-                                            <span>Laporan: <strong className="text-slate-700">{b.reportedAt}</strong></span>
-                                            {b.closedAt && <span>Selesai: <strong className="text-slate-700">{b.closedAt}</strong></span>}
-                                            <span>Total Downtime: <strong className="text-slate-900">{formatDowntime(b.breakdownMinutes)}</strong></span>
-                                        </div>
-
-                                        {(b.rootCause || b.correctiveAction) && (
-                                            <div className="mt-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1">
-                                                {b.rootCause && (
-                                                    <p><strong className="text-slate-700">Root Cause:</strong> {b.rootCause}</p>
-                                                )}
-                                                {b.correctiveAction && (
-                                                    <p><strong className="text-slate-700">Tindakan:</strong> {b.correctiveAction}</p>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
+{/* Bagian Root Cause & Corrective Action menggunakan span */}
+                {(b.rootCause || b.correctiveAction) && (
+                    <div className="p-2.5 rounded-xs bg-slate-50 border border-slate-200 text-xs flex flex-col gap-1.5 mt-2">
+                        {b.rootCause && (
+                            <div className="flex flex-wrap items-baseline gap-1.5">
+                                <span className="font-bold text-slate-700">Root Cause:</span>
+                                <span className="text-slate-600 font-medium">{b.rootCause}</span>
                             </div>
-                        ) : (
-                            <div className="text-center py-8 border border-dashed border-slate-200 rounded-xl bg-slate-50 text-slate-500 text-xs">
-                                Belum ada riwayat kendala atau breakdown untuk mesin ini.
+                        )}
+                        {b.correctiveAction && (
+                            <div className="flex flex-wrap items-baseline gap-1.5">
+                                <span className="font-bold text-slate-700">Corrective Action:</span>
+                                <span className="text-slate-600 font-medium">{b.correctiveAction}</span>
                             </div>
                         )}
                     </div>
-                </div>
+                )}
+                    </div>
+                ))}
+            </div>
+        ) : (
+            <div className="text-center py-8 border border-dashed border-slate-200 rounded-xl bg-slate-50 text-slate-500 text-xs">
+                Belum ada riwayat kendala atau breakdown untuk mesin ini.
+            </div>
+        )}
+    </div>
+</div>
 
                 {/* Riwayat Preventive Inspections Section */}
                 <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
@@ -607,7 +628,7 @@ export default function MachineShow({
                                     <div key={item.id} className="py-3.5 first:pt-0 last:pb-0">
                                         <div className="flex items-start justify-between gap-3 mb-1.5">
                                             <div>
-                                                <span className="text-[10px] font-mono font-bold text-slate-500">{item.inspectionCode}</span>
+                                                <span className="text-[10px] font-mono font-bold text-slate-500">{item.task_code}</span>
                                                 <p className="text-xs font-extrabold text-slate-900 leading-snug">{item.title}</p>
                                             </div>
                                             <div className="flex items-center gap-1.5 shrink-0">
@@ -623,9 +644,9 @@ export default function MachineShow({
                                         </div>
 
                                         <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-500">
-                                            {item.inspectedAt && <span>Inspeksi: <strong className="text-slate-700">{item.inspectedAt}</strong></span>}
+                                            {item.started_at && <span>Inspeksi: <strong className="text-slate-700">{item.started_at}</strong></span>}
                                             {item.inspectorName && <span>Inspector: <strong className="text-slate-700">{item.inspectorName}</strong></span>}
-                                            {item.nextScheduleAt && <span>Jadwal Berikutnya: <strong className="text-blue-600 font-semibold">{item.nextScheduleAt}</strong></span>}
+                                            {item.next_schedule_at && <span>Jadwal Berikutnya: <strong className="text-blue-600 font-semibold">{item.next_schedule_at}</strong></span>}
                                         </div>
 
                                         {(item.findings || item.notes) && (
