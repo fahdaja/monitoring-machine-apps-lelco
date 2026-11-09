@@ -94,61 +94,92 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
         triggerAutoSave(answers);
     }, [answers, currentTask]);
 
+    const handleSubmitFinal = () => {
+        const taskId = currentTask?.id;
 
-const handleSubmitFinal = () => {
-    const taskId = currentTask?.id;
+        if (!currentTask || !taskId) {
+            return;
+        }
 
-    if (!currentTask || !taskId) {
-        alert("Error: Task ID tidak ditemukan!");
-        return;
-    }
+        // 💡 1. LAKUKAN VALIDASI CLIENT-SIDE TERLEBIH DAHULU SEBELUM KIRIM KE SERVER
+        let hasClientError = false;
+        const clientErrors: Record<number, Record<string, string>> = {};
 
-    setIsSubmitting(true);
+        // Loop semua section dan pertanyaan untuk mengecek apakah ada abnormal yang belum diisi note/photos-nya
+        sections.forEach((sec) => {
+            sec.questions?.forEach((q: any) => {
+                const ans = getAnswer(q.id);
+                const selectedOpt = q.options?.find((o: any) => o.id === Number(ans.value));
+                const isAbnormal = selectedOpt && (selectedOpt.is_normal === false || selectedOpt.is_normal == 0);
 
-    router.post(`/inspection-form/${taskId}/submit`, {
-        answers: answers,
-    }, {
-        forceFormData: true,
-        preserveScroll: true,
-        onSuccess: () => {
-            localStorage.removeItem(`inspection_section_${taskId}`);
-            localStorage.removeItem(`inspection_answers_${window.location.pathname}`);
-        },
-        onError: (errors: Record<string, string>) => {
-            console.error("Gagal submit:", errors);
+                // Cek jika pertanyaan wajib kosong
+                const isValueEmpty = ans.value === undefined || ans.value === null || ans.value === '' || (Array.isArray(ans.value) && ans.value.length === 0);
+                if (q.is_required && isValueEmpty) {
+                    clientErrors[q.id] = { ...(clientErrors[q.id] || {}), value: 'Pertanyaan ini wajib diisi' };
+                    hasClientError = true;
+                }
 
-            // 💡 Petakan error backend Laravel ke masing-masing field pertanyaan dengan pesan ringkas
-            Object.keys(errors).forEach((key) => {
-                const match = key.match(/answers\.(\d+)\.(value|note|photos)/);
-                if (match) {
-                    const questionId = Number(match[1]);
-                    const field = match[2] as 'value' | 'note' | 'photos';
-                    
-                    // Seragamkan pesan error menjadi ringkas sesuai kebutuhan Anda
-                    let message = 'Wajib diisi.';
-                    if (field === 'photos') {
-                        message = 'Foto evidence wajib diisi untuk temuan abnormal';
-                    } else if (field === 'note') {
-                        message = 'Catatan wajib diisi untuk temuan abnormal';
+                // Cek jika abnormal tapi note / photos kosong
+                if (isAbnormal) {
+                    if (!ans.note || ans.note.trim() === '') {
+                        clientErrors[q.id] = { ...(clientErrors[q.id] || {}), note: 'Catatan wajib diisi untuk temuan abnormal.' };
+                        hasClientError = true;
                     }
-
-                    setQuestionError(questionId, field, message);
-                } else {
-                    // Fallback jika format key-nya hanya "answers.48"
-                    const generalMatch = key.match(/answers\.(\d+)/);
-                    if (generalMatch && generalMatch[1]) {
-                        const questionId = Number(generalMatch[1]);
-                        setQuestionError(questionId, 'value', 'Wajib diisi.');
+                    if (!ans.photos || ans.photos === '') {
+                        clientErrors[q.id] = { ...(clientErrors[q.id] || {}), photos: 'Foto evidence wajib diisi untuk temuan abnormal.' };
+                        hasClientError = true;
                     }
                 }
             });
-        },
-        onFinish: () => {
-            setIsSubmitting(false); // Pastikan status submitting selalu dimatikan di akhir proses
-        },
-    });
-};
+        });
 
+        // Jika ditemukan error di client-side, batalkan submit dan tampilkan errornya!
+        if (hasClientError) {
+            // Masukkan error ke state hook agar UI menampilkan kotak merah peringatannya
+            Object.keys(clientErrors).forEach((qId) => {
+                const id = Number(qId);
+                if (clientErrors[id].value) setQuestionError(id, 'value', clientErrors[id].value);
+                if (clientErrors[id].note) setQuestionError(id, 'note', clientErrors[id].note);
+                if (clientErrors[id].photos) setQuestionError(id, 'photos', clientErrors[id].photos);
+            });
+            return; // ⛔ HENTIKAN PROSES SUBMIT DI SINI!
+        }
+
+        // 💡 2. JIKA AMAN, LANJUTKAN PROSES SUBMIT KE BACKEND
+        setIsSubmitting(true);
+
+        router.post(`/inspection-form/${taskId}/submit`, {
+            answers: answers,
+        }, {
+            forceFormData: true,
+            preserveScroll: true,
+            onSuccess: () => {
+                localStorage.removeItem(`inspection_section_${taskId}`);
+                localStorage.removeItem(`inspection_answers_${window.location.pathname}`);
+            },
+            onError: (errors: Record<string, string>) => {
+                console.error("Gagal submit dari backend:", errors);
+
+                Object.keys(errors).forEach((key) => {
+                    const match = key.match(/answers\.(\d+)\.(value|note|photos)/);
+                    if (match) {
+                        const questionId = Number(match[1]);
+                        const field = match[2] as 'value' | 'note' | 'photos';
+
+                        let message = errors[key];
+                        if (field === 'photos') message = 'Foto evidence wajib diisi untuk temuan abnormal';
+                        else if (field === 'note') message = 'Catatan wajib diisi untuk temuan abnormal';
+                        else if (field === 'value') message = 'Pertanyaan ini wajib diisi';
+
+                        setQuestionError(questionId, field, message);
+                    }
+                });
+            },
+            onFinish: () => {
+                setIsSubmitting(false);
+            },
+        });
+    };
     return (
         <FormLayout
             currentSectionIndex={currentSectionIndex}
@@ -175,15 +206,14 @@ const handleSubmitFinal = () => {
                             const isDone = index <= maxCompletedIndex;
 
                             // Deteksi apakah section ini dilewati (skipped) karena jump section
-                            const isSkipped = !isDone && !isActive && index < currentSectionIndex;
+                            const isSkipped = !isDone && !isActive && index < currentSectionIndex && index > maxCompletedIndex;
 
                             // 🔒 ATURAN KUNCI (DISABLED): 
                             // Jika section berstatus isSkipped, paksa isUnlocked menjadi FALSE (tidak bisa diklik)
                             const isUnlocked = !isSkipped && (
                                 index === 0 ||
                                 index <= maxCompletedIndex ||
-                                index <= currentSectionIndex ||
-                                index === currentSectionIndex + 1
+                                index === currentSectionIndex
                             );
 
                             let statusText = 'Belum dikerjakan';
@@ -265,25 +295,11 @@ const handleSubmitFinal = () => {
                                     return (
                                         <div key={question.id} className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-4">
                                             {/* Header Pertanyaan */}
-                                            {questionErrors[question.id]?.value && (
-    <p className="text-xs font-bold text-rose-600 mt-1.5">
-        {questionErrors[question.id].value}
-    </p>
-)}
                                             <div className="space-y-1">
                                                 <span className="text-[11px] font-mono font-bold text-blue-600 uppercase tracking-wider">
                                                     Pertanyaan {qIndex + 1}
                                                 </span>
-                                                {/* 💡 Badge Keterangan Wajib Diisi di Kanan */}
-        {question.is_required ? (
-            <span className="text-[10px] bg-rose-50 text-rose-600 border border-rose-200 px-2 py-0.5 rounded-full font-medium">
-                * Wajib Diisi
-            </span>
-        ) : (
-            <span className="text-[10px] text-slate-400 font-medium">
-                Opsional
-            </span>
-        )}
+
                                                 <h2 className="text-base font-bold text-slate-900 leading-snug">
                                                     {question.question_text} {question.is_required && <span className="text-rose-500">*</span>}
                                                 </h2>
@@ -502,79 +518,89 @@ const handleSubmitFinal = () => {
                                                     }
                                                 })()}
                                             </div>
+                                            {/* 💡 2. PESAN ERROR 'VALUE' DENGAN IKON TANDA SERU BULAT */}
+                                            {/* Diletakkan di bawah konten pilihan/input, tapi masih di dalam card pertanyaan */}
+                                            {questionErrors[question.id]?.value && (
+                                                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-medium flex items-center gap-2 mt-3">
+                                                    <svg className="w-4 h-4 text-rose-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                                    </svg>
+                                                    <span>{questionErrors[question.id].value}</span>
+                                                </div>
+                                            )}
 
                                             {/* TRIGGER DINAMIS: Notes & Evidence Muncul Jika is_normal === false atau memilih 'NG' */}
                                             {(() => {
-    const selectedOpt = question.options?.find((o: any) => o.id === ans.value);
-    const isAbnormal = (selectedOpt && selectedOpt.is_normal === false) || ans.value === 'NG';
+                                                const selectedOpt = question.options?.find((o: any) => o.id === Number(ans.value));
+                                                const isAbnormal = (selectedOpt && selectedOpt.is_normal === false);
 
-    if (isAbnormal) {
-        return (
-            <div className="p-4 bg-rose-50/70 border border-rose-200 rounded-2xl space-y-4 animate-fadeIn">
-                <div className="flex items-center gap-2 text-rose-800 font-bold text-xs uppercase tracking-wider">
-                    <span>⚠️ Temuan Abnormal (Abnormality Detected)</span>
-                </div>
+                                                if (isAbnormal) {
+                                                    return (
+                                                        <div className="p-4 bg-rose-50/70 border border-rose-200 rounded-2xl space-y-4 animate-fadeIn">
+                                                            <div className="flex items-center gap-2 text-rose-800 font-bold text-xs uppercase tracking-wider">
+                                                                <span>⚠️ Temuan Abnormal (Abnormality Detected)</span>
+                                                            </div>
 
-                {/* 1. Bagian Catatan / Notes */}
-                <div className="space-y-1.5">
-                    <label className="block text-xs font-bold text-slate-700">Catatan / Notes <span className="text-rose-600">*</span></label>
-                    <textarea
-                        rows={2}
-                        value={ans.note || ''}
-                        onChange={(e) => handleNoteChange(question.id, e.target.value)}
-                        placeholder="Jelaskan detail kerusakan..."
-                        className="w-full p-3 text-sm bg-white border border-slate-200 rounded-xl"
-                    />
-                   {questionErrors[question.id]?.note && (
-        <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-medium flex items-center gap-2 mt-1">
-            <svg className="w-4 h-4 text-rose-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            <span>{questionErrors[question.id].note}</span>
-        </div>
-    )}
-                </div>
+                                                            {/* 1. Bagian Catatan / Notes */}
+                                                            <div className="space-y-1.5">
+                                                                <label className="block text-xs font-bold text-slate-700">Catatan / Notes <span className="text-rose-600">*</span></label>
+                                                                <textarea
+                                                                    rows={2}
+                                                                    value={ans.note || ''}
+                                                                    onChange={(e) => handleNoteChange(question.id, e.target.value)}
+                                                                    placeholder="Jelaskan detail kerusakan..."
+                                                                    className="w-full p-3 text-sm bg-white border border-slate-200 rounded-xl"
+                                                                />
+                                                                {questionErrors[question.id]?.note && (
+                                                                    <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-medium flex items-center gap-2 mt-1">
+                                                                        <svg className="w-4 h-4 text-rose-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                                                        </svg>
+                                                                        <span>{questionErrors[question.id].note}</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
 
-                {/* 2. Bagian Upload Evidence Foto */}
-                <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                        <label className="block text-xs font-bold text-slate-700">
-                            Upload Evidence Foto <span className="text-rose-600">*</span>
-                        </label>
-                        <span className="text-[10px] text-slate-400 font-medium">Format: JPG, JPEG, PNG (Maks. 2MB)</span>
-                    </div>
+                                                            {/* 2. Bagian Upload Evidence Foto */}
+                                                            <div className="space-y-2">
+                                                                <div className="flex justify-between items-center">
+                                                                    <label className="block text-xs font-bold text-slate-700">
+                                                                        Upload Evidence Foto <span className="text-rose-600">*</span>
+                                                                    </label>
+                                                                    <span className="text-[10px] text-slate-400 font-medium">Format: JPG, JPEG, PNG (Maks. 2MB)</span>
+                                                                </div>
 
-                    <label className="bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 px-4 py-2 rounded-xl cursor-pointer text-xs font-semibold inline-block">
-                        <span>Ambil / Pilih Foto</span>
-                        <input type="file" accept="image/jpeg,image/png,image/jpg" className="hidden" onChange={(e) => handleAddPhoto(question.id, e)} />
-                    </label>
-                    {questionErrors[question.id]?.photos && (
-        <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-medium flex items-center gap-2 mt-1">
-            <svg className="w-4 h-4 text-rose-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            <span>{questionErrors[question.id].photos}</span>
-        </div>
-    )}
+                                                                <label className="bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 px-4 py-2 rounded-xl cursor-pointer text-xs font-semibold inline-block">
+                                                                    <span>Ambil / Pilih Foto</span>
+                                                                    <input type="file" accept="image/jpeg,image/png,image/jpg" className="hidden" onChange={(e) => handleAddPhoto(question.id, e)} />
+                                                                </label>
+                                                                {questionErrors[question.id]?.photos && (
+                                                                    <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-medium flex items-center gap-2 mt-1">
+                                                                        <svg className="w-4 h-4 text-rose-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                                                        </svg>
+                                                                        <span>{questionErrors[question.id].photos}</span>
+                                                                    </div>
+                                                                )}
 
-                    {ans.photos && typeof ans.photos === 'string' && (
-                        <div className="relative group w-20 h-20 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 shadow-xs pt-1 mt-2">
-                            <img src={`/storage/${ans.photos}`} alt="Evidence" className="w-full h-full object-cover" />
-                            <button
-                                type="button"
-                                onClick={() => handleRemoveEvidencePhoto(question.id)}
-                                className="absolute top-1 right-1 bg-rose-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-90 hover:opacity-100 transition shadow-md cursor-pointer"
-                            >
-                                ✕
-                            </button>
-                        </div>
-                    )}
-                </div>
-            </div>
-        );
-    }
-    return null;
-})()}
+                                                                {ans.photos && typeof ans.photos === 'string' && (
+                                                                    <div className="relative group w-20 h-20 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 shadow-xs pt-1 mt-2">
+                                                                        <img src={`/storage/${ans.photos}`} alt="Evidence" className="w-full h-full object-cover" />
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleRemoveEvidencePhoto(question.id)}
+                                                                            className="absolute top-1 right-1 bg-rose-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-90 hover:opacity-100 transition shadow-md cursor-pointer"
+                                                                        >
+                                                                            ✕
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                }
+                                                return null;
+                                            })()}
                                         </div>
                                     );
                                 })

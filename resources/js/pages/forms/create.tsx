@@ -291,6 +291,24 @@ export default function FormCreate({ machines }: Props) {
         setData('sections', updated);
     };
 
+    const isSectionInJumpRange = (targetSectionIndex: number) => {
+        for (let i = 0; i < data.sections.length; i++) {
+            if (i >= targetSectionIndex) break;
+            const sec = data.sections[i];
+            for (const q of sec.questions) {
+                for (const opt of q.options || []) {
+                    if (opt.goto_form_section_id !== null && opt.goto_form_section_id !== undefined) {
+                        const jumpDest = Number(opt.goto_form_section_id);
+                        if (targetSectionIndex > i && targetSectionIndex < jumpDest) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
+    };
+
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
         setErrorMessage(null);
@@ -482,6 +500,7 @@ const preparedSections = data.sections.map(section => ({
                                     className="w-full text-xs text-slate-500 border-b border-slate-100 pb-1.5 focus:border-emerald-600 outline-none bg-transparent"
                                 />
                             </div>
+
 
                             {/* Daftar Pertanyaan */}
                             <div className="space-y-3">
@@ -757,21 +776,39 @@ const preparedSections = data.sections.map(section => ({
                                             </div>
                                         )}
 
-                                        <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
-                                            <label className="flex items-center gap-1.5 font-semibold text-slate-700 cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={q.is_required}
-                                                    onChange={e => handleQuestionChange(sIndex, qIndex, 'is_required', e.target.checked)}
-                                                    className="rounded border-slate-300 text-emerald-600 w-3.5 h-3.5"
-                                                />
-                                                Wajib Diisi
-                                            </label>
-                                            <div className="flex items-center gap-1">
-                                                <button type="button" onClick={() => duplicateQuestion(sIndex, qIndex)} className="p-1.5 text-slate-400 hover:text-emerald-600 cursor-pointer"><Copy className="w-3.5 h-3.5" /></button>
-                                                <button type="button" onClick={() => removeQuestion(sIndex, qIndex)} className="p-1.5 text-slate-400 hover:text-rose-600 cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>
-                                            </div>
-                                        </div>
+                                        
+                                        {(() => {
+    // Jika berada di Section 1 (sIndex === 0), jangan sembunyikan tombol "Wajib Diisi"
+    const isFirstSection = sIndex === 0;
+    const hasThisQuestionJump = q.options?.some(o => o.goto_form_section_id !== null && o.goto_form_section_id !== undefined);
+    const isInRange = isSectionInJumpRange(sIndex);
+    
+    // Sembunyikan hanya jika bukan section pertama DAN (memiliki jump section ATAU berada di rentang jump)
+    const shouldHideRequired = !isFirstSection && (hasThisQuestionJump || isInRange);
+
+    return (
+        <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
+            {!shouldHideRequired ? (
+                <label className="flex items-center gap-1.5 font-semibold text-slate-700 cursor-pointer">
+                    <input
+                        type="checkbox"
+                        checked={q.is_required}
+                        onChange={e => handleQuestionChange(sIndex, qIndex, 'is_required', e.target.checked)}
+                        className="rounded border-slate-300 text-emerald-600 w-3.5 h-3.5"
+                    />
+                    Wajib Diisi
+                </label>
+            ) : (
+                <div></div>
+            )}
+
+            <div className="flex items-center gap-1">
+                <button type="button" onClick={() => duplicateQuestion(sIndex, qIndex)} className="p-1.5 text-slate-400 hover:text-emerald-600 cursor-pointer" title="Duplikat"><Copy className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={() => removeQuestion(sIndex, qIndex)} className="p-1.5 text-slate-400 hover:text-rose-600 cursor-pointer" title="Hapus"><Trash2 className="w-3.5 h-3.5" /></button>
+            </div>
+        </div>
+    );
+})()}
                                     </div>
                                 ))}
 
