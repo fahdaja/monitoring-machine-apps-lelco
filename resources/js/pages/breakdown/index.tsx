@@ -2,6 +2,14 @@ import React, { useState, FormEvent } from 'react';
 import { Head, useForm, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../layouts/app-layout';
 
+export interface BreakdownProblem {
+  id: number;
+  question_text: string;
+  abnormal_options: string;
+  note?: string;
+  photo_evidence?: string;
+}
+
 export interface BreakdownTicket {
   id: number;
   ticket_code: string;
@@ -9,9 +17,9 @@ export interface BreakdownTicket {
   machine_code: string;
   machine_name: string;
   location: string;
-  problem: string;
+  problems: BreakdownProblem[];
   status: 'OPEN' | 'IN_PROGRESS' | 'ACKNOWLEDGED' | 'UNDER_REPAIR' | 'WAITING_SPAREPART' | 'WAITING_VENDOR' | 'READY_FOR_CLOSING' | 'CLOSED';
-  pipelineStage: 'REPORT' | 'REPAIR' | 'WAITING' | 'CLOSING' | 'VERIFICATION';
+  pipelineStage: 'REPORT' | 'REPAIR' | 'WAITING' | 'CLOSING & VERIFICATION' | 'COMPLETED';
   source_type: 'AUTO_REPORT' | 'MANUAL_REPORT';
   reported_by_name?: string;  
   assigned_to_name?: string;  
@@ -39,14 +47,14 @@ const BREAKDOWN_STAGES: StageFilter[] = [
   { key: 'REPORT', label: '1. Report' },
   { key: 'REPAIR', label: '2. Repair' },
   { key: 'WAITING', label: '3. Waiting' },
-  { key: 'CLOSING', label: '4. Closing' },
-  { key: 'VERIFICATION', label: '5. Verification' },
+  { key: 'CLOSING & VERIFICATION', label: '4. Closing & Verification' },
+  { key: 'COMPLETED', label: '5. Completed' },
 ];
 
 export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps) {
   const [selectedStages, setSelectedStages] = useState<BreakdownTicket['pipelineStage'][]>([]);
   const [activeCloseTicket, setActiveCloseTicket] = useState<BreakdownTicket | null>(null);
-
+  const [continueRepair, setContinueRepair] = useState<BreakdownTicket | null>(null);
   const { data, setData, post, processing, errors, reset } = useForm<{
     root_cause: string;
     corrective_action: string;
@@ -237,10 +245,44 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
                         </span>
                       </div>
 
-                      {/* Deskripsi Masalah */}
-                      <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100 mb-2.5">
-                        <strong className="text-slate-700">Problem:</strong> {b.problem}
-                      </p>
+                      {/* Daftar Temuan Abnormal (JSON Array List) */}
+<div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 mb-2.5 text-xs">
+  <span className="font-bold text-slate-700 block mb-1.5">
+    Temuan Abnormal ({b.problems?.length || 0}):
+  </span>
+  
+  <div className="max-h-32 overflow-y-auto space-y-2 pr-1">
+    {b.problems && b.problems.length > 0 ? (
+      b.problems.map((prob, idx) => (
+        <div key={idx} className="bg-white p-2 rounded-lg border border-slate-200/80 shadow-2xs">
+          <div className="font-bold text-slate-800 text-[11px]">
+            {idx + 1}. {prob.question_text}
+          </div>
+          <div className="text-rose-600 font-medium text-[10px] mt-0.5">
+            Opsi: {prob.abnormal_options}
+          </div>
+          {prob.note && (
+            <div className="text-slate-500 text-[10px] italic mt-0.5">
+              &ldquo;{prob.note}&rdquo;
+            </div>
+          )}
+          {prob.photo_evidence && (
+            <a 
+              href={`/storage/${prob.photo_evidence}`} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="inline-block mt-1 text-[9px] font-bold text-blue-600 hover:underline"
+            >
+              Lihat Foto Evidence ↗
+            </a>
+          )}
+        </div>
+      ))
+    ) : (
+      <p className="text-slate-500 italic text-[11px]">Tidak ada rincian masalah.</p>
+    )}
+  </div>
+</div>
 
                       {/* Informasi Personil & Waktu (Dibuat Dinamis Sesuai Data yang Tersedia) */}
                       <div className="mb-2.5 text-[11px] text-slate-500 space-y-1 bg-slate-50/50 p-2.5 rounded-lg border border-slate-100">
@@ -307,36 +349,62 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
 
                       {/* Tombol Aksi Berdasarkan Tahap Pipeline */}
                       <div className="space-y-2 pt-2 border-t border-slate-100">
-                        {b.pipelineStage === 'REPORT' && b.status === 'OPEN' && (
-                          <button
-                            type="button"
-                            onClick={() => handleAcknowledge(b.ticket_code)}
-                            className="w-full py-1.5 px-2 text-[11px] font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg text-center transition-colors shadow-xs"
-                          >
-                            Terima & Mulai Repair
-                          </button>
-                        )}
+                   {/* 1. TAHAP REPORT */}
+  {b.pipelineStage === 'REPORT' && (
+    <div className="space-y-1.5">
+      {b.status === 'OPEN' && (
+        <button
+          type="button"
+          onClick={() => handleAcknowledge(b.ticket_code)}
+          className="w-full py-1.5 px-2 text-[11px] font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg text-center transition-colors shadow-xs"
+        >
+          Terima
+        </button>
+      )}
 
-                        {b.pipelineStage === 'REPAIR' && (
-                          <div className="flex gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => handleUpdateStatus(b.ticket_code, 'WAITING_SPAREPART')}
-                              className="flex-1 py-1 px-1 text-[10px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded border border-purple-200 text-center"
-                            >
-                              Tunggu Sparepart
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleUpdateStatus(b.ticket_code, 'WAITING_VENDOR')}
-                              className="flex-1 py-1 px-1 text-[10px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded border border-purple-200 text-center"
-                            >
-                              Tunggu Vendor
-                            </button>
-                          </div>
-                        )}
+      {b.status === 'ACKNOWLEDGED' && (
+        <button
+          type="button"
+          onClick={() => handleUpdateStatus(b.ticket_code, 'IN_PROGRESS')}
+          className="w-full py-1.5 px-2 text-[11px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg text-center transition-colors shadow-xs"
+        >
+          Mulai Repair
+        </button>
+      )}
+    </div>
+  )}
+               {b.pipelineStage === 'REPAIR' && (
+  <div className="space-y-2">
+    {/* Baris 1: Pilihan Status Menunggu (Sparepart / Vendor) */}
+    <div className="grid grid-cols-2 gap-1.5">
+      <button
+        type="button"
+        onClick={() => handleUpdateStatus(b.ticket_code, 'WAITING_SPAREPART')}
+        className="py-1.5 px-1 text-[10px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg border border-purple-200 text-center transition-colors truncate"
+      >
+        Tunggu Sparepart
+      </button>
+      <button
+        type="button"
+        onClick={() => handleUpdateStatus(b.ticket_code, 'WAITING_VENDOR')}
+        className="py-1.5 px-1 text-[10px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg border border-purple-200 text-center transition-colors truncate"
+      >
+        Tunggu Vendor
+      </button>
+    </div>
 
-                        {b.pipelineStage === 'CLOSING' && isAdmin && (
+    {/* Baris 2: Tombol Close Ticket (Aksi Utama Selesai Repair) */}
+    <button
+      type="button"
+      onClick={() => setActiveCloseTicket(b)}
+      className="w-full py-2 px-3 text-[11px] font-extrabold text-white bg-slate-900 hover:bg-slate-800 rounded-xl text-center transition-shadow shadow-xs flex items-center justify-center gap-1.5"
+    >
+      <span>✓ Selesaikan & Close Ticket</span>
+    </button>
+  </div>
+)}
+
+                        {b.pipelineStage === 'CLOSING & VERIFICATION' && isAdmin && (
                           <button
                             type="button"
                             onClick={() => {
@@ -362,10 +430,10 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
 
                           <button
                             type="button"
-                            onClick={() => setActiveCloseTicket(b)}
+                            onClick={() => handleUpdateStatus(b.ticket_code, 'IN_PROGRESS')}
                             className="flex-1 py-1.5 px-2 text-[11px] font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg text-center transition-colors"
                           >
-                            Close Ticket
+                            Lanjutkan Repair
                           </button>
                           )}
                         </div>

@@ -191,12 +191,24 @@
             });
             clearQuestionError(questionId);
 
-            if (selectedOption && selectedOption.goto_form_section_id) {
-                setTargetJumpSectionId(selectedOption.goto_form_section_id);
-            } else {
-                setTargetJumpSectionId(null);
-            }
-        };
+            const questionSectionIndex = sections.findIndex((sec: any) => 
+        sec.questions?.some((q: any) => (q.form_question_id || q.id) === questionId)
+    );
+
+    if (questionSectionIndex !== -1 && questionSectionIndex < currentSectionIndex) {
+        // Potong maxCompletedIndex agar section di depan kembali terkunci
+        setMaxCompletedIndex(questionSectionIndex);
+        if (taskId) {
+            localStorage.setItem(`inspection_max_completed_${taskId}`, questionSectionIndex.toString());
+        }
+    }
+
+    if (selectedOption && selectedOption.goto_form_section_id) {
+        setTargetJumpSectionId(selectedOption.goto_form_section_id);
+    } else {
+        setTargetJumpSectionId(null);
+    }
+};
 
         const handlePrev = () => {
             if (!isFirstSection) {
@@ -488,12 +500,17 @@
                 }
 
                 if ((q.input_type === 'TEXT' || q.input_type === 'TEXTAREA') && ans.value) {
-                    if (rules.expected_answer && String(ans.value).trim() !== String(rules.expected_answer).trim()) {
+                    const userAns = String(ans.value).trim().toLowerCase();
+                    const expectedAns = String(rules.expected_answer).trim().toLowerCase();
+                    if (rules.expected_answer && userAns !== expectedAns) {
                         const customErrorMsg = rules.validation_error_message && rules.validation_error_message.trim() !== ''
                             ? rules.validation_error_message 
                             : `Jawaban untuk "${q.question_text}" tidak sesuai dengan standar.`;
                         
-                        setQuestionError(q.id, customErrorMsg);
+                        newErrors[q.id] = {
+            ...(newErrors[q.id] || {}),
+            value: customErrorMsg // 💡 Pastikan komponen input teks kamu membaca error dari key '.value' atau sesuaikan
+        };
                         hasError = true;
                     }
                 }
@@ -530,11 +547,9 @@
     }
 
     // 2. Eksekusi perpindahan dan tandai section terlewati sebagai "Skipped"
-    if (targetJumpSectionIndex !== null) {
-        // 💡 KUNCI UTAMA: 
-        // Kita perbarui maxCompletedIndex agar mencakup section sebelum target lompatan.
-        // Contoh: Dari section 0 melompat ke section 3, maka index 0, 1, dan 2 dianggap terlewati/selesai.
-        const newMax = Math.max(maxCompletedIndex, currentSectionIndex, targetJumpSectionIndex - 1);
+   if (targetJumpSectionIndex !== null) {
+        // Cukup tandai section saat ini saja yang selesai (currentSectionIndex)
+        const newMax = Math.max(maxCompletedIndex, currentSectionIndex);
         
         setMaxCompletedIndex(newMax);
         if (taskId) {
@@ -556,7 +571,7 @@
             setQuestionErrors({});
         }
     }
-};
+}
 
         return {
             currentSectionIndex,

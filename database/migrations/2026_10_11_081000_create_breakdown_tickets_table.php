@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->string('ticket_code')->unique()->nullable(false); 
             $table->string('problem_category');
-            $table->text('problem_descriptions');
+            $table->json('problems');
             $table->enum('status', [
                 'OPEN', 
                 'ACKNOWLEDGED',

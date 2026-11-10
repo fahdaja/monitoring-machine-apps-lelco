@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Enums\TicketStatus;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class BreakdownTicket extends Model
 {
@@ -14,14 +15,14 @@ class BreakdownTicket extends Model
 
     protected $table = 'breakdown_tickets';
     protected $primaryKey = 'id';
-    public $incrementing = false;
+    public $incrementing = true;
     public $timestamps = false;
 
 
     protected $fillable = [ 
         'ticket_code',
         'problem_category',
-        'problem_descriptions',
+        'problems', 
         'status',
         'source_type',
         'pipeline_stage', // Jika kolom ini ada di database atau virtual
@@ -44,6 +45,7 @@ class BreakdownTicket extends Model
 
         // untuk enum
         'status' => TicketStatus::class,
+        'problems' => 'array',
         'reported_at' => 'datetime',
         'started_at' => 'datetime',
         'closed_at' => 'datetime',

@@ -109,9 +109,27 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
         sections.forEach((sec) => {
             sec.questions?.forEach((q: any) => {
                 const ans = getAnswer(q.id);
-                const selectedOpt = q.options?.find((o: any) => o.id === Number(ans.value));
-                const isAbnormal = selectedOpt && (selectedOpt.is_normal === false || selectedOpt.is_normal == 0);
+                // const selectedOpt = q.options?.find((o: any) => o.id === Number(ans.value));
+                // const isAbnormal = selectedOpt && (selectedOpt.is_normal === false || selectedOpt.is_normal == 0);
 
+                let isAbnormal = false;
+
+                if (q.input_type === 'SELECT') {
+            const selectedOpt = q.options?.find((o: any) => o.id === Number(ans.value));
+            isAbnormal = !!(selectedOpt && (selectedOpt.is_normal === false || selectedOpt.is_normal == 0));
+        } 
+        else if (q.input_type === 'DROPDOWN') {
+            // Dropdown menyimpan string option_text di ans.value
+            const selectedOpt = q.options?.find((o: any) => o.option_text === ans.value);
+            isAbnormal = !!(selectedOpt && (selectedOpt.is_normal === false || selectedOpt.is_normal == 0));
+        } 
+        else if (q.input_type === 'CHECKBOX') {
+            // Checkbox menyimpan array string option_text di ans.value
+            const currentVals = Array.isArray(ans.value) ? ans.value : [];
+            isAbnormal = q.options?.some((o: any) => 
+                currentVals.includes(o.option_text) && (o.is_normal === false || o.is_normal == 0)
+            );
+        }
                 // Cek jika pertanyaan wajib kosong
                 const isValueEmpty = ans.value === undefined || ans.value === null || ans.value === '' || (Array.isArray(ans.value) && ans.value.length === 0);
                 if (q.is_required && isValueEmpty) {
@@ -121,15 +139,25 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
 
                 // Cek jika abnormal tapi note / photos kosong
                 if (isAbnormal) {
-                    if (!ans.note || ans.note.trim() === '') {
-                        clientErrors[q.id] = { ...(clientErrors[q.id] || {}), note: 'Catatan wajib diisi untuk temuan abnormal.' };
-                        hasClientError = true;
-                    }
-                    if (!ans.photos || ans.photos === '') {
-                        clientErrors[q.id] = { ...(clientErrors[q.id] || {}), photos: 'Foto evidence wajib diisi untuk temuan abnormal.' };
-                        hasClientError = true;
-                    }
-                }
+    // Validasi Note
+    if (!ans.note || ans.note.trim() === '') {
+        clientErrors[q.id] = { ...(clientErrors[q.id] || {}), note: 'Catatan wajib diisi untuk temuan abnormal.' };
+        hasClientError = true;
+    }
+
+    // 💡 VALIDASI PHOTOS YANG LEBIH KETAT & AMAN:
+    // Pastikan photos benar-benar ada, tidak null/undefined, dan jika berupa string tidak kosong
+    const isPhotoEmpty = 
+        !ans.photos || 
+        ans.photos === '' || 
+        (typeof ans.photos === 'string' && ans.photos.trim() === '') ||
+        (Array.isArray(ans.photos) && ans.photos.length === 0);
+
+    if (isPhotoEmpty) {
+        clientErrors[q.id] = { ...(clientErrors[q.id] || {}), photos: 'Foto evidence wajib diisi untuk temuan abnormal.' };
+        hasClientError = true;
+    }
+}
             });
         });
 
@@ -203,57 +231,55 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                     <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
                         {sections.map((sec, index) => {
                             const isActive = currentSectionIndex === index;
-                            const isDone = index <= maxCompletedIndex;
 
-                            // Deteksi apakah section ini dilewati (skipped) karena jump section
-                            const isSkipped = !isDone && !isActive && index < currentSectionIndex && index > maxCompletedIndex;
+                            const isUnlocked = index === 0 || isActive || index <= currentSectionIndex + 1 || index <= maxCompletedIndex;
 
-                            // 🔒 ATURAN KUNCI (DISABLED): 
-                            // Jika section berstatus isSkipped, paksa isUnlocked menjadi FALSE (tidak bisa diklik)
-                            const isUnlocked = !isSkipped && (
-                                index === 0 ||
-                                index <= maxCompletedIndex ||
-                                index === currentSectionIndex
-                            );
-
+                            // 💡 2. DETEKSI STATUS:
                             let statusText = 'Belum dikerjakan';
                             let statusBadgeBg = 'bg-slate-100 text-slate-600';
 
-                            if (isDone) {
-                                statusText = 'Selesai';
-                                statusBadgeBg = 'bg-emerald-50 text-emerald-700 border border-emerald-200';
-                            } else if (isActive) {
+                            if (isActive) {
                                 statusText = 'Sedang dikerjakan';
                                 statusBadgeBg = 'bg-blue-50 text-blue-700 border border-blue-200';
-                            } else if (isSkipped) {
-                                statusText = 'Dilewati';
-                                statusBadgeBg = 'bg-slate-100 text-slate-400 border border-slate-200'; // Tampilan abu-abu terkunci
+                            } else if (index < currentSectionIndex) {
+                                // Section yang berada di belakang index aktif dipastikan sudah selesai dilewati
+                                statusText = 'Selesai';
+                                statusBadgeBg = 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+                            } else if (!isUnlocked) {
+                                // Section di depan yang belum boleh diakses
+                                statusText = 'Terkunci';
+                                statusBadgeBg = 'bg-slate-100 text-slate-400 border border-slate-200';
+                            } else {
+                                statusText = 'Belum dikerjakan';
+                                statusBadgeBg = 'bg-slate-100 text-slate-600';
                             }
 
                             return (
                                 <div
                                     key={sec.id || index}
                                     onClick={() => {
+                                        // 🛑 Bloker mutlak: Jika tidak unlocked, abaikan klik sama sekali
                                         if (isUnlocked) {
                                             setCurrentSectionIndex(index);
                                         }
                                     }}
                                     className={`group flex items-start gap-3 rounded-lg p-3 text-sm transition-all ${!isUnlocked
-                                        ? 'bg-slate-100/70 opacity-50 cursor-not-allowed select-none' // Style disabled (redup & kursor dilarang)
-                                        : isActive
-                                            ? 'bg-blue-50/60 border border-blue-200 shadow-sm cursor-pointer'
-                                            : 'hover:bg-slate-50 border border-transparent cursor-pointer'
+                                            ? 'bg-slate-100/70 opacity-50 cursor-not-allowed select-none pointer-events-none' // Terkunci mati total & redup
+                                            : isActive
+                                                ? 'bg-blue-50/60 border border-blue-200 shadow-sm cursor-pointer'
+                                                : 'hover:bg-slate-50 border border-transparent cursor-pointer'
                                         }`}
                                 >
-                                    <span className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-semibold shrink-0 mt-0.5 ${isDone
-                                        ? 'bg-emerald-600 text-white'
-                                        : isActive
-                                            ? 'bg-blue-600 text-white shadow-sm'
-                                            : isSkipped
-                                                ? 'bg-slate-300 text-slate-500' // Ikon gembok atau tanda strip untuk yang terkunci
-                                                : 'bg-slate-200 text-slate-700'
+                                    {/* Ikon Sidebar Sesuai Status */}
+                                    <span className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-semibold shrink-0 mt-0.5 ${index < currentSectionIndex
+                                            ? 'bg-emerald-600 text-white'
+                                            : isActive
+                                                ? 'bg-blue-600 text-white shadow-sm'
+                                                : !isUnlocked
+                                                    ? 'bg-slate-300 text-slate-600'
+                                                    : 'bg-slate-200 text-slate-700'
                                         }`}>
-                                        {isDone ? '✓' : isSkipped ? '🔒' : index + 1}
+                                        {index < currentSectionIndex ? '✓' : !isUnlocked ? '🔒' : index + 1}
                                     </span>
 
                                     <div className="flex-1 min-w-0">
@@ -466,10 +492,8 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                                                                 }
                                                             }
 
-                                                            const allowedTypes = fileRules.allowed_file_type
-                                                                ? (Array.isArray(fileRules.allowed_file_type) ? fileRules.allowed_file_type.join(', ').toUpperCase() : fileRules.allowed_file_type)
-                                                                : ' JPG,JPEG,PNG,PDF';
-                                                            const maxFileSize = fileRules.max_file_size || '5MB';
+                                                            const allowedTypes = fileRules.allowed_file_type ? (Array.isArray(fileRules.allowed_file_type) ? fileRules.allowed_file_type.join(', ').toUpperCase() : fileRules.allowed_file_type) : 'JPG, JPEG, PNG, PDF';
+                                                            const maxFileSize = fileRules.max_file_size;
 
                                                             const fileValue = ans.value;
                                                             const fileName = typeof fileValue === 'string' ? fileValue.split('/').pop() : (fileValue instanceof File ? fileValue.name : '');
@@ -530,9 +554,26 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                                             )}
 
                                             {/* TRIGGER DINAMIS: Notes & Evidence Muncul Jika is_normal === false atau memilih 'NG' */}
-                                            {(() => {
+                                            {/* {(() => {
                                                 const selectedOpt = question.options?.find((o: any) => o.id === Number(ans.value));
-                                                const isAbnormal = (selectedOpt && selectedOpt.is_normal === false);
+                                                const isAbnormal = (selectedOpt && selectedOpt.is_normal === false); */}
+                                                {(() => {
+    let isAbnormal = false;
+
+    if (question.input_type === 'SELECT') {
+        const selectedOpt = question.options?.find((o: any) => o.id === Number(ans.value));
+        isAbnormal = !!(selectedOpt && selectedOpt.is_normal === false);
+    } 
+    else if (question.input_type === 'DROPDOWN') {
+        const selectedOpt = question.options?.find((o: any) => o.option_text === ans.value);
+        isAbnormal = !!(selectedOpt && selectedOpt.is_normal === false);
+    } 
+    else if (question.input_type === 'CHECKBOX') {
+        const currentVals = Array.isArray(ans.value) ? ans.value : [];
+        isAbnormal = question.options?.some((o: any) => 
+            currentVals.includes(o.option_text) && o.is_normal === false
+        );
+    }
 
                                                 if (isAbnormal) {
                                                     return (

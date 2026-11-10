@@ -29,38 +29,39 @@ class BreakdownController extends Controller
 
                 $pipelineStage = 'REPORT'; 
 
-                if ($statusVal === 'OPEN') {
-                    $pipelineStage = 'REPORT';
-                } elseif (in_array($statusVal, ['ACKNOWLEDGED', 'IN_PROGRESS', 'UNDER_REPAIR'])) {
+               if (in_array($statusVal, ['OPEN', 'ACKNOWLEDGED'])) {
+                $pipelineStage = 'REPORT';
+                  }
+                 elseif (in_array($statusVal, ['IN_PROGRESS'])) {
                     $pipelineStage = 'REPAIR'; // Masuk tahap 2
                 } elseif (in_array($statusVal, ['WAITING_SPAREPART', 'WAITING_VENDOR'])) {
                     $pipelineStage = 'WAITING'; // Masuk tahap 3
                 } elseif ($statusVal === 'READY_FOR_CLOSING') {
-                    $pipelineStage = 'CLOSING'; // Masuk tahap 4
+                    $pipelineStage = 'CLOSING & VERIFICATION'; // Masuk tahap 4
                 } elseif ($statusVal === 'CLOSED') {
-                    $pipelineStage = 'VERIFICATION'; // Masuk tahap 5
+                    $pipelineStage = 'COMPLETED'; // Masuk tahap 5
                 }
                 return [
-                    'id' => $ticket->id,
-            'ticket_code' => $ticket->ticket_code,
-            'machine_id' => $ticket->machine_id,
-            'machine_code' => $ticket->machine->machine_code ?? '-',
-            'machine_name' => $ticket->machine->machine_name ?? '-',
-            'location' => $ticket->machine->location ?? '-',
-            'problem' => $ticket->problem_descriptions,
-            'status' => $ticket->status,
-            'pipelineStage' => $pipelineStage,
-            'source_type' => $ticket->source_type,
-            'reported_by_name' => $ticket->reporter->full_name ?? null,
-            'assigned_to_name' => $ticket->assignee->full_name ?? null,
-            'verified_by_name' => $ticket->verifier->full_name ?? null,
-            'root_cause' => $ticket->root_cause,
-            'corrective_action' => $ticket->corrective_action,
-            'reported_at' => $ticket->reported_at?->format('Y-m-d H:i'),
-            'started_at' => $ticket->started_at?->format('Y-m-d H:i'),
-            'closed_at' => $ticket->closed_at?->format('Y-m-d H:i'),
-            'verified_at' => $ticket->verified_at?->format('Y-m-d H:i'),
-            'breakdownMinutes' => $ticket->reported_at?->diffInMinutes($ticket->closed_at ?? now()) ?? 0,
+                   'id' => $ticket->id,
+    'ticket_code' => $ticket->ticket_code,
+    'machine_id' => $ticket->machine_id,
+    'machine_code' => $ticket->machine->machine_code ?? '-',
+    'machine_name' => $ticket->machine->machine_name ?? '-',
+    'location' => $ticket->machine->location ?? '-',
+    'problems' => $ticket->problems ?? [], 
+    'status' => $ticket->status,
+    'pipelineStage' => $pipelineStage,
+    'source_type' => $ticket->source_type,
+    'reported_by_name' => $ticket->reporter->full_name ?? null,
+    'assigned_to_name' => $ticket->assignee->full_name ?? null,
+    'verified_by_name' => $ticket->verifier->full_name ?? null,
+    'root_cause' => $ticket->root_cause,
+    'corrective_action' => $ticket->corrective_action,
+    'reported_at' => $ticket->reported_at?->format('Y-m-d H:i'),
+    'started_at' => $ticket->started_at?->format('Y-m-d H:i'),
+    'closed_at' => $ticket->closed_at?->format('Y-m-d H:i'),
+    'verified_at' => $ticket->verified_at?->format('Y-m-d H:i'),
+    'breakdownMinutes' => $ticket->reported_at?->diffInMinutes($ticket->closed_at ?? now()) ?? 0,
                 ];
             });
 
@@ -78,8 +79,7 @@ class BreakdownController extends Controller
 
         $ticket->update([
             'assigned_to' => $request->user()->id, // Teknisi yang sedang login
-            'status' => 'IN_PROGRESS',             // Atau 'ACKNOWLEDGED' lalu 'IN_PROGRESS'
-            'started_at' => now(),
+            'status' => 'ACKNOWLEDGED',             // Atau 'ACKNOWLEDGED' lalu 'IN_PROGRESS'
         ]);
 
         return redirect()->back()->with('success', 'Tiket berhasil diterima dan dipindahkan ke tahap Repair.');
@@ -91,14 +91,21 @@ class BreakdownController extends Controller
     public function updateStatus(Request $request, string $ticketCode): RedirectResponse
     {
         $validated = $request->validate([
-            'status' => 'required|in:IN_PROGRESS,WAITING_SPAREPART,WAITING_VENDOR,READY_FOR_CLOSING',
+            'status' => 'required|in:ACKNOWLEDGED,IN_PROGRESS,UNDER_REPAIR,WAITING_SPAREPART,WAITING_VENDOR,READY_FOR_CLOSING',
         ]);
 
         $ticket = BreakdownTicket::where('ticket_code', $ticketCode)->firstOrFail();
 
-        $ticket->update([
-            'status' => $validated['status'],
-        ]);
+        $updateData =[
+            'status' => $validated['status']
+        ];
+
+        // 💡 Catat started_at HANYA KETIKA masuk ke IN_PROGRESS / UNDER_REPAIR untuk pertama kalinya
+        if (in_array($validated['status'], ['IN_PROGRESS', 'UNDER_REPAIR']) && !$ticket->started_at) {
+        $updateData['started_at'] = now();
+        }
+
+        $ticket->update($updateData);
 
         return redirect()->back()->with('success', 'Status perbaikan berhasil diperbarui.');
     }

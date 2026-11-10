@@ -48,11 +48,19 @@ class AuthController extends Controller {
             'role' => $credentials['role'], 
             'password' => $credentials['password']
         ])) {
+            // dd('Login Berhasil!');
             $request->session()->regenerate();
+
+            $user = Auth::user();
+            $user->update([
+                'is_active' => 1,
+                'last_login_at' => now() 
+            ]);
+
             return redirect()->intended('/dashboard');
         }
 
-        // 3. Jika gagal, kembalikan dengan pesan error
+        // dd('Login Gagal!');
         return back()->withErrors([
             'password' => 'Nama, Role, atau Password yang Anda masukkan salah.',
         ])->onlyInput('full_name', 'role');
@@ -61,9 +69,18 @@ class AuthController extends Controller {
     // Logout
     public function destroy(Request $request)
     {
+
+        if (Auth::check()) {
+            /** @var \App\Models\User $user */
+            $user = Auth::user();
+            // Ubah statusnya jadi 0 (Tidak aktif) saat logout
+            $user->update(['is_active' => 0]);
+        }
+        
         Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
+        
         return redirect('/login');
     }
 }

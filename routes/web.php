@@ -10,16 +10,17 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\BreakdownController;
+use App\Http\Middleware\CheckUserStatus;
 
 // Auth Routes
-Route::get('/login', [AuthController::class, 'create']);
+Route::get('/login', [AuthController::class, 'create'])->name('login');
 Route::post('/login', [AuthController::class, 'store']);
 Route::post('/logout', [AuthController::class, 'destroy']);
 Route::get('/scan/machine/{machineCode}', [TaskController::class, 'handleQrScanRedirect']);
 Route::get('/inspection-calender', [TaskController::class, 'index'])->name('tasks.index')->middleware(['auth', 'role:ADMIN,OPERATOR']);
 Route::get('/api/scan-task/{code}', [TaskController::class, 'apiFindTaskByMachine']);
 
-Route::middleware(['auth', 'role:ADMIN,OPERATOR'])->group(function () {
+Route::middleware(['auth', 'CheckUserStatus','role:ADMIN,OPERATOR'])->group(function () {
     Route::get('/inspection-form/{id}',[TaskController::class, 'show'])->name('tasks.show');
     Route::post('/inspection-form/upload-temp', [TaskController::class, 'uploadTempFile']);
     Route::post('/inspection-form/remove-file', [TaskController::class, 'removeFile']);
@@ -45,10 +46,10 @@ Route::get('/dashboard', function () {
         ],
         'syncedAt' => now()->format('H:i:s'),
     ]);
-})->middleware(['auth', 'role:ADMIN,OPERATOR,MAINTENANCE_L2']);
+})->middleware(['auth','CheckUserStatus','role:ADMIN,OPERATOR,MAINTENANCE_L2', ]);
 
 Route::get('/machines', [MachineController::class, 'index'])->name('machines.index');
-Route::middleware(['auth', 'role:ADMIN'])->group(function () {
+Route::middleware(['auth', 'CheckUserStatus','role:ADMIN'])->group(function () {
     Route::get('/machines/create', [MachineController::class, 'create'])->name('machines.create');
     Route::post('/machines', [MachineController::class, 'store'])->name('machines.store');
     Route::get('/machines/{machineId}/edit', [MachineController::class, 'edit'])->name('machines.edit');
@@ -65,7 +66,7 @@ Route::post('/breakdowns/{ticketCode}/close', [BreakdownController::class, 'clos
 Route::put('/breakdowns/{ticketCode}/verify-close', [BreakdownController::class, 'verifyClose'])->name('breakdowns.verifyClose');
 
 
-Route::middleware(['auth', 'role:ADMIN'])->group(function () {
+Route::middleware(['auth', 'CheckUserStatus','role:ADMIN'])->group(function () {
     Route::get('forms', [FormController::class, 'index'])->name('forms.index');
     Route::get('/forms/create', [FormController::class, 'create'])->name('forms.create');
     Route::post('/forms', [FormController::class, 'store'])->name('forms.store');
@@ -76,12 +77,12 @@ Route::middleware(['auth', 'role:ADMIN'])->group(function () {
 });
 
 
-Route::middleware(['auth', 'role:ADMIN'])->group(function () {
+Route::middleware(['auth', 'CheckUserStatus','role:ADMIN'])->group(function () {
     Route::get('/schedules', [ScheduleController::class, 'index'])->name('schedules.index');
     Route::post('/schedules', [ScheduleController::class, 'store'])->name('schedules.store');
 });
 
-Route::middleware(['auth', 'role:ADMIN'])->group(function () {
+Route::middleware(['auth', 'CheckUserStatus', 'role:ADMIN'])->group(function () {
     Route::get('/users', [UserController::class, 'index'])->name('users.index'); // <-- Wajib ada name ini
     Route::get('/users/create', [UserController::class, 'create'])->name('users.create');
     Route::post('/users/create', [UserController::class, 'store'])->name('users.store');

@@ -237,12 +237,12 @@ class TaskController extends Controller {
         'initialAnswers' => $initialAnswersMap
     ]);
 }
-    public function submit(Request $request, $id)
+   public function submit(Request $request, $id)
     {
         // 1. Load task beserta relasi form, sections, questions, dan options
         $task = Task::with(['form.sections.questions.options', 'form.machine'])->findOrFail($id);
         
-        // 2. Validasi input dari frontend
+        // 2. Validasi input dasar dari frontend
         $validated = $request->validate([
             'answers' => 'required|array',
             'answers.*.value' => 'nullable',
@@ -251,128 +251,166 @@ class TaskController extends Controller {
         ]);
 
         $submittedAnswers = $request->input('answers', []);
-    $customErrors = [];
+        $customErrors = [];
 
-    // Flatten atau petingakan semua questions dari form untuk pengecekan cepat
-    $allQuestions = $task->form->sections->flatMap->questions;
+        // Flatten semua questions dari form untuk pengecekan cepat
+        $allQuestions = $task->form->sections->flatMap->questions;
 
-    // 3. Validasi kondisional per pertanyaan (Hanya wajibkan note & photos jika abnormal)
-    foreach ($submittedAnswers as $questionId => $answer) {
-        $question = $allQuestions->firstWhere('id', $questionId);
-        if (!$question) continue;
+        // 3. Validasi kondisional per pertanyaan (Wajibkan note & photos jika abnormal)
+        foreach ($submittedAnswers as $questionId => $answer) {
+            $question = $allQuestions->firstWhere('id', $questionId);
+            if (!$question) continue;
 
-        $value = $answer['value'] ?? null;
-        $note = trim($answer['note'] ?? '');
-        $photos = trim($answer['photos'] ?? '');
+            $value = $answer['value'] ?? null;
+            $note = trim($answer['note'] ?? '');
+            $photos = trim($answer['photos'] ?? '');
 
-        // 💡 1. Cek jika pertanyaan ini sifatnya wajib (is_required) tapi belum dijawab sama sekali
-        $isEmptyValue = empty($value) && $value !== '0' && $value !== 0;
-        if (is_array($value) && count($value) === 0) {
-            $isEmptyValue = true;
-        }
-
-        if ($question->is_required && $isEmptyValue) {
-            $customErrors["answers.{$questionId}.value"] = "Pertanyaan \"{$question->question_text}\" wajib diisi.";
-            continue; // Lanjut ke pertanyaan berikutnya jika kosong
-        }
-
-        // 💡 2. Cek apakah jawaban ini abnormal berdasarkan is_normal == false
-        $isAbnormal = false;
-
-        if (!$isEmptyValue) {
-            $valueArray = is_array($value) ? $value : [$value];
-
-            $matchedAbnormalOptions = $question->options->filter(function($opt) use ($valueArray) {
-                return (in_array($opt->id, $valueArray) || in_array($opt->option_text, $valueArray))
-                    && ($opt->is_normal === false || $opt->is_normal == 0);
-            });
-
-            if ($matchedAbnormalOptions->isNotEmpty()) {
-                $isAbnormal = true;
+            // Cek jika pertanyaan wajib (is_required) tapi kosong
+            $isEmptyValue = empty($value) && $value !== '0' && $value !== 0;
+            if (is_array($value) && count($value) === 0) {
+                $isEmptyValue = true;
             }
-        }
 
-        // Jika kondisinya abnormal, maka note dan photos mutlak wajib diisi!
-        if ($isAbnormal) {
-            if (empty($note)) {
-                $customErrors["answers.{$questionId}.note"] = 'Catatan wajib diisi untuk temuan abnormal.';
+            if ($question->is_required && $isEmptyValue) {
+                $customErrors["answers.{$questionId}.value"] = "Pertanyaan \"{$question->question_text}\" wajib diisi.";
+                continue;
             }
-            if (empty($photos)) {
-                $customErrors["answers.{$questionId}.photos"] = 'Foto evidence wajib diisi untuk temuan abnormal.';
+
+            // Cek apakah jawaban ini abnormal berdasarkan is_normal == false
+            $isAbnormal = false;
+
+            if (!$isEmptyValue) {
+                $valueArray = is_array($value) ? $value : [$value];
+
+                $matchedAbnormalOptions = $question->options->filter(function($opt) use ($valueArray) {
+                    return (in_array($opt->id, $valueArray) || in_array($opt->option_text, $valueArray))
+                        && ($opt->is_normal === false || $opt->is_normal == 0);
+                });
+
+                if ($matchedAbnormalOptions->isNotEmpty()) {
+                    $isAbnormal = true;
+                }
             }
-        }
-    }
 
-    return DB::transaction(function () use ($request, $task, $validated) {
-        $form = $task->form;
-        $submittedAnswers = $validated['answers'];
-
-        // 3. PANGGIL FUNGSI BUILD ENTERPRISE SNAPSHOT YANG SUDAH ANDA BUAT!
-        $enterpriseSnapshot = $this->buildEnterpriseSnapshot($task, $submittedAnswers);
-
-        // 4. Simpan ke tabel 'task_submissions' dengan status SUBMITTED
-        // Jika sebelumnya ada DRAFT, kita bisa update atau create baru. Di sini kita buat record baru atau update draft yang ada.
-        $submission = TaskSubmission::updateOrCreate(
-            [
-                'task_id' => $task->id, 
-                'status'  => 'DRAFT'
-            ],
-            [
-                'submission_code' => 'SUB-' . strtoupper(Str::random(8)),
-                'user_id'         => auth()->id(),
-                'status'          => 'SUBMITTED',
-                'answers_values'  => $enterpriseSnapshot,
-                'submitted_at'    => now(),
-            ]
-        );
-
-        // Pastikan statusnya benar-benar menjadi SUBMITTED jika sebelumnya data ditemukan sebagai DRAFT
-        $submission->update([
-            'status'         => 'SUBMITTED',
-            'answers_values' => $enterpriseSnapshot,
-            'submitted_at'   => now(),
-        ]);
-
-        // 5. Auto-trigger Breakdown Ticket jika ditemukan opsi dengan 'is_normal' = false (Abnormal)
-        foreach ($enterpriseSnapshot['sections'] as $sec) {
-            foreach ($sec['questions'] as $q) {
-                // Membaca dari selected_options yang dirakit oleh buildEnterpriseSnapshot
-                $abnormalOptions = collect($q['selected_options'])->where('is_normal', false);
-
-                if ($abnormalOptions->isNotEmpty()) {
-                    $abnormalTexts = $abnormalOptions->pluck('option_text')->join(', ');
-                    $issueDesc = "Temuan abnormal pada [{$q['question_text']}]: {$abnormalTexts}";
-                    
-                    if (!empty($q['answer_detail']['note'])) {
-                        $issueDesc .= " | Catatan: {$q['answer_detail']['note']}";
-                    }
-
-                    $ticket = BreakdownTicket::create([
-                        'ticket_code'       => 'TKT-' . strtoupper(Str::random(6)),
-                        'machine_id'        => $form->machine_id,
-                        'source_type'       => 'AUTO_REPORT',
-                        'problem_category'  => 'Inspeksi Abnormal',
-                        'problem_descriptions' => $issueDesc,
-                        'status'            => 'OPEN',
-                        'reported_at'       => now()
-                    ]);
-
-                    // Hubungkan submission dengan tiket eskalasi
-                    $submission->update(['escalation_ticket_id' => $ticket->id]);
+            // Jika abnormal, note dan photos wajib diisi!
+            if ($isAbnormal) {
+                if (empty($note)) {
+                    $customErrors["answers.{$questionId}.note"] = 'Catatan wajib diisi untuk temuan abnormal.';
+                }
+                if (empty($photos)) {
+                    $customErrors["answers.{$questionId}.photos"] = 'Foto evidence wajib diisi untuk temuan abnormal.';
                 }
             }
         }
 
-        // 6. Update status task jadi selesai (COMPLETED)
-        $task->update([
-            'status'       => 'COMPLETED',
-            'completed_at' => now(),
-        ]);
+        // 💡 KUNCI UTAMA: Jika ada error kustom validasi abnormal/required, kembalikan ke frontend!
+        if (!empty($customErrors)) {
+            return back()->withErrors($customErrors)->withInput();
+        }
+        
+        return DB::transaction(function () use ($request, $task, $validated) {
+            
+            try {
+            $form = $task->form;
+            $submittedAnswers = $validated['answers'];
 
-       return redirect()->route('tasks.index')
-                ->with('success', 'Form inspeksi berhasil diselesaikan dan tiket eskalasi telah diperiksa!');
-    });
+            // 4. Panggil fungsi build enterprise snapshot
+            $enterpriseSnapshot = $this->buildEnterpriseSnapshot($task, $submittedAnswers);
+
+            // 5. Simpan ke tabel 'task_submissions' dengan status SUBMITTED
+            $submission = TaskSubmission::updateOrCreate(
+                [
+                    'task_id' => $task->id, 
+                    'status'  => 'DRAFT'
+                ],
+                [
+                    'submission_code' => 'SUB-' . strtoupper(Str::random(8)),
+                    'user_id'         => auth()->id(),
+                    'status'          => 'SUBMITTED',
+                    'answers_values'  => $enterpriseSnapshot,
+                    'submitted_at'    => now(),
+                ]
+            );
+
+            $submission->update([
+                'status'         => 'SUBMITTED',
+                'answers_values' => $enterpriseSnapshot,
+                'submitted_at'   => now(),
+            ]);
+
+            // 6. Kumpulkan semua item abnormal dari enterprise snapshot
+            $abnormalItems = [];
+
+            foreach ($enterpriseSnapshot['sections'] as $sec) {
+                foreach ($sec['questions'] as $q) {
+                    $abnormalOptions = collect($q['selected_options'])->where('is_normal', false);
+
+                    if ($abnormalOptions->isNotEmpty()) {
+                        $abnormalTexts = $abnormalOptions->pluck('option_text')->join(', ');
+                        $note = !empty($q['answer_detail']['note']) ? " (Catatan: {$q['answer_detail']['note']})" : "";
+                        
+                        $abnormalItems[] = "- [{$q['question_text']}]: {$abnormalTexts}{$note}";
+                    }
+                }
+            }
+            // dd($abnormalItems);
+
+            // 7. Auto-trigger Breakdown Ticket (Terkonsolidasi & Anti-Spam)
+            if (!empty($abnormalItems)) {
+    $machineId = $form->machine_id;
+
+    // Kumpulkan detail data abnormal dalam bentuk struktur array rapi
+    $problemsList = [];
+    foreach ($enterpriseSnapshot['sections'] as $sec) {
+        foreach ($sec['questions'] as $q) {
+            $abnormalOptions = collect($q['selected_options'])->where('is_normal', false);
+
+            if ($abnormalOptions->isNotEmpty()) {
+                $problemsList[] = [
+                    'question_text'    => $q['question_text'],
+                    'abnormal_options' => $abnormalOptions->pluck('option_text')->join(', '),
+                    'note'             => $q['answer_detail']['note'] ?? null,
+                    'photo_evidence'   => is_array($q['answer_detail']['photos']) ? ($q['answer_detail']['photos'][0] ?? null) : ($q['answer_detail']['photos'] ?? null),
+                ];
+            }
+        }
+    }
+
+    $datePrefix = 'BD-' . now()->format('Ym') . '-';
+    $lastTicket = BreakdownTicket::where('ticket_code', 'LIKE', $datePrefix . '%')
+        ->latest('id')
+        ->first();
+
+    $ticketCode = 'TKT-' . strtoupper(Str::random(6));
+
+    // Buat tiket dengan menyimpan data array langsung ke kolom 'problems'
+    $ticket = BreakdownTicket::create([
+        'ticket_code'      => $ticketCode,
+        'machine_id'       => $machineId,
+        'source_type'      => 'AUTO_REPORT',
+        'problem_category' => 'Inspeksi Abnormal',
+        'problems'         => $problemsList, // 💡 Simpan sebagai array JSON
+        'status'           => 'OPEN',
+        'reported_at'      => now(),
+    ]);
+
+    Machine::where('id', $machineId)->update(['machine_status' => 'DOWN']);
+    $submission->update(['escalation_ticket_id' => $ticket->id]);
 }
+            // 8. Update status task jadi selesai (COMPLETED)
+            $task->update([
+                'status'       => 'COMPLETED',
+                'completed_at' => now(),
+            ]);
+            return redirect()->route('tasks.index')
+                ->with('success', 'Form inspeksi berhasil diselesaikan dan tiket eskalasi telah diperiksa!');
+        } catch (\Exception $e) {
+                // Tangkap error asli jika ada kendala database
+                dd("ERROR DATABASE ASLI:", $e->getMessage(), $e->getFile(), $e->getLine());
+            }
+        });
+        
+    }
     
 
 public function saveDraft(Request $request, $id)
@@ -474,14 +512,16 @@ public function uploadTempFile(Request $request)
         $allowedTypesLabel = 'jpg, jpeg, png';
     }
 
-    // Validasi jika rules dari admin belum lengkap diset
-    if (!$maxKb || !$allowedMimes) {
-        return response()->json([
-            'success' => false,
-            'errors' => [
-                'file' => ['Konfigurasi validasi file (ukuran/format) belum diatur oleh admin pada pertanyaan ini.']
-            ]
-        ], 422);
+    if ($folder === 'question-files') {
+        if (!$maxKb) {
+            $maxKb = 5048; // Default 10MB jika admin kosongkan
+            $maxSizeLabel = '5MB';
+        }
+        if (!$allowedMimes) {
+            // Biarkan kosong / izinkan format dokumen & gambar umum jika admin tidak set apa-apa
+            $allowedMimes = 'jpg.jpeg,png,pdf'; 
+            $allowedTypesLabel = 'JPG, JPEG, PNG, PDF';
+        }
     }
 
     // Jalankan validasi dinamis berdasarkan data murni dari admin
