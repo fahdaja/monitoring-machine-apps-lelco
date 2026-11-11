@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Head, Link, usePage, router } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
-import { AlertCircle, AlertTriangle, CheckCircle2, Loader2, Trash2 } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle2, ClipboardCheck, Loader2, Trash2, Wrench } from 'lucide-react';
 
 interface Machine {
     id: number;
@@ -71,9 +71,31 @@ export default function FormIndex({ forms }: Props) {
     const userRole = auth?.user?.role?.toUpperCase();
     const isAdmin = userRole === 'ADMIN';
 
+    const [createModalOpen, setCreateModalOpen] = useState(false);
+    const [selectedMachineId, setSelectedMachineId] = useState<number | ''>('');
     const [isDeleting, setIsDeleting] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState<TargetForm | null>(null);
     const [toastMessage, setToastMessage] = useState<ToastPayload | null>(null);
+
+    const machineOptions = Array.from(
+    new Map(
+        forms.data
+            .filter((f) => f.machine)
+            .map((f) => [f.machine.id, f.machine])
+    ).values()
+);
+
+const handleCreateInspection = () => {
+    router.get('/forms/create', { category: 'INSPECTION' });
+};
+
+const handleCreateManualReport = () => {
+    if (!selectedMachineId) return;
+    router.get('/forms/create', {
+        category: 'MANUAL_REPORT',
+        machine_id: selectedMachineId,
+    });
+};
 
     // Efek otomatis menghilangkan toast setelah 4 detik
     useEffect(() => {
@@ -185,13 +207,14 @@ export default function FormIndex({ forms }: Props) {
                         <p className="text-xs text-slate-500 mt-1">Kelola cetak biru (blueprint) pertanyaan inspeksi mesin secara mandiri.</p>
                     </div>
                     {isAdmin && (
-                        <Link
-                            href="/forms/create"
-                            className="bg-slate-900 hover:bg-slate-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-colors shadow-sm flex items-center gap-2"
-                        >
-                            + Buat Template Form Baru
-                        </Link>
-                    )}
+    <button
+        type="button"
+        onClick={() => setCreateModalOpen(true)}
+        className="bg-slate-900 hover:bg-slate-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-colors shadow-sm flex items-center gap-2 cursor-pointer"
+    >
+        + Buat Template Form Baru
+    </button>
+)}
                 </div>
 
                 {/* Tabel Daftar Template Form */}
@@ -304,6 +327,88 @@ export default function FormIndex({ forms }: Props) {
                     )}
                 </div>
             </div>
+            {createModalOpen && (
+    <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-slate-100 p-6 space-y-5">
+            <div className="space-y-1">
+                <h3 className="text-base font-extrabold text-slate-900">Buat Template Form Baru</h3>
+                <p className="text-xs text-slate-500">Pilih jenis form yang ingin kamu buat.</p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Opsi 1: Inspection */}
+                <button
+                    type="button"
+                    onClick={handleCreateInspection}
+                    className="group text-left p-4 rounded-2xl border-2 border-slate-200 hover:border-sky-500 hover:bg-sky-50/50 transition-all cursor-pointer"
+                >
+                    <div className="w-10 h-10 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center mb-3 group-hover:bg-sky-500 group-hover:text-white transition-colors">
+                        <ClipboardCheck className="w-5 h-5" />
+                    </div>
+                    <p className="text-sm font-extrabold text-slate-900">Form Inspection</p>
+                    <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                        Form berdiri sendiri. Mesin dipilih saat pengisian. Bisa memicu AUTO_REPORT.
+                    </p>
+                </button>
+
+                {/* Opsi 2: Laporan Breakdown */}
+                <button
+                    type="button"
+                    onClick={() => setSelectedMachineId(selectedMachineId || '')}
+                    className="group text-left p-4 rounded-2xl border-2 border-slate-200 hover:border-amber-500 hover:bg-amber-50/50 transition-all cursor-pointer"
+                >
+                    <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center mb-3 group-hover:bg-amber-500 group-hover:text-white transition-colors">
+                        <Wrench className="w-5 h-5" />
+                    </div>
+                    <p className="text-sm font-extrabold text-slate-900">Form Laporan Breakdown</p>
+                    <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                        Form terikat ke satu mesin. Dibuat dari detail mesin untuk laporan manual.
+                    </p>
+                </button>
+            </div>
+
+            {/* Pilihan mesin — muncul saat opsi manual report dipilih */}
+            {selectedMachineId !== '' && (
+                <div className="space-y-2 pt-2 border-t border-slate-100">
+                    <label className="text-xs font-bold text-slate-700">Pilih Mesin</label>
+                    <select
+                        value={selectedMachineId}
+                        onChange={(e) => setSelectedMachineId(Number(e.target.value))}
+                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-slate-900 focus:border-slate-900 outline-none"
+                    >
+                        <option value="">-- Pilih mesin --</option>
+                        {machineOptions.map((m) => (
+                            <option key={m.id} value={m.id}>
+                                {m.machine_name ?? m.machine_type} ({m.machine_type})
+                            </option>
+                        ))}
+                    </select>
+                    <button
+                        type="button"
+                        disabled={!selectedMachineId}
+                        onClick={handleCreateManualReport}
+                        className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-colors shadow-lg shadow-amber-600/30 disabled:opacity-50 cursor-pointer"
+                    >
+                        Lanjut Buat Form Breakdown
+                    </button>
+                </div>
+            )}
+
+            <div className="pt-2">
+                <button
+                    type="button"
+                    onClick={() => {
+                        setCreateModalOpen(false);
+                        setSelectedMachineId('');
+                    }}
+                    className="w-full py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
+                >
+                    Batal
+                </button>
+            </div>
+        </div>
+    </div>
+)}
         </AppLayout>
     );
 }

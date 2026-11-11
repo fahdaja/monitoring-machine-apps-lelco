@@ -19,6 +19,8 @@ Route::post('/logout', [AuthController::class, 'destroy']);
 Route::get('/scan/machine/{machineCode}', [TaskController::class, 'handleQrScanRedirect']);
 Route::get('/inspection-calender', [TaskController::class, 'index'])->name('tasks.index')->middleware(['auth', 'role:ADMIN,OPERATOR']);
 Route::get('/api/scan-task/{code}', [TaskController::class, 'apiFindTaskByMachine']);
+Route::get('/scan-task/{code}', [TaskController::class, 'handleQrScanRedirect'])
+    ->name('scan-task');
 
 Route::middleware(['auth', 'CheckUserStatus','role:ADMIN,OPERATOR'])->group(function () {
     Route::get('/inspection-form/{id}',[TaskController::class, 'show'])->name('tasks.show');

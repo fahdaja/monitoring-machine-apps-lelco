@@ -631,27 +631,38 @@ public function handleQrScanRedirect(Request $request, $machineCode)
     // 2. Cari mesin berdasarkan kode QR
     $machine = Machine::whereRaw('UPPER(machine_code) = ?', [$upperMachineCode])->first();
 
-    if (!$machine) {
+       if (!$machine) {
         return redirect()->route('tasks.index')
             ->with('error', "Mesin dengan kode '{$machineCode}' tidak ditemukan di sistem.");
     }
 
-    // 3. Cari task aktif (DUE, OVERDUE, IN_PROGRESS) untuk mesin ini dan user ini
+    // Cari task apapun untuk mesin ini, tanpa filter user
     $task = Task::where('machine_id', $machine->id)
-        ->whereIn('status', ['DUE', 'OVERDUE', 'IN_PROGRESS'])
-        ->where(function($query) use ($userId) {
-            $query->where('assigned_user_id', $userId)
-                  ->orWhereNull('assigned_user_id');
-        })
+        ->whereIn('status', ['DUE', 'OVERDUE', 'IN_PROGRESS', 'COMPLETED'])
+        ->orderByRaw("FIELD(status, 'IN_PROGRESS', 'OVERDUE', 'DUE', 'COMPLETED')")
         ->orderBy('due_date', 'asc')
         ->first();
 
     if (!$task) {
         return redirect()->route('tasks.index')
-            ->with('error', "Tidak ada task aktif (Due/Overdue) untuk mesin {$machine->machine_name} ({$machine->machine_code}).");
+            ->with('error', "Tidak ada task untuk mesin {$machine->machine_name} ({$machine->machine_code}).");
     }
 
-    // 4. Arahkan langsung ke halaman form inspeksi task tersebut
+    // Kasus 1: task sudah selesai
+    if ($task->status === 'COMPLETED') {
+        return redirect()->route('tasks.index')
+            ->with('scan_error', "Task untuk mesin {$machine->machine_name} sudah selesai dikerjakan pada " .
+                ($task->completed_at ? Carbon::parse($task->completed_at)->format('d M Y H:i') : '-') . ".");
+    }
+
+    // Kasus 2: task sedang dikerjakan / di-assign ke orang lain
+    if (!is_null($task->assigned_user_id) && $task->assigned_user_id !== $userId) {
+        $assignee = $task->user?->full_name ?? 'teknisi lain';
+        return redirect()->route('tasks.index')
+            ->with('error', "Task untuk mesin {$machine->machine_name} sedang dikerjakan oleh {$assignee} (status: {$task->status}).");
+    }
+
+    // Kasus 3: task milik user atau belum di-assign → arahkan ke form
     return redirect()->route('tasks.show', $task->id);
 }
 }

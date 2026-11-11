@@ -25,7 +25,7 @@ class BreakdownTicket extends Model
         'problems', 
         'status',
         'source_type',
-        'pipeline_stage', // Jika kolom ini ada di database atau virtual
+        'pipeline_stage', 
         'reported_at',
         'reported_by',
         'assigned_to',
@@ -33,7 +33,7 @@ class BreakdownTicket extends Model
         'closed_at',
         'root_cause',
         'corrective_action',
-        'breakdown_minutes', // Pastikan kolom ini sudah ada di migration jika dipakai
+        'breakdown_minutes',
         'verified_by',
         'verified_at',
         'verification_notes',

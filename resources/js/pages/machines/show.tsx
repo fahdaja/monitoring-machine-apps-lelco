@@ -70,13 +70,13 @@ export interface PreventiveInspectionItem {
 interface MachineShowProps {
     machine?: MachineDetail;
     breakdowns?: BreakdownHistoryItem[];
-    inspections?: PreventiveInspectionItem[];
+    tasks?: PreventiveInspectionItem[];
 }
 
 export default function MachineShow({ 
     machine, 
     breakdowns = [], 
-    inspections = [] 
+    tasks = [] 
 }: MachineShowProps) {
     const [showReportModal, setShowReportModal] = useState(false);
     const [showTechnicalSpecs, setShowTechnicalSpecs] = useState(false);
@@ -119,7 +119,9 @@ export default function MachineShow({
         isActive: true,
     };
 
-    const qrValue = currentMachine.machineCode ?? ""
+   const qrValue = currentMachine.machineCode
+    ? `${window.location.origin}/api/scan-task/${currentMachine.machineCode}`
+    : "";
 
     const handleCopyCode = () => {
         navigator.clipboard.writeText(qrValue);
@@ -128,7 +130,7 @@ export default function MachineShow({
     };
 
     const handleDownloadPng = () => {
-        const canvas = modalCanvasRef.current || heroCanvasRef.current;
+        const canvas = modalCanvasRef.current 
         if (!canvas) return;
         const url = canvas.toDataURL('image/png');
         const link = document.createElement('a');
@@ -427,7 +429,7 @@ export default function MachineShow({
                         <div className="flex flex-col justify-between">
                             <div>
                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">QR Code Mesin</span>
-                                <span className="font-mono text-xs font-extrabold text-emerald-400">{qrValue}</span>
+                                {/* <span className="font-mono text-xs font-extrabold text-emerald-400">{qrValue}</span> */}
                             </div>
                             <div className="flex items-center gap-2 mt-2">
                                 <button
@@ -622,9 +624,9 @@ export default function MachineShow({
                             </Link>
                         </div>
 
-                        {inspections && inspections.length > 0 ? (
+                        {tasks && tasks.length > 0 ? (
                             <div className="divide-y divide-slate-100">
-                                {inspections.map((item) => (
+                                {tasks.map((item) => (
                                     <div key={item.id} className="py-3.5 first:pt-0 last:pb-0">
                                         <div className="flex items-start justify-between gap-3 mb-1.5">
                                             <div>

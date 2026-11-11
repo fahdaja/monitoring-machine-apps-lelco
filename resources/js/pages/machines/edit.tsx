@@ -174,15 +174,10 @@ export default function MachineEdit({ machine }: MachineEditProps) {
                                 onChange={e => setData('status', e.target.value)}
                                 className="w-full border border-slate-200 rounded-xl px-4 py-3 text-xs outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 font-bold text-slate-800 bg-slate-50/50 transition-all"
                             >
-                                <option value="RUNNING">RUNNING (Beroperasi)</option>
-                                <option value="DOWN">DOWN (Rusak)</option>
-                                <option value="UNDER_REPAIR">UNDER REPAIR (Sedang Diperbaiki)</option>
-                                <option value="WAITING_SPAREPART">WAITING SPAREPART</option>
-                                <option value="WAITING_L3">WAITING L3</option>
-                                <option value="WAITING_VENDOR">WAITING VENDOR</option>
-                                <option value="WAITING_VERIFICATION">WAITING VERIFICATION</option>
-                                <option value="PLANNED_MAINTENANCE">PLANNED MAINTENANCE</option>
-                                <option value="INACTIVE">INACTIVE (Non-Aktif)</option>
+                                <option value="RUNNING">RUNNING</option>
+                                <option value="DOWN">DOWN</option>
+                                <option value="UNDER_REPAIR">UNDER REPAIR</option>
+                                <option value="INACTIVE">INACTIVE</option>
                             </select>
                         </div>
                     </div>

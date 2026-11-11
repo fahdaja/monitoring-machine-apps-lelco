@@ -150,10 +150,10 @@ export default function MachineCreate() {
                                 onChange={e => setData('status', e.target.value)}
                                 className="w-full border border-slate-200 rounded-xl px-4 py-3 text-xs outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 font-bold text-slate-800 bg-slate-50/50 transition-all"
                             >
-                                <option value="RUNNING">RUNNING (Beroperasi)</option>
-                                <option value="PLANNED_MAINTENANCE">PLANNED MAINTENANCE</option>
-                                <option value="INACTIVE">INACTIVE (Non-Aktif)</option>
+                                <option value="RUNNING">RUNNING</option>
                                 <option value="DOWN">DOWN</option>
+                                <option value="UNDER_REPAIR">UNDER REAPAIR</option>
+                                <option value="INACTIVE">INACTIVE</option>
                             </select>
                         </div>
                     </div>

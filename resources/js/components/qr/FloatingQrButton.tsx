@@ -160,7 +160,7 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
 
                 scanner.start(
                     { facingMode: "environment" },
-                    { fps: 20, qrbox: { width: 240, height: 240 } },
+                    { fps: 10, qrbox: { width: 280, height: 280 } },
                     (decodedText: string) => {
                         if (decodedText && decodedText.trim() !== "") {
                             scanner.stop().then(() => {

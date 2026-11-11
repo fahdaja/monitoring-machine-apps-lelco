@@ -82,7 +82,7 @@ class MachineController extends Controller
                 ];
             });
 
-            $inspections = $machine->tasks ?? []; // atau query dari model Task / TaskSubmission Anda
+            $inspections = $machine->tasks ?? []; 
             $formattedInspections = collect($inspections)->map(function ($task) {
         return [
             'id'             => $task->id ?? 1,

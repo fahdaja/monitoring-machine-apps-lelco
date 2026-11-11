@@ -91,7 +91,7 @@ class BreakdownController extends Controller
     public function updateStatus(Request $request, string $ticketCode): RedirectResponse
     {
         $validated = $request->validate([
-            'status' => 'required|in:ACKNOWLEDGED,IN_PROGRESS,UNDER_REPAIR,WAITING_SPAREPART,WAITING_VENDOR,READY_FOR_CLOSING',
+            'status' => 'required|in:ACKNOWLEDGED,IN_PROGRESS,WAITING_SPAREPART,WAITING_VENDOR,READY_FOR_CLOSING',
         ]);
 
         $ticket = BreakdownTicket::where('ticket_code', $ticketCode)->firstOrFail();
@@ -101,12 +101,16 @@ class BreakdownController extends Controller
         ];
 
         // 💡 Catat started_at HANYA KETIKA masuk ke IN_PROGRESS / UNDER_REPAIR untuk pertama kalinya
-        if (in_array($validated['status'], ['IN_PROGRESS', 'UNDER_REPAIR']) && !$ticket->started_at) {
+        if (in_array($validated['status'], ['IN_PROGRESS']) && !$ticket->started_at) {
         $updateData['started_at'] = now();
         }
 
         $ticket->update($updateData);
 
+       if ($validated['status'] === 'IN_PROGRESS') {
+        Machine::where('id', $ticket->machine_id)
+         ->update(['machine_status' => 'UNDER_REPAIR']);
+        }
         return redirect()->back()->with('success', 'Status perbaikan berhasil diperbarui.');
     }
 
@@ -160,7 +164,7 @@ class BreakdownController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'machine_id' => 'required|exists:machines,machine_id',
+            'machine_id' => 'required|exists:machines,id',
             'category' => 'nullable|string',
             'priority' => 'required|in:LOW,MEDIUM,HIGH,CRITICAL',
             'description' => 'required|string',

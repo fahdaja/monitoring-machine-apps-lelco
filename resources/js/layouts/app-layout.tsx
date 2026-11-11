@@ -193,29 +193,31 @@ export default function AppLayout({ children }: AppLayoutProps) {
     }
 
     const machineCode = scannedValue.trim().toUpperCase();
-    console.log("=== KODE MESIN YANG DIKIRIM KE API:", machineCode);
+//     console.log("=== KODE MESIN YANG DIKIRIM KE API:", machineCode);
 
-    try {
-        const response = await axios.get(`/api/scan-task/${encodeURIComponent(machineCode)}`, {
-            headers: {
-                'Accept': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest'
-            }
-        });
+//     try {
+//         const response = await axios.get(`/scan-task/${encodeURIComponent(machineCode)}`, {
+//             headers: {
+//                 'Accept': 'application/json',
+//                 'X-Requested-With': 'XMLHttpRequest'
+//             }
+//         });
         
-        console.log("=== RESPON DARI BACKEND:", response.data);
-        const data = response.data;
+//         console.log("=== RESPON DARI BACKEND:", response.data);
+//         const data = response.data;
 
-        if (data.success && data.taskId) {
-            router.visit(`/inspection-form/${data.taskId}`);
-        } else {
-            setScanAlertMessage(data.message || `Tidak ada task aktif untuk QR Code "${machineCode}".`);
-        }
-    } catch (error: any) {
-        console.error("=== ERROR SAAT FETCH API ===", error);
-        const errorMsg = error.response?.data?.message || `Gagal memverifikasi QR Code "${machineCode}" ke server.`;
-        setScanAlertMessage(errorMsg);
-    }
+//         if (data.success && data.taskId) {
+//             router.visit(`/inspection-form/${data.taskId}`);
+//         } else {
+//             setScanAlertMessage(data.message || `Tidak ada task aktif untuk QR Code "${machineCode}".`);
+//         }
+//     } catch (error: any) {
+//         console.error("=== ERROR SAAT FETCH API ===", error);
+//         const errorMsg = error.response?.data?.message || `Gagal memverifikasi QR Code "${machineCode}" ke server.`;
+//         setScanAlertMessage(errorMsg);
+//     }
+// };
+    router.visit(`/scan-task/${encodeURIComponent(machineCode)}`);
 };
     if (!user) {
     return (
