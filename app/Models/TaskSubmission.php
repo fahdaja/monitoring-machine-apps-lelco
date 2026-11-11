@@ -24,7 +24,7 @@ class TaskSubmission extends Model{
         'submitted_at',
     ];
 
-    protected $cast = [
+    protected $casts = [
         'answers_values' => 'array',
     ];
 

@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->string('submission_code')->unique()->nullable(false); 
             $table->enum('status', ['DRAFT', 'SUBMITTED'])->default('DRAFT');
-            $table->jsonb('answers_values')->nullable(); 
+            $table->json('answers_values')->nullable(); 
             $table->dateTime('submitted_at')->nullable();
             //relasi
             $table->foreignId('task_id')->nullable()->references('id')->on('tasks')->onDelete('cascade');
