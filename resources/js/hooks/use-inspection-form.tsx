@@ -103,8 +103,19 @@
         };
 
         // Batas section terjauh yang sudah berhasil diselesaikan/dilewati
-        const [maxCompletedIndex, setMaxCompletedIndex] = useState<number>(() => {
+           const [maxCompletedIndex, setMaxCompletedIndex] = useState<number>(() => {
             if (!taskId) return -1;
+
+            // ✅ Cek dulu apakah sudah ada jawaban yang tersimpan
+            const savedAnswers = localStorage.getItem(storageKey);
+            const hasAnswers = savedAnswers && Object.keys(JSON.parse(savedAnswers)).length > 0;
+
+            // Jika belum ada jawaban sama sekali, paksa kunci semua section (kembali ke -1)
+            if (!hasAnswers) {
+                localStorage.removeItem(`inspection_max_completed_${taskId}`);
+                return -1;
+            }
+
             const savedMax = localStorage.getItem(`inspection_max_completed_${taskId}`);
             if (savedMax !== null) {
                 return parseInt(savedMax, 10);
@@ -423,116 +434,155 @@
             });
         };    
 
-        const handleNext = () => {
-            const questions = currentSection?.questions || [];
-            let hasError = false;
-            const newErrors: Record<number, Record<string, string>> = {};
-            // Reset error section ini sebelum validasi ulang
-            setQuestionErrors({});
+const handleNext = () => {
+    const questions = currentSection?.questions || [];
+    let hasError = false;
+    const newErrors: Record<number, Record<string, string>> = {};
+    
+    // Reset error section ini sebelum validasi ulang
+    setQuestionErrors({});
 
-            // 1. Validasi per pertanyaan secara menyeluruh
-            for (const q of questions) {
-                const ans = getAnswer(q.id);
+    // ✅ Helper 1: Pengecekan is_normal yang kebal tipe data
+    const isOptionNormalFalse = (opt: any) => {
+        if (opt.is_normal === undefined || opt.is_normal === null) return false;
+        const val = String(opt.is_normal).toLowerCase();
+        return opt.is_normal === false || opt.is_normal === 0 || val === '0' || val === 'false';
+    };
 
-                const isValueEmpty = 
-        ans.value === undefined || 
-        ans.value === null || 
-        ans.value === '' || 
-        (Array.isArray(ans.value) && ans.value.length === 0);
+    // ✅ Helper 2: Normalisasi teks untuk Dropdown & Checkbox
+    const normalizeText = (text: any) => String(text || '').trim().toLowerCase();
 
-    // 💡 ATURAN BARU: Cek apakah section ini sedang dilewati/berada dalam rentang Jump Section.
-    // Jika section saat ini dilewati karena alur lompatan, abaikan validasi is_required!
-    const isSkippedSection = currentSectionIndex > 0 && currentSectionIndex <= maxCompletedIndex; // atau sesuaikan dengan status skipped kamu
+    // 1. Validasi per pertanyaan secara menyeluruh
+    for (const q of questions) {
+        const ans = getAnswer(q.id);
 
-    // Namun, cara paling akurat adalah mengecek apakah pertanyaan ini memiliki opsi jump 
-    // ATAU berada dalam rentang section yang dilewati.
-    const hasJump = q.options?.some((o: any) => o.goto_form_section_id !== null && o.goto_form_section_id !== undefined && o.goto_form_section_id !== '');
+        // Cek apakah nilai kosong
+        const isValueEmpty = 
+            ans.value === undefined || 
+            ans.value === null || 
+            ans.value === '' || 
+            (typeof ans.value === 'string' && ans.value.trim() === '') ||
+            (Array.isArray(ans.value) && ans.value.length === 0);
 
-    // Validasi Pertanyaan Wajib: HANYA jalankan jika TIDAK punya jump dan bukan section yang dilewati
-    if (!hasJump && q.is_required && isValueEmpty) {
-        newErrors[q.id] = {
-            ...(newErrors[q.id] || {}),
-            value: 'Pertanyaan ini wajib diisi'
-        };
-        hasError = true;
-    }
+        // Validasi Wajib Diisi
+        if (q.is_required && isValueEmpty) {
+            newErrors[q.id] = {
+                ...(newErrors[q.id] || {}),
+                value: 'Pertanyaan ini wajib diisi'
+            };
+            hasError = true;
+        }
 
-        // 💡 2. Validasi Kondisi Abnormal (Note & Photos Wajib)
-        // Cek apakah opsi yang dipilih berstatus is_normal = false atau bernilai 'NG'
-        const selectedOpt = q.options?.find((o: any) => o.id === Number(ans.value));
-        const isAbnormal = 
-            (selectedOpt && (selectedOpt.is_normal === false || selectedOpt.is_normal == 0)) || 
-            ans.value === 'NG' || 
-            String(ans.value).toUpperCase() === 'NG';
+        // ==========================================
+        // 2. VALIDASI ABNORMAL (FOTO & CATATAN)
+        // ==========================================
+        let isAbnormal = false;
+
+        if (q.input_type === 'SELECT') {
+            const selectedOpt = q.options?.find((o: any) => String(o.id) === String(ans.value));
+            isAbnormal = !!(selectedOpt && isOptionNormalFalse(selectedOpt));
+        } 
+        else if (q.input_type === 'DROPDOWN') {
+            const selectedOpt = q.options?.find((o: any) => 
+                normalizeText(o.option_text) === normalizeText(ans.value)
+            );
+            isAbnormal = !!(selectedOpt && isOptionNormalFalse(selectedOpt));
+        } 
+        else if (q.input_type === 'CHECKBOX') {
+            const currentVals = Array.isArray(ans.value) ? ans.value : [];
+            isAbnormal = !!q.options?.some((o: any) =>
+                currentVals.some((v: any) => normalizeText(v) === normalizeText(o.option_text)) && 
+                isOptionNormalFalse(o)
+            );
+        }
 
         if (isAbnormal) {
-    // Validasi Note Wajib
-    if (!ans.note || String(ans.note).trim() === '') {
-        newErrors[q.id] = {
-            ...(newErrors[q.id] || {}),
-            note: 'Catatan wajib diisi untuk temuan abnormal.'
-        };
-        hasError = true;
-    }
-
-    // 💡 Validasi Photos Wajib (Pastikan benar-benar string path yang valid dan tidak kosong)
-    const hasPhoto = ans.photos && typeof ans.photos === 'string' && ans.photos.trim() !== '';
-    if (!hasPhoto) {
-        newErrors[q.id] = {
-            ...(newErrors[q.id] || {}),
-            photos: 'Foto evidence wajib diisi untuk temuan abnormal.'
-        };
-        hasError = true;
-    }
-}
-
-                let rules: any = {};
-                if (q.validation_rules) {
-                    try {
-                        let parsed = typeof q.validation_rules === 'string' 
-                            ? JSON.parse(q.validation_rules) 
-                            : q.validation_rules;
-                        
-                        rules = Array.isArray(parsed) ? (parsed[0] || {}) : parsed;
-                    } catch (e) {
-                        console.error("Gagal parsing validation rules", e);
-                    }
-                }
-
-                if ((q.input_type === 'TEXT' || q.input_type === 'TEXTAREA') && ans.value) {
-                    const userAns = String(ans.value).trim().toLowerCase();
-                    const expectedAns = String(rules.expected_answer).trim().toLowerCase();
-                    if (rules.expected_answer && userAns !== expectedAns) {
-                        const customErrorMsg = rules.validation_error_message && rules.validation_error_message.trim() !== ''
-                            ? rules.validation_error_message 
-                            : `Jawaban untuk "${q.question_text}" tidak sesuai dengan standar.`;
-                        
-                        newErrors[q.id] = {
-            ...(newErrors[q.id] || {}),
-            value: customErrorMsg // 💡 Pastikan komponen input teks kamu membaca error dari key '.value' atau sesuaikan
-        };
-                        hasError = true;
-                    }
-                }
+            // Cek Catatan
+            if (!ans.note || String(ans.note).trim() === '') {
+                newErrors[q.id] = {
+                    ...(newErrors[q.id] || {}),
+                    note: 'Catatan wajib diisi untuk temuan abnormal.'
+                };
+                hasError = true;
             }
 
-            setQuestionErrors(newErrors);
-            
+            // Cek Foto
+            const isPhotoEmpty = 
+                !ans.photos || 
+                ans.photos === '' || 
+                (typeof ans.photos === 'string' && ans.photos.trim() === '') || 
+                (Array.isArray(ans.photos) && ans.photos.length === 0);
 
-            // Jika ada error pada pertanyaan, hentikan proses next (tidak pindah section)
-            if (hasError) {
-                return;
+            if (isPhotoEmpty) {
+                newErrors[q.id] = {
+                    ...(newErrors[q.id] || {}),
+                    photos: 'Foto evidence wajib diisi untuk temuan abnormal.'
+                };
+                hasError = true;
             }
+        }
 
-   let targetJumpSectionIndex: number | null = null;
+        // ==========================================
+        // 3. VALIDASI CUSTOM RULES (TEXT / TEXTAREA)
+        // ==========================================
+        let rules: any = {};
+        if (q.validation_rules) {
+            try {
+                let parsed = typeof q.validation_rules === 'string' 
+                    ? JSON.parse(q.validation_rules) 
+                    : q.validation_rules;
+                
+                rules = Array.isArray(parsed) ? (parsed[0] || {}) : parsed;
+            } catch (e) {
+                console.error("Gagal parsing validation rules", e);
+            }
+        }
+
+        if ((q.input_type === 'TEXT' || q.input_type === 'TEXTAREA') && ans.value) {
+            const userAns = String(ans.value).trim().toLowerCase();
+            const expectedAns = String(rules.expected_answer).trim().toLowerCase();
+            if (rules.expected_answer && userAns !== expectedAns) {
+                const customErrorMsg = rules.validation_error_message && rules.validation_error_message.trim() !== ''
+                    ? rules.validation_error_message 
+                    : `Jawaban untuk "${q.question_text}" tidak sesuai dengan standar.`;
+                
+                newErrors[q.id] = {
+                    ...(newErrors[q.id] || {}),
+                    value: customErrorMsg 
+                };
+                hasError = true;
+            }
+        }
+    }
+
+    setQuestionErrors(newErrors);
+
+    // Jika ada error, hentikan proses pindah section
+    if (hasError) {
+        return;
+    }
+
+    // ==========================================
+    // 4. LOGIKA PERPINDAHAN SECTION (JUMP)
+    // ==========================================
+    let targetJumpSectionIndex: number | null = null;
+    
+    // Cari tahu apakah ada opsi yang memicu lompatan section
     for (const q of questions) {
         const ans = getAnswer(q.id);
         if (ans.value !== undefined && ans.value !== '' && q.options) {
-            const selectedOpt = q.options.find((o: any) => Number(o.id) === Number(ans.value));
+            
+            // Cek opsi berdasarkan tipe data
+            let selectedOpt;
+            if (q.input_type === 'DROPDOWN') {
+                selectedOpt = q.options.find((o: any) => normalizeText(o.option_text) === normalizeText(ans.value));
+            } else if (q.input_type === 'SELECT') {
+                selectedOpt = q.options.find((o: any) => String(o.id) === String(ans.value));
+            }
+
             if (selectedOpt && selectedOpt.goto_form_section_id !== null && selectedOpt.goto_form_section_id !== undefined && selectedOpt.goto_form_section_id !== '') {
                 const rawJump = selectedOpt.goto_form_section_id;
                 
-                // Cari index section tujuan berdasarkan ID atau index
                 let foundIdx = sections.findIndex((sec: any) => Number(sec.id) === Number(rawJump));
                 if (foundIdx === -1 && !isNaN(Number(rawJump))) {
                     foundIdx = Number(rawJump);
@@ -546,20 +596,16 @@
         }
     }
 
-    // 2. Eksekusi perpindahan dan tandai section terlewati sebagai "Skipped"
-   if (targetJumpSectionIndex !== null) {
-        // Cukup tandai section saat ini saja yang selesai (currentSectionIndex)
+    // Eksekusi perpindahan
+    if (targetJumpSectionIndex !== null) {
         const newMax = Math.max(maxCompletedIndex, currentSectionIndex);
-        
         setMaxCompletedIndex(newMax);
         if (taskId) {
             localStorage.setItem(`inspection_max_completed_${taskId}`, newMax.toString());
         }
-
         setCurrentSectionIndex(targetJumpSectionIndex);
         setQuestionErrors({});
     } else {
-        // Alur normal sekuensial biasa (+1)
         const newMax = Math.max(maxCompletedIndex, currentSectionIndex);
         setMaxCompletedIndex(newMax);
         if (taskId) {
@@ -571,7 +617,7 @@
             setQuestionErrors({});
         }
     }
-}
+};
 
         return {
             currentSectionIndex,

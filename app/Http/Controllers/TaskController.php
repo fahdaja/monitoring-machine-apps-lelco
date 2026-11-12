@@ -256,6 +256,34 @@
             // Flatten semua questions dari form untuk pengecekan cepat
             $allQuestions = $task->form->sections->flatMap->questions;
 
+            $skippedSectionIds = [];
+            $sections = $task->form->sections;
+
+            foreach ($sections as $index => $section) {
+            foreach ($section->questions as $q) {
+            $ans = $submittedAnswers[$q->id] ?? null;
+            $val = $ans['value'] ?? null;
+            
+            if ($val !== null && $val !== '') {
+                // Cari opsi yang dipilih
+                $selectedOpt = $q->options->first(function($opt) use ($val) {
+                    return $opt->id == $val || $opt->option_text == $val;
+                });
+
+                // Jika opsi ini punya tujuan lompatan
+                if ($selectedOpt && $selectedOpt->goto_form_section_id) {
+                    $targetIndex = $sections->search(fn($s) => $s->id == $selectedOpt->goto_form_section_id);
+                    if ($targetIndex !== false && $targetIndex !== -1) {
+                        // Tandai semua section di antara section ini dan target sebagai "dilewati"
+                        for ($i = $index + 1; $i < $targetIndex; $i++) {
+                            $skippedSectionIds[] = $sections[$i]->id;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
             // 3. Validasi kondisional per pertanyaan (Wajibkan note & photos jika abnormal)
             foreach ($submittedAnswers as $questionId => $answer) {
                 $question = $allQuestions->firstWhere('id', $questionId);
@@ -270,8 +298,9 @@
                 if (is_array($value) && count($value) === 0) {
                     $isEmptyValue = true;
                 }
-
-                if ($question->is_required && $isEmptyValue) {
+                
+                $isSectionSkipped = in_array($question->form_section_id, $skippedSectionIds);
+                if ($question->is_required && !$isSectionSkipped && $isEmptyValue) {
                     $customErrors["answers.{$questionId}.value"] = "Pertanyaan \"{$question->question_text}\" wajib diisi.";
                     continue;
                 }
@@ -321,7 +350,7 @@
                 $submission = TaskSubmission::updateOrCreate(
                     [
                         'task_id' => $task->id, 
-                        'status'  => 'DRAFT'
+                        'user_id' => auth()->id()
                     ],
                     [
                         'submission_code' => 'SUB-' . strtoupper(Str::random(8)),
@@ -416,18 +445,14 @@
 
         $enterpriseSnapshot = $this->buildEnterpriseSnapshot($task, $rawAnswers);
         
-        $draft = TaskSubmission::firstOrCreate(
-            ['task_id' => $task->id, 'status' => 'DRAFT'],
+        $draft = TaskSubmission::updateOrCreate(
+            ['task_id' => $task->id, 'user_id' => auth()->id()],
             [
                 'submission_code' => 'DRF-' . strtoupper(Str::random(8)),
-                'user_id'         => auth()->id(),
+                'status'          => 'DRAFT',
+                'answers_values'  => $enterpriseSnapshot,
             ]
         );
-
-        // Simpan bersih ke kolom answers_values
-        $draft->update([
-            'answers_values' => $enterpriseSnapshot
-        ]);
 
         if ($request->has('current_section_index')) {
             $task->current_section_index = $request->current_section_index;

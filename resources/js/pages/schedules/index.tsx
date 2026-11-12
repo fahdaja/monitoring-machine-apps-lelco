@@ -39,9 +39,7 @@ interface User {
 }
 
 interface PageProps {
-    auth: {
-        user: User;
-    };
+    auth: { user: User };
     [key: string]: any;
 }
 
@@ -62,7 +60,6 @@ export default function ScheduleIndex({ schedules, forms }: Props) {
 
     const [isModalOpen, setIsModalOpen] = useState(false);
 
-    // Tanggal hari ini format YYYY-MM-DD
     const todayStr = new Date().toISOString().split('T')[0];
 
     const { data, setData, post, processing, errors, reset } = useForm({
@@ -109,7 +106,7 @@ export default function ScheduleIndex({ schedules, forms }: Props) {
         const end = new Date(data.end_date);
         const diffTime = end.getTime() - start.getTime();
         if (diffTime < 0) return 0;
-        
+
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
         if (data.frequency_type === 'DAILY') {
@@ -130,7 +127,7 @@ export default function ScheduleIndex({ schedules, forms }: Props) {
         return isNaN(d.getTime()) ? dateStr : d.toLocaleDateString('id-ID', {
             day: '2-digit',
             month: 'short',
-            year: 'numeric'
+            year: 'numeric',
         });
     };
 
@@ -138,89 +135,102 @@ export default function ScheduleIndex({ schedules, forms }: Props) {
         <AppLayout>
             <Head title="Manajemen Jadwal & Task" />
 
-            <div className="space-y-6">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <div>
-                        <h1 className="text-3xl font-extrabold text-slate-900">Manajemen Jadwal Pemantauan</h1>
-                        <p className="text-xs text-slate-500 mt-1">Atur jadwal berkala untuk template form agar task teknisi ter-generate otomatis.</p>
+            <div className="space-y-4 sm:space-y-6">
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
+                    <div className="min-w-0">
+                        <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-slate-900">
+                            Manajemen Jadwal Pemantauan
+                        </h1>
+                        <p className="text-[11px] sm:text-xs text-slate-500 mt-1">
+                            Atur jadwal berkala untuk template form agar task teknisi ter-generate otomatis.
+                        </p>
                     </div>
                     {isAdmin && (
                         <button
                             onClick={() => setIsModalOpen(true)}
-                            className="bg-slate-900 hover:bg-slate-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-colors shadow-sm flex items-center gap-2 cursor-pointer"
+                            className="w-full sm:w-auto bg-slate-900 hover:bg-slate-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-colors shadow-sm flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap shrink-0"
                         >
                             + Buat Jadwal Baru
                         </button>
                     )}
                 </div>
 
-                {/* Tabel Daftar Schedule */}
+                {/* Tabel */}
                 <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
-                    <table className="w-full text-left border-collapse text-xs">
-                        <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200 text-slate-600">
-                                <th className="p-4 font-extrabold">Template Form</th>
-                                <th className="p-4 font-extrabold">Target Mesin (Form)</th>
-                                <th className="p-4 text-center font-extrabold">Frekuensi</th>
-                                <th className="p-4 text-center font-extrabold">Periode Mulai</th>
-                                <th className="p-4 text-center font-extrabold">Periode Selesai</th>
-                                <th className="p-4 text-center font-extrabold">Status</th>
-                                <th className="p-4 text-center font-extrabold">Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {schedules && schedules.length > 0 ? (
-                                schedules.map((sch) => (
-                                    <tr key={sch.id} className="hover:bg-slate-50">
-                                        <td className="p-4">
-                                            <div className="font-bold text-slate-900">{sch.form?.form_title || 'Form Terhapus'}</div>
-                                            <div className="text-[10px] text-slate-400 font-mono">{sch.form?.form_code}</div>
-                                        </td>
-                                        <td className="p-4 text-slate-600">
-                                            <span className="bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg font-semibold">
-                                                {sch.form?.machine_type || 'Umum'}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-center font-semibold text-slate-700">
-                                            <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded text-[10px]">
-                                                {sch.frequency_type}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-center text-slate-500 font-medium">
-                                            {formatDate(sch.start_date)}
-                                        </td>
-                                        <td className="p-4 text-center text-slate-500 font-medium">
-                                            {formatDate(sch.end_date)}
-                                        </td>
-                                        <td className="p-4 text-center">
-                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${sch.is_active ? 'bg-sky-50 text-sky-700 border border-sky-200' : 'bg-slate-100 text-slate-500'}`}>
-                                                {sch.is_active ? 'AKTIF' : 'NONAKTIF'}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-center space-x-2">
-                                            <Link
-                                                href={`/schedules/${sch.id}/tasks`}
-                                                className="px-3 py-1.5 rounded-lg bg-slate-900 text-white font-bold hover:bg-slate-800 transition-colors inline-block"
-                                            >
-                                                Lihat Task
-                                            </Link>
+                    <div className="overflow-x-auto">
+                        <table className="w-full min-w-[820px] text-left border-collapse text-xs">
+                            <thead>
+                                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600">
+                                    <th className="p-3 sm:p-4 font-extrabold">Template Form</th>
+                                    <th className="p-3 sm:p-4 font-extrabold whitespace-nowrap">Target Mesin (Form)</th>
+                                    <th className="p-3 sm:p-4 text-center font-extrabold">Frekuensi</th>
+                                    <th className="p-3 sm:p-4 text-center font-extrabold whitespace-nowrap">Periode Mulai</th>
+                                    <th className="p-3 sm:p-4 text-center font-extrabold whitespace-nowrap">Periode Selesai</th>
+                                    <th className="p-3 sm:p-4 text-center font-extrabold">Status</th>
+                                    <th className="p-3 sm:p-4 text-center font-extrabold">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {schedules && schedules.length > 0 ? (
+                                    schedules.map((sch) => (
+                                        <tr key={sch.id} className="hover:bg-slate-50">
+                                            <td className="p-3 sm:p-4">
+                                                <div className="font-bold text-slate-900 break-words">
+                                                    {sch.form?.form_title || 'Form Terhapus'}
+                                                </div>
+                                                <div className="text-[10px] text-slate-400 font-mono">
+                                                    {sch.form?.form_code}
+                                                </div>
+                                            </td>
+                                            <td className="p-3 sm:p-4 text-slate-600">
+                                                <span className="bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg font-semibold whitespace-nowrap">
+                                                    {sch.form?.machine_type || 'Umum'}
+                                                </span>
+                                            </td>
+                                            <td className="p-3 sm:p-4 text-center font-semibold text-slate-700">
+                                                <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded text-[10px] whitespace-nowrap">
+                                                    {sch.frequency_type}
+                                                </span>
+                                            </td>
+                                            <td className="p-3 sm:p-4 text-center text-slate-500 font-medium whitespace-nowrap">
+                                                {formatDate(sch.start_date)}
+                                            </td>
+                                            <td className="p-3 sm:p-4 text-center text-slate-500 font-medium whitespace-nowrap">
+                                                {formatDate(sch.end_date)}
+                                            </td>
+                                            <td className="p-3 sm:p-4 text-center">
+                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap ${sch.is_active ? 'bg-sky-50 text-sky-700 border border-sky-200' : 'bg-slate-100 text-slate-500'}`}>
+                                                    {sch.is_active ? 'AKTIF' : 'NONAKTIF'}
+                                                </span>
+                                            </td>
+                                            <td className="p-3 sm:p-4 text-center">
+                                                <Link
+                                                    href={`/schedules/${sch.id}/tasks`}
+                                                    className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-900 text-white font-bold hover:bg-slate-800 transition-colors inline-block whitespace-nowrap"
+                                                >
+                                                    Lihat Task
+                                                </Link>
+                                            </td>
+                                        </tr>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan={7} className="p-8 text-center text-slate-400">
+                                            Belum ada jadwal pemantauan yang dibuat.
                                         </td>
                                     </tr>
-                                ))
-                            ) : (
-                                <tr>
-                                    <td colSpan={7} className="p-8 text-center text-slate-400">Belum ada jadwal pemantauan yang dibuat.</td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
 
                 {/* Modal Buat Jadwal Baru */}
                 {isModalOpen && (
-                    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-                        <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-4 max-h-[90vh] overflow-y-auto">
-                            <h3 className="text-base font-black text-slate-900">Buat Jadwal Pemantauan Baru</h3>
+                    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4">
+                        <div className="bg-white rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-xl space-y-4 max-h-[90dvh] overflow-y-auto">
+                            <h3 className="text-sm sm:text-base font-black text-slate-900">Buat Jadwal Pemantauan Baru</h3>
                             <form onSubmit={submit} className="space-y-3">
                                 <div>
                                     <label className="block text-xs font-bold text-slate-700 mb-1">Pilih Template Form *</label>
@@ -239,20 +249,19 @@ export default function ScheduleIndex({ schedules, forms }: Props) {
                                     {errors.form_id && <span className="text-[10px] text-rose-600 font-bold">{errors.form_id}</span>}
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
                                     <div>
                                         <label className="block text-xs font-bold text-slate-700 mb-1">Frekuensi *</label>
                                         <select
                                             value={data.frequency_type}
                                             onChange={e => {
-                                                // Reset state tanggal dan pilihan saat frekuensi diganti agar bersih
                                                 setData(prev => ({
                                                     ...prev,
                                                     frequency_type: e.target.value,
                                                     start_date: '',
                                                     end_date: '',
                                                     selected_days: [],
-                                                    selected_dates: []
+                                                    selected_dates: [],
                                                 }));
                                             }}
                                             className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-emerald-600 bg-white font-medium"
@@ -286,9 +295,9 @@ export default function ScheduleIndex({ schedules, forms }: Props) {
                                                         key={d.value}
                                                         type="button"
                                                         onClick={() => toggleDay(d.value)}
-                                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
-                                                            active 
-                                                                ? 'bg-emerald-600 text-white border-emerald-600' 
+                                                        className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold border transition-colors cursor-pointer ${
+                                                            active
+                                                                ? 'bg-emerald-600 text-white border-emerald-600'
                                                                 : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                                                         }`}
                                                     >
@@ -301,54 +310,53 @@ export default function ScheduleIndex({ schedules, forms }: Props) {
                                 )}
 
                                 {data.frequency_type === 'MONTHLY' && (
-    <div className="space-y-1.5 pt-1">
-        <label className="block text-xs font-bold text-slate-700">Pilih Tanggal dalam Sebulan *</label>
-        <div className="grid grid-cols-7 gap-1 max-h-36 overflow-y-auto p-1 border border-slate-200 rounded-xl bg-slate-50">
-            {Array.from({ length: 31 }, (_, i) => i + 1).map((num) => {
-                const active = data.selected_dates.includes(num);
+                                    <div className="space-y-1.5 pt-1">
+                                        <label className="block text-xs font-bold text-slate-700">Pilih Tanggal dalam Sebulan *</label>
+                                        <div className="grid grid-cols-7 gap-0.5 sm:gap-1 max-h-36 overflow-y-auto p-1 border border-slate-200 rounded-xl bg-slate-50">
+                                            {Array.from({ length: 31 }, (_, i) => i + 1).map((num) => {
+                                                const active = data.selected_dates.includes(num);
 
-                // Cek apakah tanggal ini sudah lewat dari hari ini (jika start_date adalah hari ini)
-                let isDisabled = false;
-                if (data.start_date) {
-                    const selectedDateObj = new Date(data.start_date);
-                    const currentYear = selectedDateObj.getFullYear();
-                    const currentMonth = selectedDateObj.getMonth();
-                    
-                    // Buat objek tanggal untuk angka yang sedang dirender di grid
-                    const targetDate = new Date(currentYear, currentMonth, num);
-                    const todayObj = new Date();
-                    todayObj.setHours(0, 0, 0, 0);
+                                                let isDisabled = false;
+                                                if (data.start_date) {
+                                                    const selectedDateObj = new Date(data.start_date);
+                                                    const currentYear = selectedDateObj.getFullYear();
+                                                    const currentMonth = selectedDateObj.getMonth();
 
-                    // Jika tanggal di grid lebih kecil dari hari ini, disable
-                    if (targetDate < todayObj) {
-                        isDisabled = true;
-                    }
-                }
+                                                    const targetDate = new Date(currentYear, currentMonth, num);
+                                                    const todayObj = new Date();
+                                                    todayObj.setHours(0, 0, 0, 0);
 
-                return (
-                    <button
-                        key={num}
-                        type="button"
-                        disabled={isDisabled}
-                        onClick={() => !isDisabled && toggleDateNum(num)}
-                        className={`py-1.5 rounded-lg text-xs font-bold border transition-colors ${
-                            isDisabled 
-                                ? 'bg-slate-200 text-slate-400 border-slate-200 cursor-not-allowed opacity-60' 
-                                : active 
-                                    ? 'bg-emerald-600 text-white border-emerald-600 cursor-pointer' 
-                                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 cursor-pointer'
-                        }`}
-                    >
-                        {num}
-                    </button>
-                );
-            })}
-        </div>
-        {data.selected_dates.length === 0 && <span className="text-[10px] text-rose-600 font-semibold block">Pilih minimal satu tanggal.</span>}
-    </div>
-)}
+                                                    if (targetDate < todayObj) {
+                                                        isDisabled = true;
+                                                    }
+                                                }
 
-                                <div className="grid grid-cols-2 gap-3 pt-1">
+                                                return (
+                                                    <button
+                                                        key={num}
+                                                        type="button"
+                                                        disabled={isDisabled}
+                                                        onClick={() => !isDisabled && toggleDateNum(num)}
+                                                        className={`py-1 sm:py-1.5 rounded-md sm:rounded-lg text-[11px] sm:text-xs font-bold border transition-colors ${
+                                                            isDisabled
+                                                                ? 'bg-slate-200 text-slate-400 border-slate-200 cursor-not-allowed opacity-60'
+                                                                : active
+                                                                    ? 'bg-emerald-600 text-white border-emerald-600 cursor-pointer'
+                                                                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 cursor-pointer'
+                                                        }`}
+                                                    >
+                                                        {num}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        {data.selected_dates.length === 0 && (
+                                            <span className="text-[10px] text-rose-600 font-semibold block">Pilih minimal satu tanggal.</span>
+                                        )}
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 pt-1">
                                     <div>
                                         <label className="block text-xs font-bold text-slate-700 mb-1">Tanggal Mulai *</label>
                                         <input
@@ -381,26 +389,26 @@ export default function ScheduleIndex({ schedules, forms }: Props) {
                                 </div>
 
                                 {data.start_date && data.end_date && calculateEstimatedTasks() > 0 && (
-                                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-700 flex items-center justify-between">
+                                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 sm:p-3 text-xs text-slate-700 flex items-center justify-between gap-2">
                                         <span className="text-slate-500">Estimasi Task:</span>
-                                        <span className="font-bold text-slate-900 bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded">
+                                        <span className="font-bold text-slate-900 bg-emerald-100 text-emerald-800 px-2 sm:px-2.5 py-0.5 rounded whitespace-nowrap">
                                             {calculateEstimatedTasks()} Task ({data.frequency_type})
                                         </span>
                                     </div>
                                 )}
 
-                                <div className="flex justify-end gap-2 pt-3">
+                                <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-3">
                                     <button
                                         type="button"
                                         onClick={() => setIsModalOpen(false)}
-                                        className="px-4 py-2 rounded-xl text-xs font-bold border text-slate-600 hover:bg-slate-50 cursor-pointer"
+                                        className="w-full sm:w-auto px-4 py-2.5 sm:py-2 rounded-xl text-xs font-bold border border-slate-200 text-slate-600 hover:bg-slate-50 cursor-pointer"
                                     >
                                         Batal
                                     </button>
                                     <button
                                         type="submit"
                                         disabled={processing}
-                                        className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer"
+                                        className="w-full sm:w-auto px-4 py-2.5 sm:py-2 rounded-xl text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer disabled:opacity-50"
                                     >
                                         Simpan & Generate Task
                                     </button>

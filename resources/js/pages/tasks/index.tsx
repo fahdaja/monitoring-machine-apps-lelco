@@ -33,6 +33,7 @@ interface TasksIndexProps {
 }
 
 export default function TasksIndex({ calendarData }: TasksIndexProps) {
+    const currentUserId = (usePage().props.auth as any)?.user?.id;
     const todayStr = new Date().toISOString().split('T')[0];
 
     const currentCalendarData: InspectionCalendarData = calendarData || {
@@ -43,7 +44,7 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
         today: todayStr,
         tasks: []
     }
-
+    
     const [scannedInput, setScannedInput] = useState('');
     const [scanError, setScanError] = useState<string | null>(null);
     const [currentYear, setCurrentYear] = useState(currentCalendarData.year);
@@ -97,10 +98,10 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                 return 'bg-amber-100 text-amber-800 border-amber-200';
             case 'OVERDUE':
                 return 'bg-rose-100 text-rose-800 border-rose-200';
-            case 'IN_PROGRESS':
-                return 'bg-indigo-100 text-indigo-800 border-indigo-200'; // 🚀 Badge khusus In Progress
-            case 'COMPLETED':
-                return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+                case 'IN_PROGRESS':
+                    return 'bg-indigo-100 text-indigo-800 border-indigo-200'; // 🚀 Badge khusus In Progress
+                    case 'COMPLETED':
+                        return 'bg-emerald-100 text-emerald-800 border-emerald-200';
             case 'UPCOMING':
                 return 'bg-blue-100 text-blue-800 border-blue-200';
             default:
@@ -134,49 +135,48 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
 
             days.push(
                 <button
-                    key={day}
-                    type="button"
-                    onClick={() => setSelectedDate(dateStr)}
-                    className={`min-h-[58px] p-2 rounded-xl border text-left flex flex-col justify-between transition-all relative ${isSelected
-                        ? 'bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-slate-900/20'
-                        : isToday
-                            ? 'bg-blue-50/60 border-blue-300 text-slate-900 font-bold'
-                            : 'bg-white border-slate-200 hover:border-slate-300 text-slate-800'
-                        }`}
-                >
-                    <span className="text-xs font-extrabold">{day}</span>
+    type="button"
+    onClick={() => setSelectedDate(dateStr)}
+    className={`min-h-[52px] sm:min-h-[58px] p-1.5 sm:p-2 rounded-lg sm:rounded-xl border text-left flex flex-col justify-between transition-all relative ${
+        isSelected
+            ? 'bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-slate-900/20'
+            : isToday
+                ? 'bg-blue-50/60 border-blue-300 text-slate-900 font-bold'
+                : 'bg-white border-slate-200 hover:border-slate-300 text-slate-800'
+    }`}
+>
+    <span className="text-[11px] sm:text-xs font-extrabold">{day}</span>
 
-                    {dayTasks.length > 0 && (
-                        <div className="flex items-center justify-between w-full mt-1">
-                            {/* Dots Indicator */}
-                            <div className="flex items-center gap-1">
-                                {dayTasks.slice(0, 3).map((t, idx) => (
-                                    <span
-                                        key={idx}
-                                        className={`w-1.5 h-1.5 rounded-full ${t.status === 'OVERDUE'
-                                            ? 'bg-rose-500'
-                                            : t.status === 'DUE'
-                                                ? 'bg-amber-500'
-                                                : t.status === 'IN_PROGRESS'
-                                                    ? 'bg-indigo-500' // ✅ Warna titik untuk In Progress
-                                                    : t.status === 'COMPLETED'
-                                                        ? 'bg-emerald-500'
-                                                        : 'bg-blue-500'
-                                            }`}
-                                    />
-                                ))}
-                            </div>
-                            <span
-                                className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${isSelected
-                                    ? 'bg-white/20 text-white'
-                                    : 'bg-slate-100 text-slate-700'
-                                    }`}
-                            >
-                                {dayTasks.length}
-                            </span>
-                        </div>
-                    )}
-                </button>
+    {dayTasks.length > 0 && (
+        <div className="flex items-center justify-between w-full mt-0.5 sm:mt-1 gap-0.5">
+            <div className="flex items-center gap-0.5 sm:gap-1">
+                {dayTasks.slice(0, 3).map((t, idx) => (
+                    <span
+                        key={idx}
+                        className={`w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full ${
+                            t.status === 'OVERDUE'
+                                ? 'bg-rose-500'
+                                : t.status === 'DUE'
+                                    ? 'bg-amber-500'
+                                    : t.status === 'IN_PROGRESS'
+                                        ? 'bg-indigo-500'
+                                        : t.status === 'COMPLETED'
+                                            ? 'bg-emerald-500'
+                                            : 'bg-blue-500'
+                        }`}
+                    />
+                ))}
+            </div>
+            <span
+                className={`text-[8px] sm:text-[9px] font-black px-1 sm:px-1.5 py-0.5 rounded-full ${
+                    isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+                }`}
+            >
+                {dayTasks.length}
+            </span>
+        </div>
+    )}
+</button>
             );
         }
 
@@ -193,16 +193,16 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
             <Head title="Inspection Tasks & Calendar" />
 
             {/* Header Halaman */}
-            <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                <div>
-                    <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight">
-                        Kalender Pemeriksaan
-                    </h1>
-                    <p className="text-sm text-slate-500 mt-1">
-                        Jadwal preventive inspection L1/L2. Pilih tanggal pada kalender untuk melihat task aktif.
-                    </p>
-                </div>
-            </div>
+            <div className="mb-4 sm:mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+    <div className="min-w-0">
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight">
+            Kalender Pemeriksaan
+        </h1>
+        <p className="text-xs sm:text-sm text-slate-500 mt-1">
+            Jadwal preventive inspection L1/L2. Pilih tanggal pada kalender untuk melihat task aktif.
+        </p>
+    </div>
+</div>
 
             {/* Calendar & Task Detail Layout */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -210,46 +210,48 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                 {/* 1. Panel Kalender Bulanan (Left - 7 cols) */}
                 <div className="lg:col-span-7 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
                     {/* Toolbar Kalender */}
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
-                        <button
-                            type="button"
-                            onClick={handlePrevMonth}
-                            className="w-9 h-9 border border-slate-200 rounded-xl flex items-center justify-center text-slate-700 hover:bg-slate-100 font-bold transition-colors"
-                        >
-                            &lsaquo;
-                        </button>
+                    <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3 mb-4">
+    <button
+        type="button"
+        onClick={handlePrevMonth}
+        className="w-8 h-8 sm:w-9 sm:h-9 shrink-0 border border-slate-200 rounded-xl flex items-center justify-center text-slate-700 hover:bg-slate-100 font-bold transition-colors"
+        aria-label="Bulan sebelumnya"
+    >
+        &lsaquo;
+    </button>
 
-                        <div className="flex items-center gap-3">
-                            <h2 className="text-base font-black text-slate-900 capitalize">
-                                {getMonthLabel(currentMonth, currentYear)}
-                            </h2>
-                            <button
-                                type="button"
-                                onClick={() => setSelectedDate(currentCalendarData.today)}
-                                className="text-xs font-bold text-blue-600 hover:text-blue-800"
-                            >
-                                Hari Ini
-                            </button>
-                        </div>
+    <div className="flex flex-col sm:flex-row items-center gap-1 sm:gap-3 min-w-0 flex-1 justify-center">
+        <h2 className="text-sm sm:text-base font-black text-slate-900 capitalize truncate text-center">
+            {getMonthLabel(currentMonth, currentYear)}
+        </h2>
+        <button
+            type="button"
+            onClick={() => setSelectedDate(currentCalendarData.today)}
+            className="text-[11px] sm:text-xs font-bold text-blue-600 hover:text-blue-800 whitespace-nowrap shrink-0"
+        >
+            Hari Ini
+        </button>
+    </div>
 
-                        <button
-                            type="button"
-                            onClick={handleNextMonth}
-                            className="w-9 h-9 border border-slate-200 rounded-xl flex items-center justify-center text-slate-700 hover:bg-slate-100 font-bold transition-colors"
-                        >
-                            &rsaquo;
-                        </button>
-                    </div>
+    <button
+        type="button"
+        onClick={handleNextMonth}
+        className="w-8 h-8 sm:w-9 sm:h-9 shrink-0 border border-slate-200 rounded-xl flex items-center justify-center text-slate-700 hover:bg-slate-100 font-bold transition-colors"
+        aria-label="Bulan berikutnya"
+    >
+        &rsaquo;
+    </button>
+</div>
 
                     {/* Render Kalender */}
                     {renderCalendarDays()}
 
                     <div className="flex items-center gap-4 text-[10px] text-slate-500 font-semibold mt-4 pt-3 border-t border-slate-100 flex-wrap">
-                        <span className="flex items-center gap-1.5"><i className="w-2 h-2 rounded-full bg-amber-500 inline-block" /> Due</span>
-                        <span className="flex items-center gap-1.5"><i className="w-2 h-2 rounded-full bg-rose-500 inline-block" /> Overdue</span>
-                        <span className="flex items-center gap-1.5"><i className="w-2 h-2 rounded-full bg-blue-500 inline-block" /> Upcoming</span>
-                        <span className="flex items-center gap-1.5"><i className="w-2 h-2 rounded-full bg-indigo-500 inline-block" /> In Progress</span> {/* 🚀 Tambahan */}
-                        <span className="flex items-center gap-1.5"><i className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Completed</span>
+                        <span className="flex items-center gap-1 sm:gap-1.5"><i className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-amber-500 inline-block" /> Due</span>
+                        <span className="flex items-center gap-1 sm:gap-1.5"><i className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-rose-500 inline-block" /> Overdue</span>
+                        <span className="flex items-center gap-1 sm:gap-1.5"><i className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-blue-500 inline-block" /> Upcoming</span>
+                        <span className="flex items-center gap-1 sm:gap-1.5"><i className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-indigo-500 inline-block" /> In Progress</span> {/* 🚀 Tambahan */}
+                        <span className="flex items-center gap-1 sm:gap-1.5"><i className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-500 inline-block" /> Completed</span>
                     </div>
                 </div>
 
@@ -263,7 +265,7 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                     </div>
 
                     {/* Task List */}
-                    <div className="space-y-3 flex-1 overflow-y-auto max-h-[500px] pr-1">
+                    <div className="space-y-3 flex-1 overflow-y-auto max-h-[60vh] sm:max-h-[500px] pr-1">
                         {tasksForSelectedDate.length > 0 ? (
                             tasksForSelectedDate.map((t) => (
                                 <div
@@ -278,13 +280,13 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                                         }`}
                                 >
                                     <div className="flex items-start justify-between gap-2 mb-2">
-                                        <div className="flex items-center gap-2">
-                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${getBadgeClass(t.status)}`}>
-                                                {t.status}
-                                            </span>
-                                        </div>
-                                        <span className="text-[10px] font-mono text-slate-400">{t.taskCode}</span>
-                                    </div>
+    <div className="flex items-center gap-2 min-w-0">
+        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${getBadgeClass(t.status)}`}>
+            {t.status}
+        </span>
+    </div>
+    <span className="text-[10px] font-mono text-slate-400 truncate shrink-0 max-w-[45%] text-right">{t.taskCode}</span>
+</div>
 
                                     <h4 className="font-extrabold text-slate-900 text-sm leading-snug">{t.activity}</h4>
 
@@ -302,7 +304,6 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                                     <div className="mt-3.5 pt-2.5 border-t border-slate-200/60 flex items-center justify-end gap-2">
                                         {(() => {
                                             // Ambil ID user yang sedang login dari Inertia props (pastikan auth.user dikirim dari controller)
-                                            const currentUserId = (usePage().props.auth as any)?.user?.id;
                                             const isAssignedToOther = t.assignedUserId && t.assignedUserId !== currentUserId;
 
                                             if (t.status === 'COMPLETED') {
@@ -364,7 +365,7 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
             {/* Modal Verifikasi QR sebelum Mulai Inspeksi */}
             {selectedTaskForModal && (
                 <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 text-center">
+                    <div className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-200 text-center max-h-[90dvh] overflow-y-auto">
                         <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-900 font-black text-xl">
                             <QrCode />
                         </div>

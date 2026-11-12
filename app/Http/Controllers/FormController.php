@@ -17,9 +17,31 @@ class FormController extends Controller
 {
     public function index()
     {
-        $forms = Form::with('machine','sections.questions.options')->latest()->paginate(10);
+        $forms = Form::with('machine','sections.questions.options', 'tasks:id,form_id,status,assigned_user_id', 'tasks.user:id,full_name')->latest()->paginate(10);
+
+        $allForms = Form::with('tasks:id,form_id,status', 'tasks:id,form_id,status,assigned_user_id')->get();
+    
+         $stats = [
+        'total' => $allForms->count(),
+        'completed' => $allForms->filter(fn($f) => $f->status === 'COMPLETED')->count(),
+        'inProgress' => $allForms->filter(fn($f) => $f->status === 'IN_PROGRESS')->count(),
+        'unassigned' => $allForms->filter(fn($f) => $f->status === 'UNASSIGNED')->count(),
+    ];
+
+        $forms->getCollection()->transform(function ($form) {
+        // Cari task yang sedang IN_PROGRESS atau COMPLETED
+        $activeTask = $form->tasks->firstWhere('status', 'IN_PROGRESS') 
+                   ?? $form->tasks->firstWhere('status', 'COMPLETED')
+                   ?? $form->tasks->first(); // Fallback ke task pertama
+
+        // Ambil nama user dari task tersebut
+        $form->responder = $activeTask?->user?->full_name ?? null;
+         return $form;
+    });
+
         return Inertia::render('forms/index', [
             'forms' => $forms,
+            'stats' => $stats,
         ]);
     }
 
@@ -173,18 +195,34 @@ class FormController extends Controller
 
    public function edit($id)
 {
-    $form = Form::with('sections.questions.options')->findOrFail($id);
+    $form = Form::with('sections.questions.options', 'tasks:id,form_id,status')->findOrFail($id);
+
+    if ($form->status === 'COMPLETED') {
+        return redirect()
+            ->route('forms.index')
+            ->with('error', 'Form ini sudah selesai dan tidak dapat diedit lagi.');
+    }
+
     $machines = Machine::select('id', 'machine_type')->get(); // Jika butuh pilihan mesin juga
 
-    // Sesuaikan string ini dengan lokasi file React Anda di resources/js/Pages/
+
     return Inertia::render('forms/edit', [ // Ganti 'forms/{id}/edit' menjadi 'forms/edit' (atau 'forms/Edit')
         'form' => $form,
         'machines' => $machines,
-    ]);
+    ]); 
 }
 
    public function update(Request $request, $id)
     {
+
+
+        $formCheck = Form::with('tasks:id,form_id,status')->findOrFail($id);
+        if ($formCheck->status === 'COMPLETED') {
+        return back()->withErrors([
+            'error' => 'Form ini sudah selesai dan tidak dapat diubah.',
+        ]);
+    }
+
         return DB::transaction(function () use ($request, $id) {
             $form = Form::findOrFail($id);
 
@@ -370,6 +408,13 @@ class FormController extends Controller
 
     public function destroy($id)
     {
+         $formCheck = Form::with('tasks:id,form_id,status')->findOrFail($id);
+            if ($formCheck->status === 'COMPLETED') {
+                return back()->withErrors([
+                    'error' => 'Form yang sudah selesai tidak dapat dihapus.',
+            ]);
+         }
+
         return DB::transaction(function () use ($id) {
             $form = Form::with('sections.questions.options')->findOrFail($id);
 
