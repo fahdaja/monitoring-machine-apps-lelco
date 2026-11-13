@@ -14,9 +14,10 @@ interface ValidationRules {
 }
 
 interface Machine {
-    id: number;
+    machine_id: number;
+    machine_code: string
     machine_name: string;
-    machine_type?: string;
+    location: string;
 }
 
 interface OptionItem {
@@ -67,7 +68,7 @@ export default function FormCreate({ machines }: Props) {
             form_code: '',
             form_title: 'Formulir Pemantauan Tanpa Judul',
             form_description: '',
-            machine_type: '',
+            machine_id: '',
         },
         sections: [
             {
@@ -304,7 +305,7 @@ export default function FormCreate({ machines }: Props) {
         e.preventDefault();
         setErrorMessage(null);
 
-        if (!data.metadata.machine_type) {
+        if (!data.metadata.machine_id) {
             setErrorMessage("Target Mesin wajib dipilih terlebih dahulu!");
             window.scrollTo({ top: 0, behavior: 'smooth' });
             return;
@@ -452,13 +453,15 @@ export default function FormCreate({ machines }: Props) {
                     <div>
                         <label className="block text-[11px] font-semibold text-slate-600 mb-1">Target Mesin *</label>
                         <select
-                            value={data.metadata.machine_type}
-                            onChange={e => handleMetadataChange('machine_type', e.target.value)}
+                            value={data.metadata.machine_id}
+                            onChange={e => handleMetadataChange('machine_id', e.target.value ? Number(e.target.value): '')}
                             className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-slate-50 focus:border-emerald-600 outline-none font-medium"
                         >
                             <option value="">Pilih Mesin...</option>
                             {machines.map(m => (
-                                <option key={m.id} value={m.machine_type}>{m.machine_type}</option>
+                                <option key={m.machine_id} value={m.machine_id}>
+                                  {m.machine_code}  | Mesin {m.machine_name} |📍 {m.location}
+                                </option>
                             ))}
                         </select>
                     </div>

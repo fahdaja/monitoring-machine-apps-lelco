@@ -22,6 +22,10 @@ Route::get('/api/scan-task/{code}', [TaskController::class, 'apiFindTaskByMachin
 Route::get('/scan-task/{code}', [TaskController::class, 'handleQrScanRedirect'])
     ->name('scan-task');
 
+
+Route::patch('/schedules/{id}/toggle', [ScheduleController::class, 'toggleStatus'])->name('schedules.toggle');   
+Route::put('/schedules/{id}', [ScheduleController::class, 'update'])->name('schedules.update');
+Route::delete('/schedules/{id}', [ScheduleController::class, 'destroy'])->name('schedules.destroy');
 Route::middleware(['auth', 'CheckUserStatus','role:ADMIN,OPERATOR'])->group(function () {
     Route::get('/inspection-form/{id}',[TaskController::class, 'show'])->name('tasks.show');
     Route::post('/inspection-form/upload-temp', [TaskController::class, 'uploadTempFile']);

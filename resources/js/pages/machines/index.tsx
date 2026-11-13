@@ -142,11 +142,6 @@ export default function MachineIndex({ machines }: MachineIndexProps) {
             case 'RUNNING': return 'Running';
             case 'DOWN': return 'Down';
             case 'UNDER_REPAIR': return 'Under Repair';
-            case 'WAITING_SPAREPART': return 'Waiting Sparepart';
-            case 'WAITING_L3': return 'Waiting L3';
-            case 'WAITING_VENDOR': return 'Waiting Vendor';
-            case 'WAITING_VERIFICATION': return 'Waiting Verification';
-            case 'PLANNED_MAINTENANCE': return 'Planned Maintenance';
             case 'INACTIVE': return 'Inactive';
             default: return status;
         }

@@ -105,20 +105,21 @@
             $tasks = Task::with(['machine', 'form', 'user'])->whereIn('status', ['UPCOMING', 'IN_PROGRESS', 'OVERDUE', 'DUE', 'COMPLETED'])->orderBy('due_date', 'asc')->get();
 
     
-            
+            $now = Carbon::now();
             foreach ($tasks as $task) {
                 if (!$task->due_date) {
             continue;
         }
+            $dueDate = Carbon::parse($task->due_date)->endOfDay();
             if ($task->status === 'UPCOMING' && ($now->equalTo($dueDate) || $now->isAfter($dueDate))) {
                     $task->update(['status' => 'DUE']);
                     $task->refresh();
             }
-            if ($task->due_date && Carbon::now()->isAfter($task->due_date) && !in_array($task->status, ['COMPLETED', 'OVERDUE', 'IN_PROGRESS'])) {
-                $task->update(['status' => 'OVERDUE']);
-                $task->refresh(); // Refresh instance agar status terupdate di memori
-            }
+       if ($now->isAfter($dueDate) && !in_array($task->status, ['COMPLETED', 'OVERDUE', 'IN_PROGRESS'])) {
+            $task->update(['status' => 'OVERDUE']);
+            $task->refresh(); 
         }
+    }
 
         $formattedTasks = $tasks->map(function($task){
             $machine = $task->machine;

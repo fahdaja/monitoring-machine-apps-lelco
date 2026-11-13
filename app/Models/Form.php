@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Carbon\Carbon;
 
 class Form extends Model
 {
@@ -57,23 +58,41 @@ public function getStatusAttribute(): string
 {
     $tasks = $this->relationLoaded('tasks')
         ? $this->tasks
-        : $this->tasks()->get(['id', 'form_id', 'status', 'assigned_user_id']);
+        : $this->tasks()->get(['id', 'form_id', 'status', 'assigned_user_id', 'due_date']);
 
     if ($tasks->isEmpty()) {
-        return 'UNASSIGNED'; // Belum ada task
+        return 'UNASSIGNED'; 
     }
 
-    if ($tasks->every(fn ($t) => $t->status === 'COMPLETED')) {
-        return 'COMPLETED'; // Semua task selesai
+    $task = $tasks->first();
+
+    // 1. Cek UPCOMING
+    if ($task->status === 'UPCOMING') {
+        return 'UPCOMING';
     }
 
-    // Jika ada minimal 1 task yang sudah di-assign ke user, berarti sudah mulai dikerjakan
-    if ($tasks->contains(fn ($t) => !is_null($t->assigned_user_id))) {
+    // 2. Cek COMPLETED
+    if ($task->status === 'COMPLETED') {
+        return 'COMPLETED';
+    }
+
+    // 3. PRIORITAS UTAMA: Jika sudah ada teknisi, LANGSUNG IN_PROGRESS (meskipun telat)
+    if (!is_null($task->assigned_user_id)) {
         return 'IN_PROGRESS';
     }
 
-    // Jika ada task tapi belum ada yang assign, tetap dianggap belum dikerjakan
-    return 'UNASSIGNED';
+    if ($task->due_date) {
+        $today = Carbon::today(); // Tanggal hari ini jam 00:00
+        $dueDate = Carbon::parse($task->due_date)->startOfDay(); // Tanggal due date jam 00:00
+        
+        // Cek jika hari ini BUKAN hari yang sama dengan due_date DAN hari ini sudah melewatinya
+        if (!$today->isSameDay($dueDate) && $today->isAfter($dueDate)) {
+            return 'OVERDUE'; 
+        }
+    }
+
+    // 5. Jika belum telat dan belum ada teknisi
+    return 'DUE';
 }
 
 public function getIsEditableAttribute(): bool

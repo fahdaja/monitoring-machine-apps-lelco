@@ -6,21 +6,20 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
-    public function up(): void
+        public function up(): void
     {
         Schema::create('schedules', function (Blueprint $table) {
-    $table->id();
-    $table->string('schedule_code')->unique()->nullable(false); 
-    $table->foreignId('form_id')->constrained('forms')->onDelete('cascade');
-    $table->string('frequency_type'); 
-    $table->date('start_date');
-    $table->date('end_date');
-    $table->json('custom_values')->nullable(); 
-    $table->timestamps();
-});
+            $table->id();
+            $table->string('schedule_code')->unique(); 
+            $table->foreignId('form_id')->constrained('forms')->onDelete('cascade');
+            $table->string('frequency_type'); 
+            $table->json('selected_days')->nullable(); 
+            $table->json('selected_dates')->nullable(); 
+            $table->integer('due_window_days')->default(1); 
+            $table->boolean('is_active')->default(true); 
+            
+            $table->timestamps();
+        });
     }
 
     /**

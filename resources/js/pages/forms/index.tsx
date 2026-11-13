@@ -31,7 +31,7 @@ interface FormItem {
     sections_count?: number;
     created_at?: string;
     updated_at?: string;
-    status?: 'UNASSIGNED' | 'IN_PROGRESS' | 'COMPLETED';
+    status?: 'UPCOMING' | 'DUE' | 'OVERDUE' | 'IN_PROGRESS' | 'COMPLETED';
     is_editable?: boolean;
 }
 
@@ -53,11 +53,6 @@ interface PaginatedResponse<T> {
 
 interface Props {
     forms: PaginatedResponse<FormItem>;
-    stats?: {
-        total: number;
-        completed: number;
-        inProgress: number;
-    };
     flash?: { success?: string; error?: string };
 }
 
@@ -84,32 +79,9 @@ interface ToastPayload {
     description: string;
 }
 
-// ===== Helper: Konfigurasi badge status =====
-const getStatusBadge = (status?: string) => {
-    switch (status) {
-        case 'COMPLETED':
-            return {
-                label: 'Selesai',
-                icon: CheckCircle,
-                className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-            };
-        case 'IN_PROGRESS':
-            return {
-                label: 'Sedang Dikerjakan',
-                icon: Clock,
-                className: 'bg-amber-50 text-amber-700 border-amber-200',
-            };
-        case 'UNASSIGNED':
-        default:
-            return {
-                label: 'Belum Dikerjakan',
-                icon: FileText,
-                className: 'bg-slate-100 text-slate-600 border-slate-200',
-            };
-    }
-};
 
-export default function FormIndex({ forms, stats: backendStats }: Props) {
+
+export default function FormIndex({ forms }: Props) {
     const { auth, flash } = usePage<PageProps>().props;
     const userRole = auth?.user?.role?.toUpperCase();
     const isAdmin = userRole === 'ADMIN';
@@ -273,55 +245,6 @@ export default function FormIndex({ forms, stats: backendStats }: Props) {
                         </button>
                     )}
                 </div>
-
-                {/* ============ STATS CARD ============ */}
-                {backendStats && (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-                        {/* Card Belum */}
-                        <div className="bg-gradient-to-br from-slate-50 to-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm flex items-center justify-between">
-                            <div>
-                                <p className="text-xs sm:text-sm font-semibold text-slate-600 mb-1">Belum Dikerjakan</p>
-                                <div className="flex items-baseline gap-2">
-                                    <span className="text-2xl sm:text-3xl font-black text-slate-900">{backendStats.unassigned || 0}</span>
-                                    <span className="text-[10px] sm:text-xs font-medium text-slate-500">Form</span>
-                                </div>
-                            </div>
-                            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
-                                <FileText className="w-6 h-6 sm:w-7 sm:h-7" />
-                            </div>
-                        </div>
-
-                        {/* Card Berjalan */}
-                        <div className="bg-gradient-to-br from-amber-50 to-white border border-amber-100 rounded-2xl p-4 sm:p-5 shadow-sm flex items-center justify-between">
-                            <div>
-                                <p className="text-xs sm:text-sm font-semibold text-amber-600 mb-1">Sedang Dikerjakan</p>
-                                <div className="flex items-baseline gap-2">
-                                    <span className="text-2xl sm:text-3xl font-black text-slate-900">{backendStats.inProgress || 0}</span>
-                                    <span className="text-[10px] sm:text-xs font-medium text-slate-500">Form</span>
-                                </div>
-                            </div>
-                            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
-                                <Clock className="w-6 h-6 sm:w-7 sm:h-7" />
-                            </div>
-                        </div>
-
-                        {/* Card Selesai */}
-                        <div className="bg-gradient-to-br from-emerald-50 to-white border border-emerald-100 rounded-2xl p-4 sm:p-5 shadow-sm flex items-center justify-between">
-                            <div>
-                                <p className="text-xs sm:text-sm font-semibold text-emerald-600 mb-1">Selesai</p>
-                                <div className="flex items-baseline gap-2">
-                                    <span className="text-2xl sm:text-3xl font-black text-slate-900">{backendStats.completed || 0}</span>
-                                    <span className="text-[10px] sm:text-xs font-medium text-slate-500">Form</span>
-                                </div>
-                            </div>
-                            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
-                                <CheckCircle className="w-6 h-6 sm:w-7 sm:h-7" />
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-
                 {/* ============ TABEL ============ */}
                 <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
                     <div className="overflow-x-auto">
@@ -332,25 +255,17 @@ export default function FormIndex({ forms, stats: backendStats }: Props) {
                                     <th className="p-3 sm:p-4 text-center font-extrabold">Mesin Terikat</th>
                                     <th className="p-3 sm:p-4 text-center font-extrabold whitespace-nowrap">Tanggal Dibuat</th>
                                     <th className="p-3 sm:p-4 text-center font-extrabold whitespace-nowrap">Tanggal Diupdate</th>
-                                    <th className="p-3 sm:p-4 text-center font-extrabold">Status</th>
-                                    <th className="p-3 sm:p-4 text-center font-extrabold">Dikerjakan Oleh</th>
                                     <th className="p-3 sm:p-4 text-center font-extrabold">Aksi</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {forms.data && forms.data.length > 0 ? (
                                     forms.data.map((f) => {
-                                        const statusBadge = getStatusBadge(f.status);
-                                        const StatusIcon = statusBadge.icon;
-                                        const isLocked = f.status === 'COMPLETED' || f.is_editable === false;
 
                                         return (
-                                            <tr key={f.id} className={`hover:bg-slate-50 ${isLocked ? 'bg-slate-50/30' : ''}`}>
+                                            <tr key={f.id} className='hover:bg-slate-50'>
                                                 <td className="p-3 sm:p-4">
                                                     <div className="flex items-center gap-2">
-                                                        {isLocked && (
-                                                            <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                                        )}
                                                         <div className="min-w-0">
                                                             <div className="font-bold text-slate-900 break-words">{f.form_title}</div>
                                                             <div className="text-[10px] text-slate-400 font-mono">{f.form_code}</div>
@@ -369,43 +284,17 @@ export default function FormIndex({ forms, stats: backendStats }: Props) {
                                                     {formatDate(f.updated_at)}
                                                 </td>
                                                 <td className="p-3 sm:p-4 text-center">
-                                                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold border whitespace-nowrap ${statusBadge.className}`}>
-                                                        <StatusIcon className="w-3 h-3" />
-                                                        {statusBadge.label}
-                                                    </span>
-                                                </td>
-                                                <td className="p-3 sm:p-4 text-center font-medium text-slate-700">
-                                                    {f.responder ? (
-                                                        <span className="bg-sky-50 text-sky-700 border border-sky-200 px-2.5 py-1 rounded-lg whitespace-nowrap font-bold">
-                                                            {f.responder}
-                                                        </span>
-                                                    ) : (
-                                                        <span className="text-slate-400 text-[11px] italic">
-                                                            Belum ada teknisi
-                                                        </span>
-                                                    )}
-                                                </td>
-                                                <td className="p-3 sm:p-4 text-center">
                                                     <div className="flex items-center justify-center gap-1.5 sm:gap-2 whitespace-nowrap">
-                                                        {isLocked ? (
+                                            
+                                                        {isAdmin &&  (
                                                             <>
-                                                                <span
-                                                                    className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-100 text-slate-400 border border-slate-200 font-bold inline-flex items-center gap-1 cursor-not-allowed"
-                                                                    title="Form sudah selesai dan tidak dapat diedit"
-                                                                >
-                                                                    <Lock className="w-3 h-3" />
-                                                                    Terkunci
-                                                                </span>
-                                                            </>
-                                                        ) : (
+                                                            
                                                             <Link
                                                                 href={`/forms/${f.id}/edit`}
                                                                 className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-900 text-white font-bold hover:bg-slate-800 transition-colors inline-block shadow-xs"
                                                             >
                                                                 Edit / Atur
                                                             </Link>
-                                                        )}
-                                                        {isAdmin && !isLocked && (
                                                             <button
                                                                 type="button"
                                                                 onClick={() => setDeleteTarget({ id: f.id, form_title: f.form_title })}
@@ -413,6 +302,7 @@ export default function FormIndex({ forms, stats: backendStats }: Props) {
                                                             >
                                                                 Hapus
                                                             </button>
+                                                            </>
                                                         )}
                                                     </div>
                                                 </td>

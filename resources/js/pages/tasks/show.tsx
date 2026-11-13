@@ -681,19 +681,6 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                                     </span>
                                 )}
                             </div>
-
-                            <button
-                                type="button"
-                                onClick={() => triggerAutoSave(answers, true)}
-                                disabled={autoSaveStatus === 'saving' || !hasActualAnswers(answers)}
-                                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 text-[11px] font-bold text-slate-900 bg-white hover:bg-slate-100 disabled:bg-white/50 disabled:text-slate-400 disabled:cursor-not-allowed px-3 py-2 sm:py-1 rounded-lg sm:rounded-full transition-colors cursor-pointer shadow-sm shrink-0"
-                            >
-                                <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-                                </svg>
-                                <span className="hidden sm:inline">Simpan Sekarang</span>
-                                <span className="inline sm:hidden">Simpan Draft</span>
-                            </button>
                         </div>
                     </div>
                 </div>

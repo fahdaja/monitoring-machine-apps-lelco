@@ -4,91 +4,124 @@ namespace App\Http\Controllers;
 
 use Inertia\Inertia;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use App\Models\Schedule; 
+use App\Models\Schedule;
 use App\Models\Form;
-use App\Models\Machine;
 use App\Models\Task;
+use Illuminate\Support\Facades\DB;
 
 class ScheduleController extends Controller
 {
     /**
-     * Tampilkan halaman manajemen jadwal.
+     * Menampilkan halaman daftar jadwal (Settings)
      */
     public function index()
     {
-        $schedules = Schedule::with(['form', 'machine'])->latest()->get();
-        $forms = Form::select('id', 'form_title', 'form_code')->where('id')->get();
-        $machines = Machine::select('id', 'machine_type')->get();
+        // Ambil semua jadwal beserta relasi form dan machine-nya
+        $schedules = Schedule::with(['form.machine'])->latest()->get();
+
+        // Ambil semua form untuk pilihan di dropdown modal
+        $forms = Form::with('machine')->get()->map(function ($form) {
+            return [
+                'id' => $form->id,
+                'form_title' => $form->form_title,
+                'form_code' => $form->form_code,
+                'machine_name   ' => $form->machine?->machine_name,
+            ];
+        });
 
         return Inertia::render('schedules/index', [
             'schedules' => $schedules,
-            'forms'     => $forms,
-            'machines'  => $machines,
+            'forms' => $forms,
         ]);
     }
 
     /**
-     * Simpan schedule baru dan otomatis generate tasks.
+     * Menyimpan pengaturan jadwal baru
      */
     public function store(Request $request)
     {
-        return DB::transaction(function () use ($request) {
+        $validate = $request->validate([
+            'form_id' => 'required|exists:forms,id',
+            'frequency_type' => 'required|in:DAILY,WEEKLY,MONTHLY',
+            'due_window_days' => 'required|integer|min:1',
+            'selected_days' => 'required_if:frequency_type,WEEKLY|array',
+            'selected_dates' => 'required_if:frequency_type,MONTHLY|array',
+        ]);
 
-            // 1. Validasi input
-            $validated = $request->validate([
-                'form_id'        => 'required|exists:forms,id',
-                'machine_id'     => 'required|exists:machines,id',
-                'frequency_type' => 'required|string|in:DAILY,WEEKLY,MONTHLY',
-                'start_date'     => 'required|date',
-                'end_date'       => 'required|date|after_or_equal:start_date',
-            ]);
+        // Generate kode jadwal unik
+        do {
+            $scheduleCode = 'SCH-' . strtoupper(uniqid());
+        } while (Schedule::where('schedule_code', $scheduleCode)->exists());
 
-            // 2. Simpan ke tabel schedules
-            $schedule = Schedule::create([
-                'form_id'        => $validated['form_id'],
-                'machine_id'     => $validated['machine_id'],
-                'frequency_type' => $validated['frequency_type'],
-                'start_date'     => $validated['start_date'],
-                'end_date'       => $validated['end_date'],
-                'is_active'      => true,
-            ]);
+        Schedule::create([
+            'schedule_code'    => $scheduleCode,
+            'form_id'          => $validate['form_id'],
+            'frequency_type'   => $validate['frequency_type'],
+            'due_window_days'  => $validate['due_window_days'],
+            'selected_days'    => $request->selected_days ?? [],
+            'selected_dates'   => $request->selected_dates ?? [],
+            'is_active'        => true,
+        ]);
 
-            // 3. Logika Generator Task Berdasarkan Rentang Tanggal & Frekuensi
-            $currentDate = new \DateTime($validated['start_date']);
-            $endDate = new \DateTime($validated['end_date']);
-            
-            // Looping tanggal dari start_date sampai end_date
-            while ($currentDate <= $endDate) {
-                $dateString = $currentDate->format('Y-m-d');
+        return redirect()->back()->with('success', 'Pengaturan jadwal berhasil dibuat!');
+    }
 
-                // Buat task otomatis untuk tanggal tersebut
-                Task::create([
-                    'machine_id'           => $validated['machine_id'],
-                    'form_id'              => $validated['form_id'],
-                    'task_code'            => 'TSK-' . strtoupper(uniqid()),
-                    'start_date'           => $dateString,
-                    'due_date'             => $dateString,
-                    'status'               => 'DUE',
-                    'source_type'          => null,
-                    'assigned_user_id'     => null,
-                    'escalation_ticket_id' => null,
-                ]);
 
-                // Increment tanggal berdasarkan frequency_type
-                if ($validated['frequency_type'] === 'DAILY') {
-                    $currentDate->modify('+1 day');
-                } elseif ($validated['frequency_type'] === 'WEEKLY') {
-                    $currentDate->modify('+1 week');
-                } elseif ($validated['frequency_type'] === 'MONTHLY') {
-                    $currentDate->modify('+1 month');
-                } else {
-                    break;
-                }
-            }
+    public function update(Request $request, $id)
+    {
+        $oldSchedule = Schedule::findOrFail($id);
 
-            return redirect()->route('schedules.index')
-                ->with('success', 'Jadwal berhasil dibuat dan task pemantauan otomatis digenerate!');
-        });
+        // 1. Matikan jadwal lama (Nonaktifkan) agar tidak generate task lagi
+        $oldSchedule->update(['is_active' => false]);
+
+        // 2. Buat jadwal baru berdasarkan input edit
+        $validate = $request->validate([
+            'form_id' => 'required|exists:forms,id',
+            'frequency_type' => 'required|in:DAILY,WEEKLY,MONTHLY',
+            'due_window_days' => 'required|integer|min:1',
+            'selected_days' => 'required_if:frequency_type,WEEKLY|array',
+            'selected_dates' => 'required_if:frequency_type,MONTHLY|array',
+        ]);
+
+        do {
+            $scheduleCode = 'SCH-' . strtoupper(uniqid());
+        } while (Schedule::where('schedule_code', $scheduleCode)->exists());
+
+        Schedule::create([
+            'schedule_code'    => $scheduleCode,
+            'form_id'          => $validate['form_id'],
+            'frequency_type'   => $validate['frequency_type'],
+            'due_window_days'  => $validate['due_window_days'],
+            'selected_days'    => $request->selected_days ?? [],
+            'selected_dates'   => $request->selected_dates ?? [],
+            'is_active'        => true,
+        ]);
+
+        return redirect()->back()->with('success', 'Jadwal berhasil diperbarui! (Jadwal lama telah dinonaktifkan).');
+    }
+
+    /**
+     * Mengubah status AKTIF / NONAKTIF pada jadwal
+     */
+    public function toggleStatus(Request $request, $id)
+    {
+        $schedule = Schedule::findOrFail($id);
+        
+        $schedule->update([
+            'is_active' => !$schedule->is_active
+        ]);
+
+        return redirect()->back()->with('success', 'Status jadwal berhasil diubah.');
+    }
+
+    /**
+     * Menghapus pengaturan jadwal
+     */
+    public function destroy($id)
+    {
+        $schedule = Schedule::findOrFail($id);
+        $schedule->delete();
+
+        return redirect()->back()->with('success', 'Pengaturan jadwal berhasil dihapus.');
     }
 }

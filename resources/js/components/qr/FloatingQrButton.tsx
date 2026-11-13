@@ -160,7 +160,7 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
 
                 scanner.start(
                     { facingMode: "environment" },
-                    { fps: 10, qrbox: { width: 280, height: 280 } },
+                    { fps: 15, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0  },
                     (decodedText: string) => {
                         if (decodedText && decodedText.trim() !== "") {
                             scanner.stop().then(() => {
@@ -284,11 +284,6 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
                         )}
 
                         <div className="mt-4 w-full flex flex-col gap-2">
-                            <label className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl text-center cursor-pointer transition">
-                                📁 Upload / Foto QR dari Galeri
-                                <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleScanFromFile} />
-                            </label>
-                            
                             <button
                                 type="button"
                                 onClick={closeScannerModal}

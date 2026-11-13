@@ -16,38 +16,23 @@ use App\Models\Task;
 class FormController extends Controller
 {
     public function index()
-    {
-        $forms = Form::with('machine','sections.questions.options', 'tasks:id,form_id,status,assigned_user_id', 'tasks.user:id,full_name')->latest()->paginate(10);
+{
+    $forms = Form::query()
+        ->with([
+            'machine',
+            'sections.questions.options',
+        ])
+        ->latest('created_at') 
+        ->paginate(10);
 
-        $allForms = Form::with('tasks:id,form_id,status', 'tasks:id,form_id,status,assigned_user_id')->get();
-    
-         $stats = [
-        'total' => $allForms->count(),
-        'completed' => $allForms->filter(fn($f) => $f->status === 'COMPLETED')->count(),
-        'inProgress' => $allForms->filter(fn($f) => $f->status === 'IN_PROGRESS')->count(),
-        'unassigned' => $allForms->filter(fn($f) => $f->status === 'UNASSIGNED')->count(),
-    ];
-
-        $forms->getCollection()->transform(function ($form) {
-        // Cari task yang sedang IN_PROGRESS atau COMPLETED
-        $activeTask = $form->tasks->firstWhere('status', 'IN_PROGRESS') 
-                   ?? $form->tasks->firstWhere('status', 'COMPLETED')
-                   ?? $form->tasks->first(); // Fallback ke task pertama
-
-        // Ambil nama user dari task tersebut
-        $form->responder = $activeTask?->user?->full_name ?? null;
-         return $form;
-    });
-
-        return Inertia::render('forms/index', [
-            'forms' => $forms,
-            'stats' => $stats,
-        ]);
-    }
+    return Inertia::render('forms/index', [
+        'forms' => $forms,
+    ]);
+}
 
     public function create()
     {
-        $machines = Machine::select('id', 'machine_type')->get();
+        $machines = Machine::select('id as machine_id', 'machine_code', 'machine_name', 'location')->get();
         return Inertia::render('forms/create', [
             'machines' => $machines,
         ]);
@@ -58,7 +43,7 @@ class FormController extends Controller
     return DB::transaction(function () use ($request) {
 
         $validate = $request->validate([
-            'metadata.machine_type'              => 'required|string|exists:machines,machine_type',
+            'metadata.machine_id'              => 'required|string|exists:machines,id',
             'metadata.form_title'                => 'required|string|max:255',
             'metadata.form_description'          => 'nullable|string',
 
@@ -84,7 +69,7 @@ class FormController extends Controller
         ]);
 
         $meta = $validate['metadata'];
-        $machine = Machine::where('machine_type', $meta['machine_type'])->firstOrFail();
+        $machine = Machine::findOrFail($meta['machine_id']);
         $machineTypePrefix = substr(strtoupper($machine->machine_type), 0, 3);
 
         do {
@@ -179,31 +164,20 @@ class FormController extends Controller
                 }
             }
         }
-
-            Task::create([
-                'machine_id'           => $machine->id,
-                'form_id'              => $form->id,
-                'task_code'            => 'TSK-' . strtoupper(uniqid()), 
-                'due_date'             => now()->addDays(1)->format('Y-m-d'),
-                'status'               => 'DUE',
-                'assigned_user_id'     => null,
-            ]);
-
            return redirect()->route('forms.index')->with('success', 'Template form baru berhasil dibuat!');
         });
     }
 
    public function edit($id)
 {
-    $form = Form::with('sections.questions.options', 'tasks:id,form_id,status')->findOrFail($id);
+    $form = Form::with('sections.questions.options')->findOrFail($id);
 
-    if ($form->status === 'COMPLETED') {
-        return redirect()
-            ->route('forms.index')
-            ->with('error', 'Form ini sudah selesai dan tidak dapat diedit lagi.');
-    }
-
-    $machines = Machine::select('id', 'machine_type')->get(); // Jika butuh pilihan mesin juga
+     $machines = Machine::select(
+        'id as machine_id', 
+        'machine_code', 
+        'machine_name', 
+        'location'
+    )->get();
 
 
     return Inertia::render('forms/edit', [ // Ganti 'forms/{id}/edit' menjadi 'forms/edit' (atau 'forms/Edit')
@@ -216,18 +190,11 @@ class FormController extends Controller
     {
 
 
-        $formCheck = Form::with('tasks:id,form_id,status')->findOrFail($id);
-        if ($formCheck->status === 'COMPLETED') {
-        return back()->withErrors([
-            'error' => 'Form ini sudah selesai dan tidak dapat diubah.',
-        ]);
-    }
-
         return DB::transaction(function () use ($request, $id) {
             $form = Form::findOrFail($id);
 
             $validate = $request->validate([
-                'metadata.machine_type'              => 'required|string|exists:machines,machine_type',
+                'metadata.machine_id'              => 'required|string|exists:machines,id',
                 'metadata.form_title'                => 'required|string|max:255',
                 'metadata.form_description'          => 'nullable|string',
 
@@ -255,7 +222,7 @@ class FormController extends Controller
             ]);
 
             $meta = $validate['metadata'];
-            $machine = Machine::where('machine_type', $meta['machine_type'])->firstOrFail();
+            $machine = Machine::findOrFail($meta['machine_id']);
 
             // Update info utama form
             $form->update([
@@ -408,16 +375,9 @@ class FormController extends Controller
 
     public function destroy($id)
     {
-         $formCheck = Form::with('tasks:id,form_id,status')->findOrFail($id);
-            if ($formCheck->status === 'COMPLETED') {
-                return back()->withErrors([
-                    'error' => 'Form yang sudah selesai tidak dapat dihapus.',
-            ]);
-         }
 
         return DB::transaction(function () use ($id) {
             $form = Form::with('sections.questions.options')->findOrFail($id);
-
             foreach ($form->sections as $section) {
                 foreach ($section->questions as $question) {
                     if ($question->question_image) {
