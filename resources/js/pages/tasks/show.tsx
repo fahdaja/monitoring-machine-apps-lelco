@@ -21,7 +21,21 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
         task?: InspectionTask;
         tasks?: InspectionTask[];
         initialAnswers?: Record<number, any>;
+        mode?: 'TASK' | 'TICKET';
+        ticket?: {
+            ticket_code: string;
+            context: 'START_REPAIR' | 'CLOSE_TICKET';
+            context_label: string;
+            machine_name?: string;
+            machine_code?: string;
+            status?: string;
+            submitted_at?: string | null;
+        };
     };
+
+    // Mode tiket: form repair/closing, hasil submit masuk ke ticket_submissions
+    const ticketMode = pageProps.mode === 'TICKET';
+    const ticketInfo = pageProps.ticket;
 
     const currentTask: InspectionTask | undefined =
         pageProps.task || (tasks && tasks.length > 0 ? tasks[0] : undefined);
@@ -105,6 +119,9 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
 
     // ====== AUTOSAVE ======
     const triggerAutoSave = (currentAnswers: AnswersMap, immediate = false) => {
+        // Form tiket tidak memakai draft: submit langsung ke ticket_submissions
+        if (ticketMode) return;
+
         const taskId = currentTask?.id;
         if (!currentTask || !taskId) return;
         
@@ -317,8 +334,7 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
         setIsSubmitting(true);
         const finalPayload = cleanAnswersPayload(answers);
 
-        router.post(`/inspection-form/${taskId}/submit`, { answers: finalPayload }, {
-            forceFormData: true,
+        const submitOptions = {
             preserveScroll: true,
             onSuccess: () => {
                 localStorage.removeItem(`inspection_section_${taskId}`);
@@ -340,6 +356,19 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                 });
             },
             onFinish: () => setIsSubmitting(false),
+        };
+
+        if (ticketMode && ticketInfo?.ticket_code) {
+            router.post(`/breakdowns/${ticketInfo.ticket_code}/submissions`, {
+                context: ticketInfo.context,
+                answers: finalPayload,
+            }, submitOptions);
+            return;
+        }
+
+        router.post(`/inspection-form/${taskId}/submit`, { answers: finalPayload }, {
+            forceFormData: true,
+            ...submitOptions,
         });
     };
 
@@ -623,6 +652,11 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                             <span className="text-[10px] sm:text-[11px] text-slate-300 font-mono truncate">
                                 {currentSection?.section_code}
                             </span>
+                            {ticketMode && ticketInfo && (
+                                <span className="inline-flex items-center gap-1.5 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-amber-200 bg-amber-500/10 border border-amber-400/30 px-2 sm:px-2.5 py-1 rounded-full whitespace-nowrap">
+                                    {ticketInfo.context_label} · {ticketInfo.ticket_code}
+                                </span>
+                            )}
                         </div>
                         <h1 className="text-base sm:text-lg lg:text-xl font-extrabold leading-snug tracking-tight break-words">
                             {currentSection?.section_title}
@@ -667,7 +701,7 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                                         Gagal · Coba lagi
                                     </button>
                                 )}
-                                {autoSaveStatus === 'idle' && (
+                                {!ticketMode && autoSaveStatus === 'idle' && (
                                     <span className="inline-flex items-center gap-1.5 text-[10px] sm:text-[11px] font-medium text-slate-300/70 whitespace-nowrap">
                                         <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />

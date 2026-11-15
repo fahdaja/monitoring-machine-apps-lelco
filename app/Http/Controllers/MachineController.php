@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Machine;
 use App\Models\BreakdownTicket;
+use App\Models\Form;
+use App\Enums\FormType;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -13,6 +15,24 @@ use Illuminate\Validation\Rule;
 
 class MachineController extends Controller
 {
+    /**
+     * Halaman detail tiket breakdown boleh dibuka admin atau verifikator tiket tersebut.
+     */
+    private function canViewTicketDetail(Request $request, BreakdownTicket $ticket): bool
+    {
+        $user = $request->user();
+
+        if (! $user) {
+            return false;
+        }
+
+        if (strtoupper((string) $user->role) === 'ADMIN') {
+            return true;
+        }
+
+        return (int) $ticket->verified_by === (int) $user->id;
+    }
+
     /**
      * Menampilkan Daftar Seluruh Mesin.
      */
@@ -64,14 +84,28 @@ class MachineController extends Controller
         ->where('machine_id', $id)
         ->latest('reported_at')
         ->get()
-        ->map(function ($ticket) {
+        ->map(function ($ticket) use ($request) {
             $closed_at = now();
             $downtime = $ticket->reported_at ? $ticket->reported_at->diffInMinutes($closed_at) : 0;
+
+            $problemText = collect($ticket->problems ?? [])
+                ->map(function ($p) {
+                    $detail = trim((string) ($p['abnormal_options'] ?? '')) !== ''
+                        ? ($p['abnormal_options'] ?? '')
+                        : trim((string) ($p['answer_text'] ?? ''));
+
+                    return trim(($p['question_text'] ?? '') . ($detail !== '' ? ' — ' . $detail : ''));
+                })
+                ->filter()
+                ->implode(' • ');
+
             return [
                 'ticket_code'         => $ticket->ticket_code,
+                // halaman detail tiket hanya bisa dibuka admin atau verifikator tiket ini
+                'detail_url'          => $this->canViewTicketDetail($request, $ticket) ? '/breakdowns/'.$ticket->ticket_code : null,
                 'category'         => $ticket->problem_category ?? '-',
                     'priority'         => $ticket->priority,
-                    'problem'          => $ticket->problem_descriptions ?? '-',
+                    'problem'          => $problemText !== '' ? $problemText : '-',
                     'status'           => $ticket->status,
                     'pipelineStage'    => $ticket->status,
                     'reported_at'       => $ticket->reported_at ? $ticket->reported_at->format('Y-m-d H:i') : '-',
@@ -120,7 +154,17 @@ class MachineController extends Controller
             ],
             'breakdowns'  => $breakdowns,
             'inspections' => $formattedInspections,
+            'reportForm' => $this->reportFormPayload($machine->id),
         ]);
+    }
+
+    /**
+     * Daftar pertanyaan form MANUAL_REPORT untuk modal "Laporkan Breakdown".
+     * Section diabaikan, pertanyaan ditampilkan datar di dalam modal.
+     */
+    private function reportFormPayload(int $machineId): ?array
+    {
+        return Form::findTemplate(FormType::MANUAL_REPORT, $machineId)?->modalPayload();
     }
 
     public function store(Request $request): RedirectResponse

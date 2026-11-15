@@ -88,7 +88,7 @@ class BreakdownTicket extends Model
      */
     public function reporter(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'reported_by', 'user_id');
+        return $this->belongsTo(User::class, 'reported_by', 'id');
     }
     /**
      * Relasi ke teknisi 
@@ -101,5 +101,18 @@ class BreakdownTicket extends Model
     public function verifier(): BelongsTo
     {
         return $this->belongsTo(User::class, 'verified_by', 'id'); // Ubah 'user_id' jadi 'id'
+    }
+
+    /**
+     * Submission form transisi (START_REPAIR / CLOSE_TICKET) milik tiket ini.
+     */
+    public function submissions(): HasMany
+    {
+        return $this->hasMany(TicketSubmission::class, 'ticket_id', 'id')->latest('id');
+    }
+
+    public function submissionFor(string $context): ?TicketSubmission
+    {
+        return $this->submissions()->where('context', $context)->first();
     }
 }

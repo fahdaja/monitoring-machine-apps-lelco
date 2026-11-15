@@ -6,6 +6,8 @@ use Inertia\Inertia;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
+use App\Enums\FormType;
 use App\Models\Form;
 use App\Models\Machine;
 use App\Models\FormSection;
@@ -15,9 +17,12 @@ use App\Models\Task;
 
 class FormController extends Controller
 {
-    public function index()
+    public function index(Request $request)
 {
+    $type = FormType::normalize($request->query('type'));
+
     $forms = Form::query()
+        ->when($type, fn ($q) => $q->ofType($type))
         ->with([
             'machine',
             'sections.questions.options',
@@ -25,17 +30,51 @@ class FormController extends Controller
         ->latest('created_at') 
         ->paginate(10);
 
+    // toBase() agar key array berupa string, bukan objek enum
+    $typeCounts = Form::query()
+        ->toBase()
+        ->select('form_type')
+        ->selectRaw('count(*) as total')
+        ->groupBy('form_type')
+        ->pluck('total', 'form_type');
+
     return Inertia::render('forms/index', [
         'forms' => $forms,
+        'filters' => ['type' => $type],
+        'typeCounts' => $typeCounts,
+        // daftar semua mesin terdaftar, tidak bergantung pada mesin yang sudah punya form
+        'machines' => Machine::orderBy('machine_code')
+            ->get(['id', 'machine_code', 'machine_name', 'machine_type', 'location']),
     ]);
 }
 
-    public function create()
+    public function create(Request $request)
     {
         $machines = Machine::select('id as machine_id', 'machine_code', 'machine_name', 'location')->get();
         return Inertia::render('forms/create', [
             'machines' => $machines,
+            'defaultType' => FormType::normalize($request->query('category')) ?? FormType::INSPECTION->value,
+            'defaultMachineId' => $request->query('machine_id'),
         ]);
+    }
+
+    /**
+     * Kategori INSPECTION / MANUAL_REPORT wajib punya target mesin, sedangkan
+     * form transisi tiket (START_REPAIR / CLOSE_TICKET) berlaku global.
+     */
+    private function resolveMachineId(FormType $type, mixed $machineId): ?int
+    {
+        if (! $type->requiresMachine()) {
+            return null;
+        }
+
+        if (empty($machineId)) {
+            throw ValidationException::withMessages([
+                'metadata.machine_id' => "Form kategori {$type->label()} wajib memilih target mesin.",
+            ]);
+        }
+
+        return (int) $machineId;
     }
 
     public function store(Request $request)
@@ -43,7 +82,8 @@ class FormController extends Controller
     return DB::transaction(function () use ($request) {
 
         $validate = $request->validate([
-            'metadata.machine_id'              => 'required|string|exists:machines,id',
+            'metadata.form_type'                 => 'required|string|in:'.implode(',', FormType::values()),
+            'metadata.machine_id'              => 'nullable|string|exists:machines,id',
             'metadata.form_title'                => 'required|string|max:255',
             'metadata.form_description'          => 'nullable|string',
 
@@ -69,16 +109,19 @@ class FormController extends Controller
         ]);
 
         $meta = $validate['metadata'];
-        $machine = Machine::findOrFail($meta['machine_id']);
-        $machineTypePrefix = substr(strtoupper($machine->machine_type), 0, 3);
+        $type = FormType::from($meta['form_type']);
+        $machineId = $this->resolveMachineId($type, $meta['machine_id'] ?? null);
+        $machine = $machineId ? Machine::find($machineId) : null;
 
         do {
-            $formCode = "FRM{$machineTypePrefix}" . strtoupper(uniqid());
+            $prefix = $type->isTicketTransition() ? 'TRN' : 'FRM'.substr(strtoupper((string) $machine->machine_type), 0, 3);
+            $formCode = $prefix . strtoupper(uniqid());
         } while (Form::where('form_code', $formCode)->exists());
 
         // 1. Simpan Form Utama
         $form = new Form();
-        $form->machine_id       = $machine->id;
+        $form->form_type        = $type->value;
+        $form->machine_id       = $machineId;
         $form->form_code        = $formCode;
         $form->form_title       = $meta['form_title'];
         $form->form_description = $meta['form_description'] ?? '-';
@@ -194,7 +237,8 @@ class FormController extends Controller
             $form = Form::findOrFail($id);
 
             $validate = $request->validate([
-                'metadata.machine_id'              => 'required|string|exists:machines,id',
+                'metadata.form_type'                 => 'required|string|in:'.implode(',', FormType::values()),
+                'metadata.machine_id'              => 'nullable|string|exists:machines,id',
                 'metadata.form_title'                => 'required|string|max:255',
                 'metadata.form_description'          => 'nullable|string',
 
@@ -222,11 +266,13 @@ class FormController extends Controller
             ]);
 
             $meta = $validate['metadata'];
-            $machine = Machine::findOrFail($meta['machine_id']);
+            $type = FormType::from($meta['form_type']);
+            $machineId = $this->resolveMachineId($type, $meta['machine_id'] ?? null);
 
             // Update info utama form
             $form->update([
-                'machine_id'       => $machine->id,
+                'form_type'        => $type->value,
+                'machine_id'       => $machineId,
                 'form_title'       => $meta['form_title'],
                 'form_description' => $meta['form_description'] ?? '-',
             ]);
@@ -416,3 +462,4 @@ class FormController extends Controller
         return back()->with('success', 'Gambar berhasil dihapus!');
     }
 }
+

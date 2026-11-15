@@ -55,10 +55,11 @@ interface SectionItem {
 interface FormModel {
     id: number;
     form_code: string;
+    form_type?: string;
     form_title: string;
     form_description?: string;
-    machine_id: number;
-    machine: Machine;
+    machine_id: number | null;
+    machine: Machine | null;
     sections: SectionItem[];
     is_active: boolean;
 }
@@ -78,6 +79,7 @@ export default function FormEdit({ form, machines }: Props) {
     const { data, setData, put, post, processing, errors } = useForm({
         metadata: {
             form_code: form?.form_code || '',
+            form_type: form?.form_type || 'INSPECTION',
             form_title: form?.form_title || '',
             form_description: form?.form_description || '',
             machine_id: form?.machine_id || '',
@@ -337,11 +339,14 @@ export default function FormEdit({ form, machines }: Props) {
         setData('sections', updated);
     };
 
+    // Form transisi (mulai repair / tutup tiket) berlaku untuk semua mesin
+    const requiresMachine = ['INSPECTION', 'MANUAL_REPORT'].includes(data.metadata.form_type);
+
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
         setErrorMessage(null);
 
-        if (!data.metadata.machine_id) {
+        if (requiresMachine && !data.metadata.machine_id) {
             setErrorMessage("Target Mesin wajib dipilih terlebih dahulu!");
             window.scrollTo({ top: 0, behavior: 'smooth' });
             return;
@@ -489,6 +494,24 @@ export default function FormEdit({ form, machines }: Props) {
                     />
 
                     <div>
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">Kategori Form *</label>
+                        <select
+                            value={data.metadata.form_type}
+                            onChange={e => handleMetadataChange('form_type', e.target.value)}
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-slate-50 focus:border-emerald-600 outline-none font-medium"
+                        >
+                            <option value="INSPECTION">Inspection (task berkala)</option>
+                            <option value="MANUAL_REPORT">Laporan Breakdown (per mesin)</option>
+                            <option value="START_REPAIR">Mulai Repair (form tiket)</option>
+                            <option value="CLOSE_TICKET">Tutup Tiket / Closing (form tiket)</option>
+                        </select>
+                        <p className="text-[10px] text-slate-400 mt-1">
+                            Form Mulai Repair & Tutup Tiket disimpan ke ticket submission tiket breakdown.
+                        </p>
+                    </div>
+
+                    {requiresMachine && (
+                    <div>
                         <label className="block text-[11px] font-semibold text-slate-600 mb-1">Target Mesin *</label>
                         <select
                             value={data.metadata.machine_id}
@@ -503,6 +526,7 @@ export default function FormEdit({ form, machines }: Props) {
                             ))}
                         </select>
                     </div>
+                    )}
                 </div>
 
                 <form onSubmit={submit} className="space-y-4">

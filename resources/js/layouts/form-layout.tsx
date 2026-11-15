@@ -26,9 +26,18 @@ export default function FormLayout({
     onSubmitFinal,
     isSubmitting = false,
 }: FormLayoutProps) {
-    const { task, form } = usePage<any>().props;
+    const { task, form, mode, ticket } = usePage<any>().props;
 
-    const formTitle = task?.form?.form_title || form?.form_title || 'Formulir Inspeksi';
+    // Mode TICKET dipakai form transisi kanban (START_REPAIR / CLOSE_TICKET)
+    const ticketMode = mode === 'TICKET';
+    const contextLabel: string = ticket?.context_label || 'Form Tiket';
+
+    const formTitle =
+        task?.form?.form_title ||
+        form?.form_title ||
+        (ticketMode ? contextLabel : 'Formulir Inspeksi');
+
+    const closeHref = ticketMode ? '/breakdowns' : '/inspection-calender';
 
     const [showConfirmModal, setShowConfirmModal] = useState(false);
 
@@ -69,7 +78,7 @@ export default function FormLayout({
                 </div>
 
                 <Link
-                    href="/inspection-calender"
+                    href={closeHref}
                     className="text-[11px] sm:text-xs font-bold border border-slate-700 hover:bg-slate-800 text-slate-300 px-2.5 sm:px-3 py-2 rounded-xl transition-colors whitespace-nowrap shrink-0"
                 >
                     Tutup
@@ -188,13 +197,21 @@ export default function FormLayout({
 
                         <div className="space-y-2">
                             <h3 className="text-base font-bold text-slate-900">
-                                Kirim Hasil Inspeksi?
+                                {ticketMode ? `Kirim ${contextLabel}?` : 'Kirim Hasil Inspeksi?'}
                             </h3>
-                            <p className="text-xs text-slate-500 leading-relaxed px-1">
-                                Pastikan data sudah benar. Jika terdapat temuan{' '}
-                                <strong className="text-rose-600 font-semibold">abnormal</strong>, sistem akan{' '}
-                                <strong className="text-slate-700">otomatis menerbitkan tiket eskalasi</strong>.
-                            </p>
+                            {ticketMode ? (
+                                <p className="text-xs text-slate-500 leading-relaxed px-1">
+                                    Pastikan data sudah benar. Jawaban akan disimpan ke{' '}
+                                    <strong className="text-slate-700">tiket {ticket?.ticket_code}</strong> dan status tiket
+                                    langsung diperbarui.
+                                </p>
+                            ) : (
+                                <p className="text-xs text-slate-500 leading-relaxed px-1">
+                                    Pastikan data sudah benar. Jika terdapat temuan{' '}
+                                    <strong className="text-rose-600 font-semibold">abnormal</strong>, sistem akan{' '}
+                                    <strong className="text-slate-700">otomatis menerbitkan tiket eskalasi</strong>.
+                                </p>
+                            )}
                         </div>
 
                         <div className="flex items-center gap-2.5 pt-2">

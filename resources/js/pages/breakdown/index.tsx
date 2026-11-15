@@ -1,11 +1,13 @@
-import React, { useState, FormEvent } from 'react';
-import { Head, useForm, router, usePage } from '@inertiajs/react';
+import React, { useState } from 'react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../layouts/app-layout';
+import TicketFormModal, { TicketFormContext } from '../../components/ticket-form-modal';
 
 export interface BreakdownProblem {
   id: number;
   question_text: string;
   abnormal_options: string;
+  answer_text?: string;
   note?: string;
   photo_evidence?: string;
 }
@@ -32,10 +34,25 @@ export interface BreakdownTicket {
   closed_at?: string;         // <-- Pastikan ada
   verified_at?: string;       // <-- Pastikan ada
   breakdownMinutes: number;
+  has_repair_submission?: boolean;
+  has_closing_submission?: boolean;
+  can_view_detail?: boolean;
 }
 
 interface BreakdownIndexProps {
   breakdowns?: BreakdownTicket[];
+}
+
+interface User {
+  id: number;
+  full_name: string;
+  role: string;
+}
+
+interface PageProps {
+  auth?: { user?: User };
+  flash?: { success?: string; error?: string };
+  [key: string]: any;
 }
 
 interface StageFilter {
@@ -53,15 +70,8 @@ const BREAKDOWN_STAGES: StageFilter[] = [
 
 export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps) {
   const [selectedStages, setSelectedStages] = useState<BreakdownTicket['pipelineStage'][]>([]);
-  const [activeCloseTicket, setActiveCloseTicket] = useState<BreakdownTicket | null>(null);
   const [continueRepair, setContinueRepair] = useState<BreakdownTicket | null>(null);
-  const { data, setData, post, processing, errors, reset } = useForm<{
-    root_cause: string;
-    corrective_action: string;
-  }>({
-    root_cause: '',
-    corrective_action: '',
-  });
+  const [ticketForm, setTicketForm] = useState<{ ticketCode: string; context: TicketFormContext } | null>(null);
 
   const toggleStageFilter = (stageKey: BreakdownTicket['pipelineStage']) => {
     if (selectedStages.includes(stageKey)) {
@@ -79,16 +89,9 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
     ? BREAKDOWN_STAGES.filter((s) => selectedStages.includes(s.key))
     : BREAKDOWN_STAGES;
 
-  const handleCloseSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!activeCloseTicket) return;
-
-    post(`/breakdowns/${activeCloseTicket.ticket_code}/close`, {
-      onSuccess: () => {
-        setActiveCloseTicket(null);
-        reset();
-      },
-    });
+  // Form repair / closing diisi lewat modal berisi pertanyaan dari template form (ticket_submissions)
+  const openTicketForm = (ticketCode: string, context: TicketFormContext) => {
+    setTicketForm({ ticketCode, context });
   };
 
   const handleAcknowledge = (ticketCode: string) => {
@@ -222,9 +225,19 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
                       <div className="flex items-start justify-between gap-2 mb-2">
                         <div>
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-[10px] font-extrabold font-mono text-slate-500">
-                              {b.ticket_code}
-                            </span>
+                            {b.can_view_detail ? (
+                              <Link
+                                href={`/breakdowns/${b.ticket_code}`}
+                                title="Lihat detail tiket dan isi submission form"
+                                className="text-[10px] font-extrabold font-mono text-slate-500 hover:text-slate-900 hover:underline"
+                              >
+                                {b.ticket_code}
+                              </Link>
+                            ) : (
+                              <span className="text-[10px] font-extrabold font-mono text-slate-500">
+                                {b.ticket_code}
+                              </span>
+                            )}
                             {/* Badge Source Type */}
         <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
           b.source_type === 'AUTO_REPORT'
@@ -248,7 +261,7 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
                       {/* Daftar Temuan Abnormal (JSON Array List) */}
 <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 mb-2.5 text-xs">
   <span className="font-bold text-slate-700 block mb-1.5">
-    Temuan Abnormal ({b.problems?.length || 0}):
+    Temuan Breakdown ({b.problems?.length || 0}):
   </span>
   
   <div className="max-h-32 overflow-y-auto space-y-2 pr-1">
@@ -258,9 +271,16 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
           <div className="font-bold text-slate-800 text-[11px]">
             {idx + 1}. {prob.question_text}
           </div>
-          <div className="text-rose-600 font-medium text-[10px] mt-0.5">
-            Opsi: {prob.abnormal_options}
-          </div>
+          {prob.abnormal_options && (
+            <div className="text-rose-600 font-medium text-[10px] mt-0.5">
+              Opsi: {prob.abnormal_options}
+            </div>
+          )}
+          {prob.answer_text && (
+            <div className="text-rose-600 font-medium text-[10px] mt-0.5">
+              {prob.answer_text}
+            </div>
+          )}
           {prob.note && (
             <div className="text-slate-500 text-[10px] italic mt-0.5">
               &ldquo;{prob.note}&rdquo;
@@ -347,6 +367,38 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
                         </div>
                       )}
 
+                      {/* Status pengisian form transisi tiket */}
+                      {b.pipelineStage !== 'COMPLETED' && (
+                        <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[10px] font-bold">
+                          <span
+                            className={`px-2 py-0.5 rounded-full border ${
+                              b.has_repair_submission
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : 'bg-slate-50 text-slate-500 border-slate-200'
+                            }`}
+                          >
+                            Form Repair: {b.has_repair_submission ? 'Sudah diisi' : 'Belum diisi'}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded-full border ${
+                              b.has_closing_submission
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : 'bg-slate-50 text-slate-500 border-slate-200'
+                            }`}
+                          >
+                            Form Closing: {b.has_closing_submission ? 'Sudah diisi' : 'Belum diisi'}
+                          </span>
+                          {b.can_view_detail && (
+                            <Link
+                              href={`/breakdowns/${b.ticket_code}`}
+                              className="px-2 py-0.5 rounded-full border border-slate-300 bg-white text-slate-600 hover:bg-slate-900 hover:text-white transition-colors"
+                            >
+                              Lihat Isi Form
+                            </Link>
+                          )}
+                        </div>
+                      )}
+
                       {/* Tombol Aksi Berdasarkan Tahap Pipeline */}
                       <div className="space-y-2 pt-2 border-t border-slate-100">
                    {/* 1. TAHAP REPORT */}
@@ -365,10 +417,10 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
       {b.status === 'ACKNOWLEDGED' && (
         <button
           type="button"
-          onClick={() => handleUpdateStatus(b.ticket_code, 'IN_PROGRESS')}
+          onClick={() => openTicketForm(b.ticket_code, 'START_REPAIR')}
           className="w-full py-1.5 px-2 text-[11px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg text-center transition-colors shadow-xs"
         >
-          Mulai Repair
+          Mulai Repair (Isi Form)
         </button>
       )}
     </div>
@@ -396,10 +448,10 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
     {/* Baris 2: Tombol Close Ticket (Aksi Utama Selesai Repair) */}
     <button
       type="button"
-      onClick={() => setActiveCloseTicket(b)}
+      onClick={() => openTicketForm(b.ticket_code, 'CLOSE_TICKET')}
       className="w-full py-2 px-3 text-[11px] font-extrabold text-white bg-slate-900 hover:bg-slate-800 rounded-xl text-center transition-shadow shadow-xs flex items-center justify-center gap-1.5"
     >
-      <span>✓ Selesaikan & Close Ticket</span>
+      <span>✓ Selesaikan &amp; Close Ticket (Isi Form)</span>
     </button>
   </div>
 )}
@@ -451,75 +503,14 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
         })}
       </div>
 
-      {/* Modal Close Breakdown Ticket */}
-      {activeCloseTicket && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
-              <div>
-                <h3 className="text-lg font-extrabold text-slate-900">Close Ticket Breakdown</h3>
-                <p className="text-xs text-slate-500 font-mono mt-0.5">{activeCloseTicket.ticket_code} &bull; {activeCloseTicket.machine_name}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setActiveCloseTicket(null)}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold flex items-center justify-center"
-              >
-                &times;
-              </button>
-            </div>
-
-            <form onSubmit={handleCloseSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Root Cause (Akar Penyebab) <span className="text-rose-500">*</span>
-                </label>
-                <textarea
-                  rows={3}
-                  value={data.root_cause}
-                  onChange={(e) => setData('root_cause', e.target.value)}
-                  placeholder="Jelaskan penyebab utama kerusakan mesin..."
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
-                  required
-                />
-                {errors.root_cause && <p className="text-xs text-rose-600 mt-1">{errors.root_cause}</p>}
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Corrective Action (Tindakan Perbaikan) <span className="text-rose-500">*</span>
-                </label>
-                <textarea
-                  rows={3}
-                  value={data.corrective_action}
-                  onChange={(e) => setData('corrective_action', e.target.value)}
-                  placeholder="Jelaskan perbaikan atau pergantian sparepart yang telah dilakukan..."
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
-                  required
-                />
-                {errors.corrective_action && <p className="text-xs text-rose-600 mt-1">{errors.corrective_action}</p>}
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setActiveCloseTicket(null)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={processing}
-                  className="px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors disabled:opacity-50"
-                >
-                  {processing ? 'Menyimpan...' : 'Simpan & Close Breakdown'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {ticketForm && (
+        <TicketFormModal
+          ticketCode={ticketForm.ticketCode}
+          context={ticketForm.context}
+          onClose={() => setTicketForm(null)}
+        />
       )}
+
     </AppLayout>
   );
 }

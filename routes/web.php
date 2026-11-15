@@ -9,7 +9,7 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\TaskController;
-use App\Http\Controllers\BreakdownController;
+use App\Http\Controllers\KanbanController;
 use App\Http\Middleware\CheckUserStatus;
 
 // Auth Routes
@@ -65,11 +65,21 @@ Route::middleware(['auth', 'CheckUserStatus','role:ADMIN'])->group(function () {
 Route::get('/machines/{machineId}', [MachineController::class, 'show'])->name('machines.show');
 
 
-Route::get('/breakdowns', [BreakdownController::class, 'index'])->name('breakdowns.index');
-Route::post('/breakdowns/{ticketCode}/acknowledge', [BreakdownController::class, 'acknowledge'])->name('breakdowns.acknowledge');
-Route::put('/breakdowns/{ticketCode}/status', [BreakdownController::class, 'updateStatus'])->name('breakdowns.updateStatus');
-Route::post('/breakdowns/{ticketCode}/close', [BreakdownController::class, 'close'])->name('breakdowns.close');
-Route::put('/breakdowns/{ticketCode}/verify-close', [BreakdownController::class, 'verifyClose'])->name('breakdowns.verifyClose');
+Route::get('/breakdowns', [KanbanController::class, 'index'])->name('breakdowns.index');
+Route::post('/breakdowns/{ticketCode}/acknowledge', [KanbanController::class, 'acknowledge'])->name('breakdowns.acknowledge');
+Route::put('/breakdowns/{ticketCode}/status', [KanbanController::class, 'updateStatus'])->name('breakdowns.updateStatus');
+Route::post('/breakdowns/{ticketCode}/close', [KanbanController::class, 'close'])->name('breakdowns.close');
+Route::put('/breakdowns/{ticketCode}/verify-close', [KanbanController::class, 'verifyClose'])->name('breakdowns.verifyClose');
+
+// Form transisi kanban: repair & closing disimpan ke ticket_submissions
+Route::middleware(['auth', 'CheckUserStatus'])->group(function () {
+    Route::post('/breakdowns', [KanbanController::class, 'storeReport'])->name('breakdowns.store');
+    Route::get('/breakdowns/{ticketCode}/form/{context}/data', [KanbanController::class, 'ticketFormData'])->name('breakdowns.form.data');
+    Route::get('/breakdowns/{ticketCode}/form/{context}', [KanbanController::class, 'showTicketForm'])->name('breakdowns.form');
+    Route::post('/breakdowns/{ticketCode}/submissions', [KanbanController::class, 'submitTicketForm'])->name('breakdowns.submissions.store');
+    // Halaman detail tiket: submission laporan/repair/closing (read-only)
+    Route::get('/breakdowns/{ticketCode}', [KanbanController::class, 'detail'])->name('breakdowns.detail');
+});
 
 
 Route::middleware(['auth', 'CheckUserStatus','role:ADMIN'])->group(function () {

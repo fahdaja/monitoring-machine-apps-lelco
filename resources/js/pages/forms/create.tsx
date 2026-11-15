@@ -54,6 +54,8 @@ interface SectionItem {
 
 interface Props {
     machines: Machine[];
+    defaultType?: string;
+    defaultMachineId?: string | number | null;
 }
 
 interface ToastPayload {
@@ -62,13 +64,14 @@ interface ToastPayload {
     description: string;
 }
 
-export default function FormCreate({ machines }: Props) {
+export default function FormCreate({ machines, defaultType = 'INSPECTION', defaultMachineId }: Props) {
     const { data, setData, post, processing } = useForm({
         metadata: {
             form_code: '',
+            form_type: defaultType,
             form_title: 'Formulir Pemantauan Tanpa Judul',
             form_description: '',
-            machine_id: '',
+            machine_id: defaultMachineId ? Number(defaultMachineId) : '',
         },
         sections: [
             {
@@ -102,6 +105,9 @@ export default function FormCreate({ machines }: Props) {
     const handleMetadataChange = (field: string, value: any) => {
         setData('metadata', { ...data.metadata, [field]: value });
     };
+
+    // Form transisi (mulai repair / tutup tiket) berlaku untuk semua mesin
+    const requiresMachine = ['INSPECTION', 'MANUAL_REPORT'].includes(data.metadata.form_type);
 
     const handleValidationRuleChange = (sIndex: number, qIndex: number, ruleField: keyof ValidationRules, value: any) => {
         const updated = [...data.sections];
@@ -305,7 +311,7 @@ export default function FormCreate({ machines }: Props) {
         e.preventDefault();
         setErrorMessage(null);
 
-        if (!data.metadata.machine_id) {
+        if (requiresMachine && !data.metadata.machine_id) {
             setErrorMessage("Target Mesin wajib dipilih terlebih dahulu!");
             window.scrollTo({ top: 0, behavior: 'smooth' });
             return;
@@ -451,6 +457,24 @@ export default function FormCreate({ machines }: Props) {
                     />
 
                     <div>
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">Kategori Form *</label>
+                        <select
+                            value={data.metadata.form_type}
+                            onChange={e => handleMetadataChange('form_type', e.target.value)}
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-slate-50 focus:border-emerald-600 outline-none font-medium"
+                        >
+                            <option value="INSPECTION">Inspection (task berkala)</option>
+                            <option value="MANUAL_REPORT">Laporan Breakdown (per mesin)</option>
+                            <option value="START_REPAIR">Mulai Repair (form tiket)</option>
+                            <option value="CLOSE_TICKET">Tutup Tiket / Closing (form tiket)</option>
+                        </select>
+                        <p className="text-[10px] text-slate-400 mt-1">
+                            Form Mulai Repair & Tutup Tiket disimpan ke ticket submission tiket breakdown.
+                        </p>
+                    </div>
+
+                    {requiresMachine && (
+                    <div>
                         <label className="block text-[11px] font-semibold text-slate-600 mb-1">Target Mesin *</label>
                         <select
                             value={data.metadata.machine_id}
@@ -465,6 +489,7 @@ export default function FormCreate({ machines }: Props) {
                             ))}
                         </select>
                     </div>
+                    )}
                 </div>
 
                 <form onSubmit={submit} className="space-y-4">

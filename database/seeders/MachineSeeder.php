@@ -10,12 +10,6 @@ class MachineSeeder extends Seeder
 {
     public function run(): void
     {
-        // 1. Kosongkan tabel dan reset ID
-        DB::statement('SET FOREIGN_KEY_CHECKS=0;');
-        Machine::truncate();
-        DB::statement('SET FOREIGN_KEY_CHECKS=1;');
-
-        // 2. Data mesin TANPA machine_code (karena akan digenerate otomatis)
         $machines = [
             [
                 'machine_name'    => 'Hydraulic Press 100 Ton (Line 1)',

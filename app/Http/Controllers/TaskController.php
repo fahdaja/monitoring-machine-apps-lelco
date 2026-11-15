@@ -21,9 +21,7 @@
 
     class TaskController extends Controller {
 
-
-
-        private function buildEnterpriseSnapshot($task, array $submittedAnswers)
+         public function buildEnterpriseSnapshot($task, array $submittedAnswers)
     {
         $form = $task->form()->with(['sections.questions.options'])->first();
         
@@ -99,7 +97,6 @@
             'sections' => $sectionsSnapshot,
         ];
     }
-
 
         public function index(){
             $tasks = Task::with(['machine', 'form', 'user'])->whereIn('status', ['UPCOMING', 'IN_PROGRESS', 'OVERDUE', 'DUE', 'COMPLETED'])->orderBy('due_date', 'asc')->get();
