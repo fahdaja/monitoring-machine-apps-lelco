@@ -16,7 +16,7 @@ return new class extends Migration
             $table->foreignId('ticket_id')->constrained('breakdown_tickets')->onDelete('cascade');
             $table->foreignId('form_id')->constrained('forms'); 
             $table->foreignId('submitted_by')->constrained('users');
-            $table->enum('context', ['START_REPAIR', 'CLOSE_TICKET']); 
+            $table->enum('context', ['MANUAL_REPORT', 'START_REPAIR', 'CLOSE_TICKET']);
             $table->json('answers_values'); 
             $table->timestamps();
         });

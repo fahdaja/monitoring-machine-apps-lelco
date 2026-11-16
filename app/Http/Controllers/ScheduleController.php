@@ -8,6 +8,7 @@ use App\Models\Schedule;
 use App\Models\Form;
 use App\Models\Task;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class ScheduleController extends Controller
 {
@@ -17,15 +18,31 @@ class ScheduleController extends Controller
     public function index()
     {
         // Ambil semua jadwal beserta relasi form dan machine-nya
-        $schedules = Schedule::with(['form.machine'])->latest()->get();
+        $schedules = Schedule::with(['form.machine'])->latest()->get()->map(function ($schedule) {
+            return [
+                'id' => $schedule->id,
+                'schedule_code' => $schedule->schedule_code,
+                'form' => $schedule->form ? [
+                    'id' => $schedule->form->id,
+                    'form_title' => $schedule->form->form_title,
+                    'form_code' => $schedule->form->form_code,
+                    'machine_name' => $schedule->form->machine?->machine_name,
+                ] : null,
+                'frequency_type' => $schedule->frequency_type,
+                'selected_days' => $schedule->selected_days ?? [],
+                'selected_dates' => $schedule->selected_dates ?? [],
+                'due_window_days' => $schedule->due_window_days,
+                'is_active' => $schedule->is_active,
+            ];
+        });
 
-        // Ambil semua form untuk pilihan di dropdown modal
-        $forms = Form::with('machine')->get()->map(function ($form) {
+        // Ambil form INSPECTION saja untuk pilihan di dropdown modal
+        $forms = Form::ofType(\App\Enums\FormType::INSPECTION)->with('machine')->get()->map(function ($form) {
             return [
                 'id' => $form->id,
                 'form_title' => $form->form_title,
                 'form_code' => $form->form_code,
-                'machine_name   ' => $form->machine?->machine_name,
+                'machine_name' => $form->machine?->machine_name,
             ];
         });
 
@@ -41,11 +58,13 @@ class ScheduleController extends Controller
     public function store(Request $request)
     {
         $validate = $request->validate([
-            'form_id' => 'required|exists:forms,id',
+            'form_id' => ['required', Rule::exists('forms', 'id')->where('form_type', 'INSPECTION')],
             'frequency_type' => 'required|in:DAILY,WEEKLY,MONTHLY',
-            'due_window_days' => 'required|integer|min:1',
+            'due_window_days' => 'required|integer|min:1|max:30',
             'selected_days' => 'required_if:frequency_type,WEEKLY|array',
+            'selected_days.*' => 'integer|between:1,7',
             'selected_dates' => 'required_if:frequency_type,MONTHLY|array',
+            'selected_dates.*' => 'integer|between:1,31',
         ]);
 
         // Generate kode jadwal unik
@@ -76,11 +95,13 @@ class ScheduleController extends Controller
 
         // 2. Buat jadwal baru berdasarkan input edit
         $validate = $request->validate([
-            'form_id' => 'required|exists:forms,id',
+            'form_id' => ['required', Rule::exists('forms', 'id')->where('form_type', 'INSPECTION')],
             'frequency_type' => 'required|in:DAILY,WEEKLY,MONTHLY',
-            'due_window_days' => 'required|integer|min:1',
+            'due_window_days' => 'required|integer|min:1|max:30',
             'selected_days' => 'required_if:frequency_type,WEEKLY|array',
+            'selected_days.*' => 'integer|between:1,7',
             'selected_dates' => 'required_if:frequency_type,MONTHLY|array',
+            'selected_dates.*' => 'integer|between:1,31',
         ]);
 
         do {

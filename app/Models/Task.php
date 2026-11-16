@@ -25,7 +25,18 @@ class Task extends Model {
         'assigned_user_id',
         'status',
         'due_date',
+        'end_date',
         'completed_at',
+        'is_late',
+        'late_days',
+    ];
+
+    protected $casts = [
+        'due_date'    => 'date',
+        'end_date'    => 'date',
+        'completed_at' => 'datetime',
+        'is_late'     => 'boolean',
+        'late_days'   => 'integer',
     ];
 
 

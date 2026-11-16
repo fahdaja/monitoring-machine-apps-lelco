@@ -40,11 +40,14 @@
         
         // Cari index aktif
         const [currentSectionIndex, setCurrentSectionIndex] = useState<number>(() => {
-            if (initialSectionIndex > 0) return initialSectionIndex;
-            
+            const maxIdx = Math.max(sections.length - 1, 0);
+            if (initialSectionIndex > 0) return Math.min(initialSectionIndex, maxIdx);
+
             const storageSectionKey = taskId ? `inspection_section_${taskId}` : `inspection_section_index`;
             const savedLocal = localStorage.getItem(storageSectionKey);
-            return savedLocal ? parseInt(savedLocal, 10) : 0;
+            const parsed = savedLocal ? parseInt(savedLocal, 10) : 0;
+            // Clamp: index tersimpan bisa basi jika jumlah section berkurang
+            return isNaN(parsed) ? 0 : Math.min(parsed, maxIdx);
         });
         
         // 💡 STATE ERROR PER PERTANYAAN (Ganti errorMessage global)S
@@ -118,9 +121,13 @@
 
             const savedMax = localStorage.getItem(`inspection_max_completed_${taskId}`);
             if (savedMax !== null) {
-                return parseInt(savedMax, 10);
+                const parsed = parseInt(savedMax, 10);
+                // Clamp: data localStorage bisa basi jika form diubah (section dihapus) oleh admin
+                if (!isNaN(parsed)) {
+                    return Math.min(parsed, Math.max(sections.length - 1, -1));
+                }
             }
-            return currentSectionIndex > 0 ? currentSectionIndex - 1 : -1;
+            return currentSectionIndex > 0 ? Math.min(currentSectionIndex - 1, sections.length - 1) : -1;
         });
 
         // State untuk menampung jawaban
@@ -168,8 +175,8 @@
         const isFirstSection = currentSectionIndex === 0;
         const isLastSection = currentSectionIndex === sections.length - 1;
 
-        const completedCount = maxCompletedIndex + 1;
-        const progressPercentage = sections.length > 0 ? Math.round((completedCount / sections.length) * 100) : 0;
+        const completedCount = Math.min(Math.max(maxCompletedIndex + 1, 0), sections.length);
+        const progressPercentage = sections.length > 0 ? Math.min(100, Math.max(0, Math.round((completedCount / sections.length) * 100))) : 0;
 
         const handleNoteChange = (questionId: number, noteText: string) => {
             setAnswers(prev => {

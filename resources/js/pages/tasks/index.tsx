@@ -12,6 +12,7 @@ export interface InspectionTask {
     machineName: string;
     activity: string;
     scheduledDate: string; // Format: YYYY-MM-DD
+    endDate: string | null ;
     location: string;
     status: 'DUE' | 'OVERDUE' | 'UPCOMING' | 'COMPLETED' | 'IN_PROGRESS';
     inspectorName?: string;
@@ -31,6 +32,8 @@ interface InspectionCalendarData {
 interface TasksIndexProps {
     calendarData?: InspectionCalendarData;
 }
+
+
 
 export default function TasksIndex({ calendarData }: TasksIndexProps) {
     const currentUserId = (usePage().props.auth as any)?.user?.id;
@@ -66,7 +69,27 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
         router.visit(`/inspection-form/${task.taskId}`);
     };
     // Filter Task berdasarkan Tanggal Terpilih
-    const tasksForSelectedDate = currentCalendarData.tasks.filter((t) => t.scheduledDate === selectedDate);
+   const isTaskOnDate = (task: InspectionTask, dateStr: string, todayStr: string) => {
+    // COMPLETED: hanya di tanggal scheduledDate
+    if (task.status === 'COMPLETED') {
+        return task.scheduledDate === dateStr;
+    }
+
+    // Tanpa end_date: hanya di scheduledDate
+    if (!task.endDate) {
+        return task.scheduledDate === dateStr;
+    }
+
+    // OVERDUE: hanya muncul di hari ini saja (keterlambatan adalah kondisi SEKARANG)
+    if (task.status === 'OVERDUE') {
+        return dateStr === todayStr;
+    }
+
+    // DUE / IN_PROGRESS / UPCOMING: rentang normal
+    return dateStr >= task.scheduledDate && dateStr <= task.endDate;
+};
+
+    const tasksForSelectedDate = currentCalendarData.tasks.filter((t) => isTaskOnDate(t, selectedDate, currentCalendarData.today));
 
     // Navigasi Bulan Kalender
     const handlePrevMonth = () => {
@@ -109,6 +132,15 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
         }
     };
 
+    function daysLeft(endDate: string, fromDate?: string): number {
+        const end = new Date(endDate);
+        const ref = fromDate ? new Date(fromDate) : new Date();
+        ref.setHours(0, 0, 0, 0);
+        end.setHours(0, 0, 0, 0);
+        return Math.ceil((end.getTime() - ref.getTime()) / (1000 * 60 * 60 * 24));
+    }
+
+
     // Render Hari Kalender (31 Hari)
     const renderCalendarDays = () => {
         const days = [];
@@ -129,7 +161,7 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
         // 3. Tanggal-tanggal Bulan
         for (let day = 1; day <= currentCalendarData.daysInMonth; day++) {
             const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-            const dayTasks = currentCalendarData.tasks.filter((t) => t.scheduledDate === dateStr);
+            const dayTasks = currentCalendarData.tasks.filter((t) => isTaskOnDate(t, dateStr, currentCalendarData.today));
             const isToday = dateStr === currentCalendarData.today;
             const isSelected = dateStr === selectedDate;
 
@@ -270,14 +302,17 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                             tasksForSelectedDate.map((t) => (
                                 <div
                                     key={t.taskId}
-                                    className={`p-4 border border-slate-200 rounded-xl bg-slate-50/50 hover:bg-white transition-all border-l-4 ${t.status === 'OVERDUE'
-                                        ? 'border-l-rose-500'
-                                        : t.status === 'DUE'
-                                            ? 'border-l-amber-500'
-                                            : t.status === 'COMPLETED'
-                                                ? 'border-l-emerald-500'
-                                                : 'border-l-blue-500'
-                                        }`}
+                                    className={`p-4 border border-slate-200 rounded-xl bg-slate-50/50 hover:bg-white transition-all border-l-4 ${
+    t.status === 'OVERDUE'
+        ? 'border-l-rose-500'
+        : t.status === 'DUE'
+            ? 'border-l-amber-500'
+            : t.status === 'IN_PROGRESS'
+                ? 'border-l-indigo-500'
+                : t.status === 'COMPLETED'
+                    ? 'border-l-emerald-500'
+                    : 'border-l-blue-500'
+}`}
                                 >
                                     <div className="flex items-start justify-between gap-2 mb-2">
     <div className="flex items-center gap-2 min-w-0">
@@ -294,6 +329,37 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                                             {t.machineName}
                                         <span className="block text-[11px] text-slate-400 mt-0.5">{t.machineCode} &bull; {t.location}</span>
                                     </div>
+
+                                    {t.endDate && t.status !== 'COMPLETED' && (() => {
+    const days = daysLeft(t.endDate, currentCalendarData.today);
+    const isLate = t.status === 'OVERDUE' || days < 0;
+    const lateDays = Math.abs(days);
+    const showBadge = t.status !== 'UPCOMING';
+
+    return (
+        <div className="mt-2 text-[11px] font-semibold text-slate-600 flex items-center gap-1 flex-wrap">
+            <span className="text-slate-400">Batas akhir:</span>
+            <span className="text-slate-900">
+                {new Intl.DateTimeFormat('id-ID', {
+                    day: 'numeric', month: 'short', year: 'numeric'
+                }).format(new Date(t.endDate))}
+            </span>
+            {showBadge && (isLate ? (
+                <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">
+                    Terlambat {lateDays} hari
+                </span>
+            ) : days === 0 ? (
+                <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">
+                    Berakhir pukul 23:59
+                </span>
+            ) : (
+                <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">
+                    Sisa {days} hari
+                </span>
+            ))}
+        </div>
+    );
+})()}
 
                                     {t.completedAt && (
                                         <p className="text-[11px] text-emerald-700 font-semibold mt-2">
@@ -328,6 +394,23 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                                                     <span className="text-[11px] font-medium text-slate-400 bg-slate-100 px-3 py-1.5 rounded-lg w-full text-center">
                                                         Jadwal Belum Dimulai
                                                     </span>
+                                                );
+                                            }
+
+                                            // ⚠️ OVERDUE: task tetap boleh dikerjakan, tapi tampilkan tombol merah
+                                            // agar operator sadar bahwa ini tercatat sebagai terlambat.
+                                            if (t.status === 'OVERDUE') {
+                                                const lateDays = t.endDate ? Math.abs(daysLeft(t.endDate, selectedDate)) : null;
+                                                return (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSelectedTaskForModal(t)}
+                                                        className="w-full py-2 px-3 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg text-center transition-colors cursor-pointer shadow-sm"
+                                                    >
+                                                        {lateDays !== null
+                                                            ? `⚠️ Kerjakan (Terlambat ${lateDays} hari)`
+                                                            : '⚠️ Kerjakan (Terlambat)'}
+                                                    </button>
                                                 );
                                             }
 
@@ -373,6 +456,22 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                         <p className="text-xs text-slate-500 mt-1 leading-relaxed">
                             Scan QR fisik mesin <strong className="text-slate-900">{selectedTaskForModal.machineCode}</strong> sebelum memulai pengisian lembar inspeksi.
                         </p>
+
+                        {/* ⚠️ Peringatan keterlambatan (tetap boleh dikerjakan, hanya tercatat untuk audit) */}
+                        {selectedTaskForModal.status === 'OVERDUE' && (() => {
+                            const lateDays = selectedTaskForModal.endDate
+                                ? Math.abs(daysLeft(selectedTaskForModal.endDate, currentCalendarData.today))
+                                : null;
+                            return (
+                                <div className="mt-3 p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-left">
+                                    <p className="text-[11px] font-semibold text-rose-700 leading-relaxed">
+                                        {lateDays !== null
+                                            ? `⚠️ Task ini terlambat ${lateDays} hari. Anda tetap bisa mengerjakannya, tapi akan tercatat sebagai terlambat.`
+                                            : '⚠️ Task ini terlambat. Anda tetap bisa mengerjakannya, tapi akan tercatat sebagai terlambat.'}
+                                    </p>
+                                </div>
+                            );
+                        })()}
 
                         <div className="my-4 p-3 rounded-xl bg-slate-50 border border-slate-200 text-left text-xs">
                             <span className="text-[10px] font-mono text-slate-400 block">{selectedTaskForModal.taskCode}</span>

@@ -493,23 +493,6 @@ export default function FormEdit({ form, machines }: Props) {
                         className="w-full text-xs text-slate-600 border-b border-slate-100 pb-2 focus:border-emerald-600 focus:outline-none bg-transparent"
                     />
 
-                    <div>
-                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">Kategori Form *</label>
-                        <select
-                            value={data.metadata.form_type}
-                            onChange={e => handleMetadataChange('form_type', e.target.value)}
-                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-slate-50 focus:border-emerald-600 outline-none font-medium"
-                        >
-                            <option value="INSPECTION">Inspection (task berkala)</option>
-                            <option value="MANUAL_REPORT">Laporan Breakdown (per mesin)</option>
-                            <option value="START_REPAIR">Mulai Repair (form tiket)</option>
-                            <option value="CLOSE_TICKET">Tutup Tiket / Closing (form tiket)</option>
-                        </select>
-                        <p className="text-[10px] text-slate-400 mt-1">
-                            Form Mulai Repair & Tutup Tiket disimpan ke ticket submission tiket breakdown.
-                        </p>
-                    </div>
-
                     {requiresMachine && (
                     <div>
                         <label className="block text-[11px] font-semibold text-slate-600 mb-1">Target Mesin *</label>

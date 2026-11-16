@@ -36,6 +36,7 @@ return new class extends Migration
                 // permasalahan dan aksi untuk menyelesaikan permasalahan
                 $table->text('root_cause')->nullable();
                 $table->text('corrective_action')->nullable();
+                $table->integer('breakdown_minutes')->nullable();
                 
                 // task di verifikasi oleh siapa
                 $table->timestamp('verified_at')->nullable();

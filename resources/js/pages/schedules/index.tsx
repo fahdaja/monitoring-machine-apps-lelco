@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Head, Link, useForm, usePage, router } from '@inertiajs/react';
+import { Head, useForm, usePage, router } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import { Calendar, Clock, FileText, Settings, Trash2, RefreshCw, Power, Edit3 } from 'lucide-react';
 
@@ -7,7 +7,7 @@ interface FormItem {
     id: number;
     form_title: string;
     form_code: string;
-    machine_type?: string;
+    machine_name?: string;
 }
 
 interface ScheduleItem {
@@ -32,7 +32,7 @@ const DAYS_OF_WEEK = [
     { value: '4', label: 'Kamis' },
     { value: '5', label: 'Jumat' },
     { value: '6', label: 'Sabtu' },
-    { value: '0', label: 'Minggu' },
+    { value: '7', label: 'Minggu' },
 ];
 
 export default function ScheduleIndex({ schedules, forms }: Props) {
@@ -181,7 +181,7 @@ export default function ScheduleIndex({ schedules, forms }: Props) {
                                         <div className="flex justify-between items-center">
                                             <span className="text-slate-500 flex items-center gap-1"><FileText className="w-3 h-3" /> Mesin:</span>
                                             <span className="font-semibold text-slate-800 bg-slate-100 px-2 rounded-md">
-                                                {sch.form?.machine_type || 'Umum'}
+                                                {sch.form?.machine_name}
                                             </span>
                                         </div>
                                         <div className="flex justify-between items-center">
@@ -222,14 +222,6 @@ export default function ScheduleIndex({ schedules, forms }: Props) {
     >
         <Edit3 className="w-3 h-3" /> Edit
     </button>
-
-    {/* TOMBOL LIHAT TASK */}
-    <Link 
-        href={`/schedules/${sch.id}/tasks`} 
-        className="px-3 py-1.5 rounded-lg bg-slate-900 text-white font-bold hover:bg-slate-800 transition-colors text-[11px]"
-    >
-        Lihat Task
-    </Link>
 </div>
                                 </div>
                             </div>
@@ -260,16 +252,17 @@ export default function ScheduleIndex({ schedules, forms }: Props) {
                                     <select
                                         value={data.form_id}
                                         onChange={e => setData('form_id', e.target.value)}
-                                        className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-xs outline-none focus:ring-2 focus:ring-emerald-600 bg-white font-medium"
-                                        disabled={!!editingSchedule} // Opsional: Kunci form jika sedang edit
+                                        className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-xs outline-none focus:ring-2 focus:ring-emerald-600 bg-white font-medium disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed"
+                                        disabled={!!editingSchedule}
                                     >
                                         <option value="">-- Pilih Form Inspeksi --</option>
                                         {forms.map((f) => (
                                             <option key={f.id} value={f.id}>
-                                                {f.form_title} {f.machine_type ? `(${f.machine_type})` : ''}
+                                                {f.form_title} {f.machine_name ? `(${f.machine_name})` : ''}
                                             </option>
                                         ))}
                                     </select>
+                                    {editingSchedule && <span className="text-[10px] text-slate-400 font-semibold mt-1 block">Form tidak dapat diubah. Buat jadwal baru untuk form lain.</span>}
                                     {errors.form_id && <span className="text-[10px] text-rose-600 font-bold mt-1 block">{errors.form_id}</span>}
                                 </div>
 

@@ -99,24 +99,7 @@
     }
 
         public function index(){
-            $tasks = Task::with(['machine', 'form', 'user'])->whereIn('status', ['UPCOMING', 'IN_PROGRESS', 'OVERDUE', 'DUE', 'COMPLETED'])->orderBy('due_date', 'asc')->get();
-
-    
-            $now = Carbon::now();
-            foreach ($tasks as $task) {
-                if (!$task->due_date) {
-            continue;
-        }
-            $dueDate = Carbon::parse($task->due_date)->endOfDay();
-            if ($task->status === 'UPCOMING' && ($now->equalTo($dueDate) || $now->isAfter($dueDate))) {
-                    $task->update(['status' => 'DUE']);
-                    $task->refresh();
-            }
-       if ($now->isAfter($dueDate) && !in_array($task->status, ['COMPLETED', 'OVERDUE', 'IN_PROGRESS'])) {
-            $task->update(['status' => 'OVERDUE']);
-            $task->refresh(); 
-        }
-    }
+        $tasks = Task::with(['machine', 'form', 'user'])->whereIn('status', ['UPCOMING', 'IN_PROGRESS', 'OVERDUE', 'DUE', 'COMPLETED'])->orderBy('due_date', 'asc')->get();
 
         $formattedTasks = $tasks->map(function($task){
             $machine = $task->machine;
@@ -129,7 +112,8 @@
                 'machineName' => $machine->machine_name,
                 'location' => $machine->location,
                 'activity' => $task->form->form_title,
-                'scheduledDate' => $task->due_date,
+                'scheduledDate' => $task->due_date ? $task->due_date->format('Y-m-d') : null,
+                'endDate'  => $task->end_date ? $task->end_date->format('Y-m-d') : null,
                 'status' => $task->status,
                 'inspectorName' => $inspectorName,
                 'completedAt' => $task->completed_at ? Carbon::parse($task->completed_at)->format('H:i') : null,
@@ -418,10 +402,31 @@
         $submission->update(['escalation_ticket_id' => $ticket->id]);
     }
                 // 8. Update status task jadi selesai (COMPLETED)
+                // Task OVERDUE tetap boleh disubmit — keterlambatan hanya dicatat untuk audit.
+                $isLate = $task->end_date && Carbon::today()->greaterThan($task->end_date);
+                $lateDays = $isLate
+                    ? (int) Carbon::parse($task->end_date)->diffInDays(Carbon::today())
+                    : 0;
+
+                $completedAt = now();
+
                 $task->update([
                     'status'       => 'COMPLETED',
-                    'completed_at' => now(),
+                    'completed_at' => $completedAt,
+                    'is_late'      => $isLate,
+                    'late_days'    => $lateDays,
                 ]);
+
+                if ($isLate) {
+                    Log::warning('Task inspection diselesaikan terlambat', [
+                        'task_code'    => $task->task_code,
+                        'end_date'     => $task->end_date ? $task->end_date->toDateString() : null,
+                        'completed_at' => $completedAt->toDateTimeString(),
+                        'user_id'      => auth()->id(),
+                        'late_days'    => $lateDays,
+                    ]);
+                }
+
                 return redirect()->route('tasks.index')
                     ->with('success', 'Form inspeksi berhasil diselesaikan dan tiket eskalasi telah diperiksa!');
             } catch (\Exception $e) {
