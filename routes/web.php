@@ -15,6 +15,8 @@ use App\Http\Middleware\CheckUserStatus;
 // Auth Routes
 Route::get('/login', [AuthController::class, 'create'])->name('login');
 Route::post('/login', [AuthController::class, 'store']);
+Route::get('/admin/login', [AuthController::class, 'adminCreate'])->name('admin.login');
+Route::post('/admin/login', [AuthController::class, 'adminStore']);
 Route::post('/logout', [AuthController::class, 'destroy']);
 Route::get('/scan/machine/{machineCode}', [TaskController::class, 'handleQrScanRedirect']);
 Route::get('/inspection-calender', [TaskController::class, 'index'])->name('tasks.index')->middleware(['auth', 'role:ADMIN,OPERATOR']);
@@ -99,10 +101,15 @@ Route::middleware(['auth', 'CheckUserStatus','role:ADMIN'])->group(function () {
 });
 
 Route::middleware(['auth', 'CheckUserStatus', 'role:ADMIN'])->group(function () {
-    Route::get('/users', [UserController::class, 'index'])->name('users.index'); // <-- Wajib ada name ini
+    Route::match(['put', 'post'], '/forms/{id}', [FormController::class, 'update']);
+});
+
+// Manajemen user & permission: role ADMIN.
+Route::middleware(['auth', 'CheckUserStatus', 'role:ADMIN'])->group(function () {
+    Route::get('/users', [UserController::class, 'index'])->name('users.index');
     Route::get('/users/create', [UserController::class, 'create'])->name('users.create');
     Route::post('/users/create', [UserController::class, 'store'])->name('users.store');
     Route::get('/users/{id}/edit', [UserController::class, 'edit'])->name('users.edit');
-   Route::match(['put', 'post'], '/forms/{id}', [FormController::class, 'update']);
+    Route::put('/users/{id}', [UserController::class, 'update'])->name('users.update');
     Route::delete('/users/{id}', [UserController::class, 'destroy'])->name('users.destroy');
 });

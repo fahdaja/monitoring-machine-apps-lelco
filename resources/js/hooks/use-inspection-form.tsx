@@ -130,7 +130,6 @@
             return currentSectionIndex > 0 ? Math.min(currentSectionIndex - 1, sections.length - 1) : -1;
         });
 
-        // State untuk menampung jawaban
         const [answers, setAnswers] = useState<Record<number, any>>(() => {
             try {
                 const savedLocal = localStorage.getItem(storageKey);

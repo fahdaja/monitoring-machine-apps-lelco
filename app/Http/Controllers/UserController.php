@@ -10,6 +10,17 @@ use App\Models\Department;
 
 class UserController extends Controller
 {
+    /**
+     * Jumlah ADMIN selain user dengan id tertentu (untuk cegah sistem terkunci).
+     */
+    private function otherAdmins($excludeId): int
+    {
+        return User::query()
+            ->whereRaw('UPPER(role) = ?', [User::ROLE_ADMIN])
+            ->where('id', '!=', $excludeId)
+            ->count();
+    }
+
     public function index()
     {
         $users = User::select('id', 'user_code', 'username', 'email', 'full_name', 'department', 'role', 'phone_number', 'is_active')
@@ -118,6 +129,15 @@ class UserController extends Controller
             'phone_number' => $validated['phone_number'] ?? null,
         ];
 
+        // Cegah terkunci: jangan sampai tidak ada ADMIN tersisa.
+        $newRole = strtoupper(trim((string) ($validated['role'] ?? '')));
+        $wasAdmin = strtoupper((string) $user->role) === User::ROLE_ADMIN;
+        $isAdminNow = $newRole === User::ROLE_ADMIN;
+
+        if ($wasAdmin && ! $isAdminNow && $this->otherAdmins($user->id) === 0) {
+            return back()->with('toast', ['type' => 'error', 'message' => 'Minimal satu ADMIN harus tetap ada.']);
+        }
+
         // Jika password diubah, validasi dan hash
         if(!empty($validated['password'])){
             $updateData['password'] = bcrypt($validated['password']);
@@ -134,6 +154,12 @@ class UserController extends Controller
         if (auth()->id() === $user->id) {
             return redirect()->back()
                 ->with('toast', ['type' => 'error', 'message' => 'Anda tidak dapat menghapus akun sendiri!']);
+        }
+
+        if (strtoupper((string) $user->role) === User::ROLE_ADMIN
+            && $this->otherAdmins($user->id) === 0) {
+            return redirect()->back()
+                ->with('toast', ['type' => 'error', 'message' => 'Tidak dapat menghapus ADMIN terakhir.']);
         }
 
         $user->delete();

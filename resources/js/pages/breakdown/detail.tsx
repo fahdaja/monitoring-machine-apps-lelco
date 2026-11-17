@@ -18,7 +18,6 @@ interface SubmissionQuestion {
     answer_text: string;
     answer_note: string;
     photos: string[];
-    is_abnormal: boolean;
 }
 
 interface SubmissionSection {
@@ -38,7 +37,6 @@ interface SubmissionView {
     answered_count: number;
     note_count: number;
     photo_count: number;
-    abnormal_count: number;
     sections: SubmissionSection[];
 }
 
@@ -150,10 +148,6 @@ export default function BreakdownTicketDetail({ ticket, machine, people, timelin
                             </Link>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2 text-[11px] font-bold text-slate-500">
-                        <Camera className="w-4 h-4" />
-                        {photoCount} foto evidence
-                    </div>
                 </div>
 
                 {/* Profil tiket */}
@@ -245,17 +239,6 @@ export default function BreakdownTicketDetail({ ticket, machine, people, timelin
                                         <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-600">
                                             Terisi {submission.answered_count}/{submission.question_count} pertanyaan
                                         </span>
-                                        <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-600">
-                                            {submission.note_count} catatan
-                                        </span>
-                                        <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-600">
-                                            {submission.photo_count} foto
-                                        </span>
-                                        {submission.abnormal_count > 0 && (
-                                            <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-rose-50 border border-rose-200 text-rose-700">
-                                                {submission.abnormal_count} temuan abnormal
-                                            </span>
-                                        )}
                                     </div>
 
                                     <div className="divide-y divide-slate-100">
@@ -276,20 +259,12 @@ export default function BreakdownTicketDetail({ ticket, machine, people, timelin
                                                     {section.questions.map((question, qIndex) => (
                                                         <article
                                                             key={`${submission.context}-q-${sIndex}-${qIndex}`}
-                                                            className={`rounded-xl border p-3 ${
-                                                                question.is_abnormal ? 'border-rose-200 bg-rose-50/50' : 'border-slate-200 bg-slate-50/60'
-                                                            }`}
+                                                            className="rounded-xl border border-slate-200 bg-slate-50/60 p-3"
                                                         >
                                                             <p className="text-xs font-bold text-slate-800">{question.question_text}</p>
 
                                                             <div className="mt-2 flex flex-wrap items-center gap-2">
-                                                                <span
-                                                                    className={`text-[11px] font-bold px-2 py-1 rounded-lg border ${
-                                                                        question.is_abnormal
-                                                                            ? 'bg-rose-100 text-rose-700 border-rose-200'
-                                                                            : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                                                    }`}
-                                                                >
+                                                                <span className="text-[11px] font-bold px-2 py-1 rounded-lg border bg-white text-slate-700 border-slate-200">
                                                                     {question.answer_text}
                                                                 </span>
                                                                 {question.input_type && (

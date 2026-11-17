@@ -68,6 +68,13 @@ const hasValue = (value: string | string[]): boolean => {
     return String(value).trim() !== '';
 };
 
+// Field teks (deskripsi/help/standard) hanya ditampilkan bila berisi teks berarti;
+// nilai kosong atau placeholder strip (mis. "-") dianggap tidak terpakai.
+const hasMeaningfulText = (value?: string | null): boolean => {
+    const text = String(value ?? '').trim();
+    return text !== '' && !['-', '--', '–', '—', '.', '·'].includes(text);
+};
+
 const selectedOptions = (question: FormQuestion, value: string | string[]): FormOption[] => {
     const raw = Array.isArray(value) ? value : [value];
 
@@ -92,7 +99,8 @@ const normalizeInitial = (initial?: Record<string, FormAnswerInput>): Record<num
 
 /**
  * Modal berisi daftar pertanyaan form yang ditampilkan datar (tanpa navigasi section).
- * Dipakai oleh laporan breakdown manual, form repair, dan form closing tiket.
+ * Keluarga TICKETING (laporan breakdown, form repair, form closing tiket):
+ * murni data entry - tidak ada konsep normal/abnormal maupun catatan/foto evidence.
  */
 export default function DynamicFormModal({
     form,
@@ -171,27 +179,43 @@ export default function DynamicFormModal({
         patchAnswer(questionId, { photos: '' });
     };
 
+    // Upload berkas untuk pertanyaan bertipe FILE (disimpan sebagai value path).
+    const uploadQuestionFile = async (questionId: number, file: File) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('question_id', String(questionId));
+        formData.append('folder', 'question-files');
+
+        setUploadingId(questionId);
+
+        try {
+            const { data } = await axios.post('/inspection-form/upload-temp', formData);
+
+            if (data?.success && data?.path) {
+                patchAnswer(questionId, { value: data.path });
+            }
+        } catch (error: any) {
+            const message = error?.response?.data?.message || 'Berkas gagal diunggah.';
+            setFieldErrors((prev) => ({ ...prev, [`answers.${questionId}.value`]: message }));
+        } finally {
+            setUploadingId(null);
+        }
+    };
+
+    const removeQuestionFile = (questionId: number) => {
+        patchAnswer(questionId, { value: '' });
+    };
+
     const validate = (): boolean => {
         const next: Record<string, string> = {};
 
         form.questions.forEach((question) => {
             const answer = getAnswer(question.id);
-            const selected = selectedOptions(question, answer.value);
-            const abnormal = selected.filter((opt) => !opt.is_normal);
 
+            // Ticketing = data entry murni: hanya wajib-isi. Tidak ada syarat
+            // catatan/foto (konsep normal/abnormal tidak berlaku di keluarga ini).
             if (question.is_required && !hasValue(answer.value)) {
                 next[`answers.${question.id}.value`] = 'Pertanyaan ini wajib diisi.';
-                return;
-            }
-
-            if (abnormal.length > 0) {
-                if (answer.note.trim() === '') {
-                    next[`answers.${question.id}.note`] = 'Catatan wajib diisi untuk kondisi abnormal.';
-                }
-
-                if (answer.photos.trim() === '') {
-                    next[`answers.${question.id}.photos`] = 'Foto evidence wajib diisi untuk kondisi abnormal.';
-                }
             }
         });
 
@@ -269,7 +293,7 @@ export default function DynamicFormModal({
                     <div id={BODY_ID} className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-4">
                         {banner}
 
-                        {form.form_description && (
+                        {hasMeaningfulText(form.form_description) && (
                             <p className="text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
                                 {form.form_description}
                             </p>
@@ -284,10 +308,7 @@ export default function DynamicFormModal({
                         {form.questions.map((question, index) => {
                             const answer = getAnswer(question.id);
                             const selected = selectedOptions(question, answer.value);
-                            const abnormal = selected.filter((opt) => !opt.is_normal);
                             const errorValue = fieldErrors[`answers.${question.id}.value`];
-                            const errorNote = fieldErrors[`answers.${question.id}.note`];
-                            const errorPhotos = fieldErrors[`answers.${question.id}.photos`];
 
                             return (
                                 <div key={question.id} className="border border-slate-200 rounded-xl p-3.5 space-y-2.5 bg-white">
@@ -298,10 +319,10 @@ export default function DynamicFormModal({
                                                 {question.question_text}
                                                 {question.is_required && <span className="text-rose-500"> *</span>}
                                             </p>
-                                            {question.help_text && (
+                                            {hasMeaningfulText(question.help_text) && (
                                                 <p className="text-[10px] text-slate-400 mt-0.5">{question.help_text}</p>
                                             )}
-                                            {question.standard_text && (
+                                            {hasMeaningfulText(question.standard_text) && (
                                                 <p className="text-[10px] text-emerald-700 mt-0.5">Standar: {question.standard_text}</p>
                                             )}
                                         </div>
@@ -328,9 +349,7 @@ export default function DynamicFormModal({
                                                         onClick={() => pickOption(question, opt)}
                                                         className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
                                                             isActive
-                                                                ? opt.is_normal
-                                                                    ? 'bg-emerald-600 text-white border-emerald-600'
-                                                                    : 'bg-rose-600 text-white border-rose-600'
+                                                                ? 'bg-slate-900 text-white border-slate-900'
                                                                 : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                                                         }`}
                                                     >
@@ -360,6 +379,36 @@ export default function DynamicFormModal({
                                             placeholder="Tulis penjelasannya..."
                                             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs outline-none focus:border-slate-900"
                                         />
+                                    ) : question.input_type === 'FILE' ? (
+                                        <div className="space-y-2">
+                                            <label className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border-2 border-dashed border-slate-300 hover:border-slate-500 bg-slate-50 hover:bg-white text-xs font-bold text-slate-700 cursor-pointer transition-colors">
+                                                {uploadingId === question.id ? 'Mengunggah...' : 'Pilih berkas'}
+                                                <input
+                                                    type="file"
+                                                    className="hidden"
+                                                    disabled={uploadingId === question.id}
+                                                    onChange={(e) => {
+                                                        const file = e.target.files?.[0];
+                                                        if (file) uploadQuestionFile(question.id, file);
+                                                        e.target.value = '';
+                                                    }}
+                                                />
+                                            </label>
+                                            {hasValue(answer.value) && (
+                                                <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-white border border-slate-200 text-[11px]">
+                                                    <span className="truncate font-semibold text-slate-700">
+                                                        {String(answer.value).split('/').pop()}
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeQuestionFile(question.id)}
+                                                        className="text-rose-600 font-bold hover:underline cursor-pointer shrink-0"
+                                                    >
+                                                        Hapus
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
                                     ) : (
                                         <input
                                             type={
@@ -376,54 +425,6 @@ export default function DynamicFormModal({
                                     )}
 
                                     {errorValue && <p className="text-[10px] text-rose-600 font-semibold">{errorValue}</p>}
-
-                                    {/* Catatan & foto untuk temuan abnormal */}
-                                    {abnormal.length > 0 && (
-                                        <div className="space-y-2 rounded-lg bg-rose-50/60 border border-rose-100 p-2.5">
-                                            <textarea
-                                                rows={2}
-                                                value={answer.note}
-                                                onChange={(e) => patchAnswer(question.id, { note: e.target.value })}
-                                                placeholder="Catatan kondisi abnormal (wajib)..."
-                                                className="w-full px-2.5 py-2 border border-rose-200 rounded-lg text-xs outline-none focus:border-rose-500 bg-white"
-                                            />
-                                            {errorNote && <p className="text-[10px] text-rose-600 font-semibold">{errorNote}</p>}
-
-                                            {answer.photos ? (
-                                                <div className="flex items-center gap-2">
-                                                    <img
-                                                        src={`/storage/${answer.photos}`}
-                                                        alt="evidence"
-                                                        className="w-12 h-12 object-cover rounded-lg border border-rose-200"
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => removePhoto(question.id, answer.photos)}
-                                                        className="text-[10px] font-bold text-rose-600 hover:underline cursor-pointer"
-                                                    >
-                                                        Hapus foto
-                                                    </button>
-                                                </div>
-                                            ) : (
-                                                <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-rose-200 text-[11px] font-bold text-rose-700 cursor-pointer hover:bg-rose-50">
-                                                    {uploadingId === question.id ? 'Mengunggah...' : 'Ambil / unggah foto'}
-                                                    <input
-                                                        type="file"
-                                                        accept="image/*"
-                                                        capture="environment"
-                                                        className="hidden"
-                                                        disabled={uploadingId === question.id}
-                                                        onChange={(e) => {
-                                                            const file = e.target.files?.[0];
-                                                            if (file) uploadPhoto(question.id, file);
-                                                            e.target.value = '';
-                                                        }}
-                                                    />
-                                                </label>
-                                            )}
-                                            {errorPhotos && <p className="text-[10px] text-rose-600 font-semibold">{errorPhotos}</p>}
-                                        </div>
-                                    )}
                                 </div>
                             );
                         })}

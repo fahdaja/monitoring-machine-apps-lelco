@@ -15,17 +15,13 @@ class CheckRole
      */
     public function handle(Request $request, Closure $next, ...$roles): Response
     {
-        // dd($request->user(), $roles);
+        $user = $request->user();
 
-        if($request->user()){
-            $userRole = strtoupper($request->user()->role);
-            $allowedRoles = array_map('strtoupper', $roles);
-
-            if(in_array($userRole, $allowedRoles)){
-                return $next($request);
-            }
-            
+        // Cek role via hasRole() pada model User (case-insensitive).
+        if ($user && method_exists($user, 'hasRole') && $user->hasRole($roles)) {
+            return $next($request);
         }
+
         abort(403, 'Anda tidak memiliki akses ke halaman ini.');
     }
 }

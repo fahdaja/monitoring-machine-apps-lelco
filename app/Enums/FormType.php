@@ -26,6 +26,16 @@ enum FormType: string
     }
 
     /**
+     * Keluarga "ticketing": pengisian berupa data entry murni (tanpa konsep
+     * normal/abnormal & evidence). Cakup laporan breakdown, mulai repair,
+     * dan tutup tiket. Hanya INSPECTION yang di luar keluarga ini.
+     */
+    public function isTicketing(): bool
+    {
+        return in_array($this, [self::MANUAL_REPORT, self::START_REPAIR, self::CLOSE_TICKET], true);
+    }
+
+    /**
      * Context yang dipakai di tabel ticket_submissions.
      */
     public function ticketContext(): ?string

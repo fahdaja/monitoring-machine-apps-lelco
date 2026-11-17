@@ -905,9 +905,7 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                                                                                     flex items-center justify-center gap-2 border-2
                                                                                     transition-all active:scale-[0.98] cursor-pointer
                                                                                     ${isSelected
-                                                                                        ? !opt.is_normal
-                                                                                            ? 'bg-rose-600 border-rose-600 text-white shadow-lg shadow-rose-500/30'
-                                                                                            : 'bg-emerald-600 border-emerald-600 text-white shadow-lg shadow-emerald-500/30'
+                                                                                        ? 'bg-slate-900 border-slate-900 text-white shadow-lg shadow-slate-500/30'
                                                                                         : 'bg-white border-slate-200 text-slate-700 hover:border-slate-400 hover:bg-slate-50'
                                                                                     }
                                                                                 `}

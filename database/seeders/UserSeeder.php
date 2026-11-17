@@ -16,7 +16,7 @@ class UserSeeder extends Seeder
             [
                 'user_code'    => 'USR-ADMIN-001',
                 'username'     => 'admin',
-                'full_name'    => 'Super Admin',
+                'full_name'    => 'Admin',
                 'password'     => Hash::make('password'),
                 'role'         => 'ADMIN',
                 'department'   => 'E',

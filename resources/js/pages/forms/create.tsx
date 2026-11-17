@@ -75,7 +75,7 @@ export default function FormCreate({ machines, defaultType = 'INSPECTION', defau
         },
         sections: [
             {
-                section_title: '',
+                section_title: ['MANUAL_REPORT', 'START_REPAIR', 'CLOSE_TICKET'].includes(defaultType) ? 'Detail' : '',
                 section_description: '',
                 section_order: 1,
                 questions: [
@@ -108,6 +108,10 @@ export default function FormCreate({ machines, defaultType = 'INSPECTION', defau
 
     // Form transisi (mulai repair / tutup tiket) berlaku untuk semua mesin
     const requiresMachine = ['INSPECTION', 'MANUAL_REPORT'].includes(data.metadata.form_type);
+
+    // Keluarga "ticketing" (report/repair/close) = data entry murni: builder
+    // menyembunyikan Standard Text, penanda normal/abnormal opsi & jump-logic.
+    const isTicketing = ['MANUAL_REPORT', 'START_REPAIR', 'CLOSE_TICKET'].includes(data.metadata.form_type);
 
     const handleValidationRuleChange = (sIndex: number, qIndex: number, ruleField: keyof ValidationRules, value: any) => {
         const updated = [...data.sections];
@@ -166,10 +170,15 @@ export default function FormCreate({ machines, defaultType = 'INSPECTION', defau
                         standard_text: '',
                         is_required: false,
                         validation_rules: [{ validation_error_message: '', expected_answer: '', allowed_file_type: [], max_file_size: '' }],
-                        options: [
-                            { option_text: 'Normal (OK)', is_normal: true, option_order: 1, goto_form_section_id: null },
-                            { option_text: 'Rusak (NG)', is_normal: false, option_order: 2, goto_form_section_id: null }
-                        ],
+                        options: isTicketing
+                            ? [
+                                { option_text: 'Opsi 1', is_normal: true, option_order: 1, goto_form_section_id: null },
+                                { option_text: 'Opsi 2', is_normal: true, option_order: 2, goto_form_section_id: null }
+                            ]
+                            : [
+                                { option_text: 'Normal (OK)', is_normal: true, option_order: 1, goto_form_section_id: null },
+                                { option_text: 'Rusak (NG)', is_normal: false, option_order: 2, goto_form_section_id: null }
+                            ],
                     }
                 ],
             },
@@ -195,10 +204,15 @@ export default function FormCreate({ machines, defaultType = 'INSPECTION', defau
             standard_text: '',
             is_required: false,
             validation_rules: [{ expected_answer: '', validation_error_message: '', allowed_file_type: [], max_file_size: '' }],
-            options: [
-                { option_text: 'Opsi 1', is_normal: true, option_order: 1, goto_form_section_id: null },
-                { option_text: 'Opsi 2', is_normal: false, option_order: 2, goto_form_section_id: null }
-            ],
+            options: isTicketing
+                ? [
+                    { option_text: 'Opsi 1', is_normal: true, option_order: 1, goto_form_section_id: null },
+                    { option_text: 'Opsi 2', is_normal: true, option_order: 2, goto_form_section_id: null }
+                ]
+                : [
+                    { option_text: 'Opsi 1', is_normal: true, option_order: 1, goto_form_section_id: null },
+                    { option_text: 'Opsi 2', is_normal: false, option_order: 2, goto_form_section_id: null }
+                ],
         };
 
         if (typeof activeFocus === 'number' && activeFocus < updated[targetIdx].questions.length) {
@@ -320,7 +334,7 @@ export default function FormCreate({ machines, defaultType = 'INSPECTION', defau
         for (let sIndex = 0; sIndex < data.sections.length; sIndex++) {
             const section = data.sections[sIndex];
 
-            if (!section.section_title || section.section_title.trim() === '') {
+            if (!isTicketing && (!section.section_title || section.section_title.trim() === '')) {
                 setErrorMessage(`Judul pada Bagian ${sIndex + 1} tidak boleh kosong!`);
                 window.scrollTo({ top: 0, behavior: 'smooth' });
                 return;
@@ -478,6 +492,8 @@ export default function FormCreate({ machines, defaultType = 'INSPECTION', defau
                 <form onSubmit={submit} className="space-y-4">
                     {data.sections.map((section, sIndex) => (
                         <div key={sIndex} className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-4 shadow-2xs border-l-4 border-l-emerald-600">
+                            {!isTicketing && (
+                            <>
                             {/* Header Section */}
                             <div className="flex justify-between items-center border-b border-slate-100 pb-2 gap-2">
                                 <span className="text-[11px] font-bold text-emerald-700 uppercase shrink-0">Bagian {sIndex + 1}</span>
@@ -504,6 +520,8 @@ export default function FormCreate({ machines, defaultType = 'INSPECTION', defau
                                     className="w-full text-xs text-slate-500 border-b border-slate-100 pb-1.5 focus:border-emerald-600 outline-none bg-transparent"
                                 />
                             </div>
+                            </>
+                            )}
 
                             {/* Daftar Pertanyaan */}
                             <div className="space-y-3">
@@ -566,13 +584,15 @@ export default function FormCreate({ machines, defaultType = 'INSPECTION', defau
                                             >
                                                 <HelpCircle className="w-3 h-3" /> {q.help_text ? 'Help Text Aktif' : '+ Help Text'}
                                             </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => toggleStandardText(sIndex, qIndex)}
-                                                className={`px-2.5 py-1 rounded text-[10px] font-bold border transition-colors flex items-center gap-1 cursor-pointer ${q.standard_text ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'}`}
-                                            >
-                                                <ShieldCheck className="w-3 h-3" /> {q.standard_text ? 'Standard Text Aktif' : '+ Standard Text'}
-                                            </button>
+                                            {!isTicketing && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => toggleStandardText(sIndex, qIndex)}
+                                                    className={`px-2.5 py-1 rounded text-[10px] font-bold border transition-colors flex items-center gap-1 cursor-pointer ${q.standard_text ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'}`}
+                                                >
+                                                    <ShieldCheck className="w-3 h-3" /> {q.standard_text ? 'Standard Text Aktif' : '+ Standard Text'}
+                                                </button>
+                                            )}
                                         </div>
 
                                         {q.help_text !== undefined && q.help_text !== '' && (
@@ -588,7 +608,7 @@ export default function FormCreate({ machines, defaultType = 'INSPECTION', defau
                                             </div>
                                         )}
 
-                                        {q.standard_text !== undefined && q.standard_text !== '' && (
+                                        {!isTicketing && q.standard_text !== undefined && q.standard_text !== '' && (
                                             <div className="flex items-center gap-2">
                                                 <input
                                                     type="text"
@@ -641,17 +661,20 @@ export default function FormCreate({ machines, defaultType = 'INSPECTION', defau
                                                     <div key={oIndex} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 bg-white p-2 rounded-lg border border-slate-200 text-xs">
                                                         <div className="flex items-center gap-2 flex-1 min-w-0">
                                                             <span className="text-slate-400 w-3 shrink-0">{oIndex + 1}.</span>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    const opts = [...q.options];
-                                                                    opts[oIndex].is_normal = !opts[oIndex].is_normal;
-                                                                    handleQuestionChange(sIndex, qIndex, 'options', opts);
-                                                                }}
-                                                                className={`px-2 py-0.5 rounded text-[10px] font-black uppercase cursor-pointer shrink-0 ${opt.is_normal ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}
-                                                            >
-                                                                {opt.is_normal ? 'OK' : 'NG'}
-                                                            </button>
+                                                            {!isTicketing && (
+                                                                <button
+                                                                    type="button"
+                                                                    title="Tandai opsi ini sebagai temuan abnormal"
+                                                                    onClick={() => {
+                                                                        const opts = [...q.options];
+                                                                        opts[oIndex].is_normal = !opts[oIndex].is_normal;
+                                                                        handleQuestionChange(sIndex, qIndex, 'options', opts);
+                                                                    }}
+                                                                    className={`px-2 py-0.5 rounded text-[10px] font-black uppercase cursor-pointer shrink-0 ${opt.is_normal ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}
+                                                                >
+                                                                    {opt.is_normal ? 'Normal' : 'Abnormal'}
+                                                                </button>
+                                                            )}
                                                             <input
                                                                 type="text"
                                                                 value={opt.option_text}
@@ -664,7 +687,7 @@ export default function FormCreate({ machines, defaultType = 'INSPECTION', defau
                                                             />
                                                         </div>
 
-                                                        {q.input_type === 'SELECT' && (
+                                                        {!isTicketing && q.input_type === 'SELECT' && (
                                                             <div className="flex items-center gap-1.5">
                                                                 <CornerDownRight className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                                                                 <select
@@ -825,6 +848,7 @@ export default function FormCreate({ machines, defaultType = 'INSPECTION', defau
 
                     {/* Footer — responsive */}
                     <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-0 pt-4">
+                        {!isTicketing && (
                         <button
                             type="button"
                             onClick={addSection}
@@ -832,6 +856,7 @@ export default function FormCreate({ machines, defaultType = 'INSPECTION', defau
                         >
                             <Layers className="w-4 h-4" /> Tambah Bagian Baru
                         </button>
+                        )}
                         <button
                             type="submit"
                             disabled={processing}

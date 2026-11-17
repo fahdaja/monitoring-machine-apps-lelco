@@ -113,6 +113,61 @@ export default function ScheduleIndex({ schedules, forms }: Props) {
         }
     };
 
+    // Konversi JS getDay() (Minggu=0..Sabtu=6) ke ISO (Senin=1..Minggu=7),
+    // agar cocok dengan konvensi DAYS_OF_WEEK & dayOfWeekIso di backend.
+    const isoDayOfWeek = (d: Date) => (d.getDay() === 0 ? 7 : d.getDay());
+
+    const dateFmt = new Intl.DateTimeFormat('id-ID', { weekday: 'short', day: 'numeric', month: 'short' });
+
+    // Senin pada minggu DEPAN (kalender ISO), sama seperti backend.
+    const nextWeekMonday = (): Date => {
+        const today = new Date();
+        const d = new Date(today);
+        d.setDate(today.getDate() + (8 - isoDayOfWeek(today)));
+        d.setHours(0, 0, 0, 0);
+        return d;
+    };
+
+    // Preview: hari terpilih yang jatuh pada minggu depan (Senin-Minggu).
+    const weeklyPreview = (): string[] => {
+        const base = nextWeekMonday();
+        const out: string[] = [];
+        for (let i = 0; i < 7; i++) {
+            const d = new Date(base);
+            d.setDate(base.getDate() + i);
+            if (data.selected_days.includes(String(isoDayOfWeek(d)))) {
+                out.push(dateFmt.format(d));
+            }
+        }
+        return out;
+    };
+
+    // Jumlah hari pada bulan depan (untuk deteksi tanggal yang tidak ada, mis. 31 di Feb).
+    const nextMonthLastDay = (): number => {
+        const today = new Date();
+        return new Date(today.getFullYear(), today.getMonth() + 2, 0).getDate();
+    };
+
+    // Preview: tanggal terpilih pada BULAN DEPAN (hanya tanggal yang benar ada).
+    const monthlyPreview = (): string[] => {
+        const today = new Date();
+        const lastDay = nextMonthLastDay();
+        const out: string[] = [];
+        for (let day = 1; day <= lastDay; day++) {
+            const d = new Date(today.getFullYear(), today.getMonth() + 1, day);
+            if (data.selected_dates.includes(d.getDate())) {
+                out.push(dateFmt.format(d));
+            }
+        }
+        return out;
+    };
+
+    // Tanggal terpilih yang tidak ada di bulan depan (mis. 29-31 saat bulan pendek).
+    const monthlySkipped = (): number[] => {
+        const lastDay = nextMonthLastDay();
+        return data.selected_dates.filter((x) => x > lastDay).sort((a, b) => a - b);
+    };
+
     // Fungsi untuk mengubah status AKTIF / NONAKTIF
     const toggleStatus = (id: number, currentStatus: boolean) => {
         router.patch(`/schedules/${id}/toggle`, {
@@ -146,6 +201,16 @@ export default function ScheduleIndex({ schedules, forms }: Props) {
                             + Buat Pengaturan Baru
                         </button>
                     )}
+                </div>
+
+                {/* PERINGATAN GENERATE OTOMATIS */}
+                <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                    <span className="text-base leading-none">&#9888;</span>
+                    <p className="text-[11px] sm:text-xs text-amber-800 font-semibold leading-relaxed">
+                        Setiap hari pukul <span className="font-extrabold">00:00</span> sistem otomatis membuat task dari jadwal yang aktif.
+                        Task yang <span className="font-extrabold">sudah ter-generate tidak bisa dibatalkan/dihapus otomatis</span>.
+                        Pastikan pengaturan jadwal sudah sesuai keinginan sebelum tengah malam.
+                    </p>
                 </div>
 
                 {/* LIST JADWAL (CARD VIEW) */}
@@ -258,7 +323,7 @@ export default function ScheduleIndex({ schedules, forms }: Props) {
                                         <option value="">-- Pilih Form Inspeksi --</option>
                                         {forms.map((f) => (
                                             <option key={f.id} value={f.id}>
-                                                {f.form_title} {f.machine_name ? `(${f.machine_name})` : ''}
+                                                {f.form_title} {f.machine_name ? `${f.machine_name}` : ''}
                                             </option>
                                         ))}
                                     </select>
@@ -301,7 +366,7 @@ export default function ScheduleIndex({ schedules, forms }: Props) {
 
                                 {data.frequency_type === 'WEEKLY' && (
                                     <div className="space-y-1.5 pt-1">
-                                        <label className="block text-xs font-bold text-slate-700">Pilih Hari *</label>
+                                        <label className="block text-xs font-bold text-slate-700">Pilih Hari (berulang tiap minggu) *</label>
                                         <div className="flex flex-wrap gap-1.5">
                                             {DAYS_OF_WEEK.map((d) => {
                                                 const active = data.selected_days.includes(d.value);
@@ -322,6 +387,16 @@ export default function ScheduleIndex({ schedules, forms }: Props) {
                                         </div>
                                         {data.selected_days.length === 0 && (
                                             <span className="text-[10px] text-rose-600 font-semibold block">Pilih minimal satu hari.</span>
+                                        )}
+                                        {data.selected_days.length > 0 && (
+                                            <div className="pt-1">
+                                                <p className="text-[10px] font-bold text-slate-500">Akan dibuat task setiap minggu pada:</p>
+                                                <div className="flex flex-wrap gap-1">
+                                                    {weeklyPreview().map((label) => (
+                                                        <span key={label} className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-semibold">{label}</span>
+                                                    ))}
+                                                </div>
+                                            </div>
                                         )}
                                     </div>
                                 )}
@@ -349,6 +424,19 @@ export default function ScheduleIndex({ schedules, forms }: Props) {
                                         </div>
                                         {data.selected_dates.length === 0 && (
                                             <span className="text-[10px] text-rose-600 font-semibold block">Pilih minimal satu tanggal.</span>
+                                        )}
+                                        {data.selected_dates.length > 0 && (
+                                            <div className="space-y-1 pt-1">
+                                                <p className="text-[10px] font-bold text-slate-500">Akan digenerate untuk bulan depan:</p>
+                                                <div className="flex flex-wrap gap-1">
+                                                    {monthlyPreview().map((label, idx) => (
+                                                        <span key={`${label}-${idx}`} className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-semibold">{label}</span>
+                                                    ))}
+                                                </div>
+                                                {monthlySkipped().length > 0 && (
+                                                    <p className="text-[10px] text-amber-600 font-semibold">&#9888; Tanggal {monthlySkipped().join(', ')} tidak ada di bulan depan, jadi tidak akan dibuat task-nya.</p>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
                                 )}

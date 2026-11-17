@@ -38,6 +38,20 @@ class User extends Authenticatable {
         'updated_at' => 'datetime',
     ];
 
+    public const ROLE_ADMIN = 'ADMIN';
+
+    /**
+     * Cek role user terhadap daftar role yang diizinkan (case-insensitive).
+     *
+     * @param  string|array<int,string>  $roles
+     */
+    public function hasRole(string|array $roles): bool
+    {
+        $allowed = array_map('strtoupper', (array) $roles);
+
+        return in_array(strtoupper((string) $this->role), $allowed, true);
+    }
+
     
     public function roles()
     {

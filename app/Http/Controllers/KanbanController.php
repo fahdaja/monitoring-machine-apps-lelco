@@ -310,17 +310,16 @@ class KanbanController extends Controller
                         $detail = is_array($question['answer_detail'] ?? null) ? $question['answer_detail'] : [];
                         $rawValue = $detail['value'] ?? null;
 
-                        $selected = collect($question['selected_options'] ?? [])
+                        $selectedTexts = collect($question['selected_options'] ?? [])
                             ->sortBy(fn (array $option) => (int) ($option['option_order'] ?? 0))
-                            ->map(fn (array $option) => [
-                                'text' => (string) ($option['option_text'] ?? '-'),
-                                'is_normal' => (bool) ($option['is_normal'] ?? true),
-                            ])
+                            ->map(fn (array $option) => (string) ($option['option_text'] ?? '-'))
                             ->values()
                             ->all();
 
-                        $answerText = $selected !== []
-                            ? implode(' | ', array_column($selected, 'text'))
+                        // Ticketing = data entry murni: jawaban ditampilkan apa adanya,
+                        // tanpa menilai normal/abnormal.
+                        $answerText = $selectedTexts !== []
+                            ? implode(' | ', $selectedTexts)
                             : trim(is_array($rawValue) ? implode(', ', array_map('strval', $rawValue)) : (string) $rawValue);
 
                         $photos = collect($detail['photos'] ?? [])
@@ -335,7 +334,6 @@ class KanbanController extends Controller
                             'answer_text' => $answerText === '' ? '-' : $answerText,
                             'answer_note' => trim((string) ($detail['note'] ?? '')),
                             'photos' => $photos,
-                            'is_abnormal' => $selected !== [] && ! collect($selected)->every(fn (array $option) => $option['is_normal']),
                         ];
                     })
                     ->values()
@@ -364,7 +362,6 @@ class KanbanController extends Controller
             'answered_count' => $answers->filter(fn (array $q) => $q['answer_text'] !== '-')->count(),
             'note_count' => $answers->filter(fn (array $q) => $q['answer_note'] !== '')->count(),
             'photo_count' => $answers->sum(fn (array $q) => count($q['photos'])),
-            'abnormal_count' => $answers->where('is_abnormal', true)->count(),
             'sections' => $sections,
         ];
     }
@@ -594,7 +591,7 @@ class KanbanController extends Controller
         $problems = $this->deriveProblems($form, $answers);
 
         if (empty($problems)) {
-            return back()->with('error', 'Laporan belum memuat temuan. Pilih kondisi abnormal atau isi deskripsi masalahnya.');
+            return back()->with('error', 'Laporan belum berisi jawaban. Isi minimal satu pertanyaan.');
         }
 
         $user = $request->user();
@@ -628,7 +625,7 @@ class KanbanController extends Controller
     }
 
     /**
-     * Kumpulkan temuan dari jawaban: opsi abnormal, atau jawaban teks bebas.
+     * Kumpulkan jawaban laporan: opsi terpilih (tanpa melihat normal/abnormal) atau teks bebas.
      */
     private function deriveProblems(Form $form, array $answers): array
     {
@@ -645,16 +642,16 @@ class KanbanController extends Controller
                     continue;
                 }
 
-                $abnormalTexts = $question->options
-                    ->filter(fn ($opt) => ! $opt->is_normal && $this->isOptionSelected($opt, $value))
+                $selectedTexts = $question->options
+                    ->filter(fn ($opt) => $this->isOptionSelected($opt, $value))
                     ->pluck('option_text')
                     ->all();
 
-                if (!empty($abnormalTexts)) {
+                if (!empty($selectedTexts)) {
                     $problems[] = [
                         'id' => $question->id,
                         'question_text' => $question->question_text,
-                        'abnormal_options' => implode(', ', $abnormalTexts),
+                        'abnormal_options' => implode(', ', $selectedTexts),
                         'answer_text' => '',
                         'note' => $note,
                         'photo_evidence' => $photos,
@@ -739,7 +736,7 @@ class KanbanController extends Controller
     }
 
     /**
-     * Validasi wajib isi + catatan/foto untuk temuan abnormal.
+     * Validasi wajib isi untuk laporan ticketing (tanpa cek normal/abnormal).
      * Section yang dilewati lewat goto_form_section_id tidak divalidasi.
      */
     private function validateTicketAnswers(Form $form, array $answers): array
@@ -786,49 +783,16 @@ class KanbanController extends Controller
             }
 
             $value = $answer['value'] ?? null;
-            $note = trim((string) ($answer['note'] ?? ''));
-            $photos = trim((string) ($answer['photos'] ?? ''));
 
             $isEmpty = $value === null || $value === '' || (is_array($value) && count($value) === 0);
             $isSkipped = in_array($question->form_section_id, $skippedSectionIds);
 
             if ($question->is_required && !$isSkipped && $isEmpty) {
                 $errors["answers.{$questionId}.value"] = "Pertanyaan \"{$question->question_text}\" wajib diisi.";
-                continue;
-            }
-
-            if ($this->isAbnormalAnswer($question, $value)) {
-                if ($note === '') {
-                    $errors["answers.{$questionId}.note"] = 'Catatan wajib diisi untuk temuan abnormal.';
-                }
-
-                if ($photos === '') {
-                    $errors["answers.{$questionId}.photos"] = 'Foto evidence wajib diisi untuk temuan abnormal.';
-                }
             }
         }
 
         return $errors;
-    }
-
-    /**
-     * Cek apakah jawaban memilih opsi dengan is_normal = false.
-     */
-    private function isAbnormalAnswer($question, $value): bool
-    {
-        if ($value === null || $value === '' || (is_array($value) && count($value) === 0)) {
-            return false;
-        }
-
-        $values = is_array($value) ? $value : [$value];
-
-        return $question->options->contains(function ($option) use ($values) {
-            $isSelected = collect($values)->contains(
-                fn ($v) => (string) $v === (string) $option->id || (string) $v === (string) $option->option_text
-            );
-
-            return $isSelected && !$option->is_normal;
-        });
     }
 
     /**

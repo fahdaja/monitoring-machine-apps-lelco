@@ -20,6 +20,8 @@ interface LoginProps {
     appName?: string;
     tagline?: string;
     logoUrl?: string;
+    portal?: 'inspection' | 'management';
+    action?: string;
 }
 
 export default function Login({
@@ -28,8 +30,11 @@ export default function Login({
     appName = 'Machine Digitalization',
     tagline = 'Machine Digitalization System',
     logoUrl,
+    portal = 'inspection',
+    action,
 }: LoginProps) {
     const [showPassword, setShowPassword] = useState(false);
+    const actionUrl = action || (portal === 'management' ? '/admin/login' : '/login');
 
     // Inertia Form State
     const { data, setData, post, processing, errors } = useForm({
@@ -42,7 +47,7 @@ export default function Login({
     const userList: User[] = users
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
-        post('/login');
+        post(actionUrl);
     };
 
     return (
@@ -86,6 +91,9 @@ export default function Login({
                         <p className="text-[12px] text-[#6b7a90] mt-1">
                             {tagline}
                         </p>
+                        <div className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold ${portal === 'management' ? 'bg-[#071b33] text-white' : 'bg-[#e7f0fb] text-[#12385f]'}`}>
+                            {portal === 'management' ? 'Portal Manajemen' : 'Aplikasi Inspeksi'}
+                        </div>
                     </div>
 
                     {/* Form Login */}
@@ -183,7 +191,7 @@ export default function Login({
                             disabled={processing}
                             className="h-[50px] mt-4 w-full bg-[#071b33] hover:bg-[#0b2748] active:bg-[#12385f] text-white font-extrabold text-sm rounded-xl transition-all shadow-md disabled:opacity-60 cursor-pointer"
                         >
-                            {processing ? 'Memproses...' : 'Masuk ke Sistem'}
+                            {processing ? 'Memproses...' : portal === 'management' ? 'Masuk ke Portal Manajemen' : 'Masuk ke Sistem'}
                         </button>
 
                         <p className="text-center text-[#8090a4] text-[11px] leading-relaxed mt-2">

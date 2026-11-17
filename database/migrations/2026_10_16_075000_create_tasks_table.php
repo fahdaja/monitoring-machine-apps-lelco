@@ -15,8 +15,11 @@ return new class extends Migration
             $table->id();
             $table->string('task_code')->unique()->nullable(false); 
             $table->date('due_date');
+            $table->date('end_date');
             $table->enum('status', ['UPCOMING','DUE','OVERDUE', 'IN_PROGRESS', 'COMPLETED'])->nullable();
             $table->dateTime('completed_at')->nullable();
+            $table->boolean('is_late')->default(false);
+            $table->integer('late_days')->default(0);
             $table->timestamps();
             
            // relasi 
