@@ -39,22 +39,44 @@ fi
 
 if [ "${DB_CONNECTION}" != "sqlite" ] && [ -n "${DB_HOST}" ]; then
     attempt=0
-    until php -r '
+    db_error=''
+    # Keluaran PHP sengaja ditangkap (bukan dibuang): pesan aslinya yang
+    # membedakan DNS gagal vs connection refused vs Access denied, dan tanpa
+    # itu semua orang cuma bisa nebak dari baris "GAGAL".
+    until db_error=$(php -r '
         try {
             new PDO(sprintf("mysql:host=%s;port=%s;charset=utf8mb4",
                 getenv("DB_HOST"), getenv("DB_PORT") ?: "3306"),
                 getenv("DB_USERNAME"), getenv("DB_PASSWORD"));
         } catch (Throwable $e) {
+            fwrite(STDERR, $e->getMessage());
             exit(1);
         }
-    ' >/dev/null 2>&1; do
+    ' 2>&1); do
         attempt=$((attempt + 1))
         if [ "${attempt}" -ge 40 ]; then
             log "GAGAL: database tidak bisa dihubungi di ${DB_HOST}:${DB_PORT}."
-            log "Cek DB_HOST/DB_USERNAME/DB_PASSWORD di .env.docker, dan pastikan MySQL jalan."
+            log "Pesan terakhir dari PDO/MySQL: ${db_error}"
+            case "${db_error}" in
+                *getaddrinfo*|*Name\ or\ service\ not\ known*)
+                    log "Artinya: nama 'db' tidak resolve. Container db belum jalan atau"
+                    log "app-nya di-up pakai --no-deps / beda project name."
+                    ;;
+                *Connection\ refused*)
+                    log "Artinya: host ketemu tapi MySQL belum listen (crash / masih init)."
+                    ;;
+                *Access\ denied*)
+                    log "Artinya: kredensial tidak cocok. Kalau volume db-data adalah warisan"
+                    log "deploy lama, MYSQL_USER/MYSQL_PASSWORD di .env.docker DIABAIKAN oleh"
+                    log "image mysql (hanya jalan saat data dir kosong). Cek docker compose logs db."
+                    ;;
+                *Unknown\ database*)
+                    log "Artinya: database belum pernah dibuat (sama: MYSQL_DATABASE cuma saat init)."
+                    ;;
+            esac
             exit 1
         fi
-        log "Menunggu database ${DB_HOST}:${DB_PORT} ... (${attempt}/40)"
+        log "Menunggu database ${DB_HOST}:${DB_PORT} ... (${attempt}/40) - ${db_error}"
         sleep 3
     done
     log "Database terhubung."
