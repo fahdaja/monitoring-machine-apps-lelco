@@ -22,6 +22,14 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
         tasks?: InspectionTask[];
         initialAnswers?: Record<number, any>;
         mode?: 'TASK' | 'TICKET';
+        followUp?: {
+            sourceTaskId?: number | null;
+            sourceTaskCode?: string | null;
+            sourceFormTitle?: string | null;
+            conditionCode?: string | null;
+            triggerQuestionText?: string | null;
+            triggerOptionText?: string | null;
+        } | null;
         ticket?: {
             ticket_code: string;
             context: 'START_REPAIR' | 'CLOSE_TICKET';
@@ -36,6 +44,9 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
     // Mode tiket: form repair/closing, hasil submit masuk ke ticket_submissions
     const ticketMode = pageProps.mode === 'TICKET';
     const ticketInfo = pageProps.ticket;
+
+    // Task lanjutan lvl 2: operator perlu tahu kenapa form ini muncul & dari jawaban mana.
+    const followUpInfo = pageProps.followUp;
 
     const currentTask: InspectionTask | undefined =
         pageProps.task || (tasks && tasks.length > 0 ? tasks[0] : undefined);
@@ -649,6 +660,11 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                                 Section {currentSectionIndex + 1} / {sections.length}
                             </span>
+                            {followUpInfo && (
+                                <span className="inline-flex items-center gap-1.5 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-orange-200 bg-orange-500/10 border border-orange-400/30 px-2 sm:px-2.5 py-1 rounded-full whitespace-nowrap">
+                                    ◆ Lanjutan Lvl 2
+                                </span>
+                            )}
                             <span className="text-[10px] sm:text-[11px] text-slate-300 font-mono truncate">
                                 {currentSection?.section_code}
                             </span>
@@ -665,6 +681,16 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                             <p className="text-xs sm:text-sm text-slate-300/90 leading-relaxed break-words">
                                 {currentSection.section_description}
                             </p>
+                        )}
+
+                        {followUpInfo && (
+                            <div className="p-2.5 sm:p-3 rounded-lg bg-orange-500/10 border border-orange-400/25">
+                                <p className="text-[11px] sm:text-xs text-orange-100 leading-relaxed">
+                                    Task ini dibuat otomatis karena jawaban <strong className="text-white">“{followUpInfo.triggerOptionText || 'abnormal'}”</strong> pada pertanyaan <strong className="text-white">“{followUpInfo.triggerQuestionText || '-'}”</strong> di form <strong className="text-white">{followUpInfo.sourceFormTitle || 'inspeksi lvl 1'}</strong>
+                                    {followUpInfo.sourceTaskCode ? ` (task ${followUpInfo.sourceTaskCode})` : ''}
+                                    {followUpInfo.conditionCode ? ` · kondisi ${followUpInfo.conditionCode}` : ''}.
+                                </p>
+                            </div>
                         )}
 
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 pt-1">

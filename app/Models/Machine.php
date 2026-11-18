@@ -51,4 +51,66 @@ class Machine extends Model
         'updated_at'      => 'datetime',
     ];
 
+    /**
+     * PIC mesin = banyak orang (dulu cuma teks satu kolom), dan daftar inilah
+     * yang jadi gerbang siapa boleh mengerjakan task pada mesin ini.
+     */
+    public function pics()
+    {
+        return $this->belongsToMany(User::class, 'machine_pics', 'machine_id', 'user_id')
+            ->withPivot('created_at')
+            ->orderBy('users.full_name');
+    }
+
+    /** Mesin tanpa satu PIC pun berarti aturan belum dipasang, jadi masih terbuka. */
+    public function hasPicGate(): bool
+    {
+        return $this->pics->isNotEmpty();
+    }
+
+    public function isPic(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return $this->pics
+            ->where('is_active', true)
+            ->contains(fn ($pic) => (int) $pic->id === (int) $user->id);
+    }
+
+    /** Boleh membuka/mengerjakan task mesin ini? Admin boleh masuk untuk verifikasi. */
+    public function canBeWorkedBy(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if (! $this->hasPicGate()) {
+            return true;
+        }
+
+        return $this->isPic($user) || $user->hasRole(User::ROLE_ADMIN);
+    }
+
+    /**
+     * Claim otomatis saat task dibuka hanya untuk PIC asli; admin yang sekadar
+     * lewat tidak boleh meramput penugasan sehingga task terkunci untuk operator.
+     */
+    public function mayOwnTask(?User $user): bool
+    {
+        if (! $this->hasPicGate()) {
+            return true;
+        }
+
+        return $this->isPic($user);
+    }
+
+    /** Ringkasan nama PIC untuk tampilan dan pesan penolakan. */
+    public function picNamesText(): string
+    {
+        $names = $this->pics->pluck('full_name')->filter()->implode(', ');
+
+        return $names !== '' ? $names : (string) ($this->pic_department ?? '');
+    }
 }

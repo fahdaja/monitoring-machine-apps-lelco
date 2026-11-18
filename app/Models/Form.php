@@ -24,6 +24,7 @@ class Form extends Model
         'machine_id',
         'form_code',
         'form_type',
+        'form_level',
         'form_title',
         'form_description',
     ];

@@ -71,6 +71,7 @@ export default function FormCreate({ machines, defaultType = 'INSPECTION', defau
             form_type: defaultType,
             form_title: 'Formulir Pemantauan Tanpa Judul',
             form_description: '',
+            form_level: defaultType === 'INSPECTION' ? 1 : null,
             machine_id: defaultMachineId ? Number(defaultMachineId) : '',
         },
         sections: [
@@ -331,8 +332,20 @@ export default function FormCreate({ machines, defaultType = 'INSPECTION', defau
             return;
         }
 
+        if (data.metadata.form_type === 'INSPECTION' && data.metadata.form_level !== 1 && data.metadata.form_level !== 2) {
+            setErrorMessage('Form INSPECTION wajib memilih level template (Level 1 / Level 2).');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            return;
+        }
+
         for (let sIndex = 0; sIndex < data.sections.length; sIndex++) {
             const section = data.sections[sIndex];
+
+            if (!section.questions || section.questions.length === 0) {
+                setErrorMessage(`Bagian ${sIndex + 1} harus memiliki minimal 1 pertanyaan.`);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                return;
+            }
 
             if (!isTicketing && (!section.section_title || section.section_title.trim() === '')) {
                 setErrorMessage(`Judul pada Bagian ${sIndex + 1} tidak boleh kosong!`);
@@ -391,10 +404,12 @@ export default function FormCreate({ machines, defaultType = 'INSPECTION', defau
             },
             onError: (errors) => {
                 console.error(errors);
+                const firstError = (Object.values(errors ?? {}) as Array<string | string[]>)[0];
+                const description = typeof firstError === 'string' ? firstError : firstError?.[0];
                 setToastMessage({
                     type: 'error',
                     title: 'Gagal Menyimpan',
-                    description: 'Periksa kembali inputan form yang belum lengkap.'
+                    description: description || 'Periksa kembali inputan form yang belum lengkap.'
                 });
             },
         });
@@ -469,6 +484,25 @@ export default function FormCreate({ machines, defaultType = 'INSPECTION', defau
                         placeholder="Deskripsi singkat formulir (opsional)"
                         className="w-full text-xs text-slate-600 border-b border-slate-100 pb-2 focus:border-emerald-600 focus:outline-none bg-transparent"
                     />
+
+                    {data.metadata.form_type === 'INSPECTION' && (
+                        <div>
+                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Level Template *</label>
+                            <div className="flex gap-2">
+                                {[1, 2].map(lvl => (
+                                    <button
+                                        key={lvl}
+                                        type="button"
+                                        onClick={() => handleMetadataChange('form_level', lvl)}
+                                        className={`px-3 py-2 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${data.metadata.form_level === lvl ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-emerald-300 hover:text-emerald-700'}`}
+                                    >
+                                        Level {lvl}
+                                    </button>
+                                ))}
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-medium mt-1 block">Level 1 = inspeksi rutin (dijadwalkan). Level 2 = form lanjutan yang dikerjakan otomatis dari kondisi trigger.</span>
+                        </div>
+                    )}
 
                     {requiresMachine && (
                     <div>

@@ -38,6 +38,7 @@ interface FormItem {
     form_description?: string;
     form_type: 'INSPECTION' | 'MANUAL_REPORT' | 'START_REPAIR' | 'CLOSE_TICKET'; 
     machine?: Machine; // jadi optional, karena form transisi gak butuh mesin
+    form_level?: number | null;
     pipeline_stage?: string; // misal: "Corrective - Stage Report"
     created_at?: string;
     updated_at?: string;
@@ -264,7 +265,12 @@ export default function FormIndex({ forms, filters, typeCounts, machines = [] }:
                                             </td>
                                             {/* KOLOM TIPE FORM (BADGE) */}
                                             <td className="p-3 sm:p-4 text-center">
-                                                {renderFormTypeBadge(f.form_type)}
+                                                <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                                    {renderFormTypeBadge(f.form_type)}
+                                                    {f.form_type === 'INSPECTION' && f.form_level != null && (
+                                                        <span className="bg-indigo-100 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wider">LVL {f.form_level}</span>
+                                                    )}
+                                                </div>
                                             </td>
                                             {/* KOLOM DIGUNAKAN UNTUK (MESIN / PIPELINE) */}
                                             <td className="p-3 sm:p-4 text-center text-slate-600">

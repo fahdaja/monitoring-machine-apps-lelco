@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Machine;
 use App\Models\BreakdownTicket;
 use App\Models\Form;
+use App\Models\User;
 use App\Enums\FormType;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
@@ -34,11 +35,67 @@ class MachineController extends Controller
     }
 
     /**
+     * Daftar user aktif yang bisa dipilih jadi PIC mesin.
+     * ADMIN sengaja tidak dijadikan kandidat: PIC itu penanggung jawab lapangan,
+     * sementara admin cuma pengawas (tetap bisa membuka task tanpa perlu terdaftar).
+     * Flag akses inspeksi ikut dikirim supaya admin tidak salah pilih role yang
+     * toh tidak bisa membuka form pemeriksaan.
+     */
+    private function picCandidates(): array
+    {
+        return User::where('is_active', true)
+            ->whereRaw('UPPER(role) <> ?', [User::ROLE_ADMIN])
+            ->orderBy('full_name')
+            ->get()
+            ->map(fn (User $user) => [
+                'id'                   => $user->id,
+                'full_name'            => $user->full_name,
+                'user_code'            => $user->user_code,
+                'role'                 => (string) $user->role,
+                'department'           => $user->department,
+                'can_access_inspection' => $user->hasRole(['ADMIN', 'OPERATOR']),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Aturan validasi PIC: id harus user aktif dan bukan ADMIN (admin bukan kandidat PIC).
+     */
+    private function picUserRules(): array
+    {
+        return [
+            'pic_user_ids'   => 'nullable|array',
+            'pic_user_ids.*' => [
+                'integer',
+                Rule::exists('users', 'id')->where(fn ($query) => $query
+                    ->where('is_active', true)
+                    ->whereRaw('UPPER(role) <> ?', [User::ROLE_ADMIN])),
+            ],
+        ];
+    }
+
+    /**
+     * Simpan pilihan PIC ke pivot. Array kosong = gate dilepas (mesin terbuka lagi).
+     */
+    private function syncPics(Machine $machine, array $picUserIds): void
+    {
+        $ids = collect($picUserIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $machine->pics()->sync($ids);
+    }
+
+    /**
      * Menampilkan Daftar Seluruh Mesin.
      */
     public function index(Request $request): Response
     {
-        $machines = Machine::latest('created_at')->get()->map(function ($m) {
+        $machines = Machine::with('pics')->latest('created_at')->get()->map(function ($m) {
             return [
                 'id'           => $m->id,
                 'machineCode'  => $m->machine_code,
@@ -48,7 +105,7 @@ class MachineController extends Controller
                 'subType'      => $m->sub_type,
                 'brand'        => $m->specifications['brand'] ?? null,
                 'model'        => $m->specifications['model'] ?? null,
-                'department'   => $m->department ?? $m->pic_department,
+                'department'   => $m->department ?? $m->picNamesText(),
                 'area'         => $m->area,
                 'location'     => $m->location ?? '-',
                 'criticality'  => $m->criticality ?? 'MEDIUM',
@@ -70,13 +127,15 @@ class MachineController extends Controller
      */
     public function create(Request $request)
     {
-        return Inertia::render('machines/create');
+        return Inertia::render('machines/create', [
+            'picCandidates' => $this->picCandidates(),
+        ]);
     }
 
     // untuk menampilkan detail mesin
     public function show(Request $request, $id): Response
     {
-        $machine = Machine::findOrFail($id);
+        $machine = Machine::with('pics')->findOrFail($id);
 
 
         // Ambil riwayat breakdown aktif dan histori penanganan
@@ -146,7 +205,17 @@ class MachineController extends Controller
                 'location'          => $machine->location,
                 'department'        => $machine->department,
                 'area'              => $machine->area,
-                'picDepartment'     => $machine->pic_department,
+                'picDepartment'     => $machine->picNamesText(),
+                'pics'              => $machine->pics
+                    ->map(fn (User $pic) => [
+                        'id'         => $pic->id,
+                        'full_name'  => $pic->full_name,
+                        'role'       => (string) $pic->role,
+                        'department' => $pic->department,
+                        'is_active'  => (bool) $pic->is_active,
+                    ])
+                    ->values()
+                    ->all(),
                 'criticality'       => $machine->criticality ?? 'MEDIUM',
                 'status'            => $machine->machine_status ?? 'RUNNING',
                 'commissionDate'    => $machine->commission_date ? $machine->commission_date->format('Y-m-d') : null,
@@ -169,7 +238,7 @@ class MachineController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $validated = $request->validate([
+        $validated = $request->validate(array_merge([
             'machine_code'       => 'nullable|string|unique:machines,machine_code',
             'machine_name'       => 'required|string|max:255',
             'qr_image_path'      => 'nullable|string',
@@ -184,7 +253,6 @@ class MachineController extends Controller
             'department'         => 'nullable|string',
             'area'               => 'nullable|string',
             'location'           => 'required|string',
-            'pic_department'     => 'nullable|string',
             'commission_date'    => 'nullable|date',
             'status'             => 'nullable|string',
 
@@ -192,7 +260,7 @@ class MachineController extends Controller
             'specifications.*.key'   => 'nullable|string',
             'specifications.*.label' => 'nullable|string',
             'specifications.*.value' => 'nullable|string',
-        ]);
+        ], $this->picUserRules()));
 
         // Auto-generate Machine code acak 
         $machineType = substr(strtoupper($validated['machine_type']), 0, 3);
@@ -241,12 +309,13 @@ class MachineController extends Controller
             'location'        => $validated['location'],
             'department'      => $validated['department'] ?? null,
             'area'            => $validated['area'] ?? null,
-            'pic_department'  => $validated['pic_department'] ?? null,
             'machine_status'  => $validated['status'] ?? 'RUNNING',
             'active_status'   => true,
             'commission_date' => $validated['commission_date'] ?? null,
             'specifications'  => $specifications,
         ]);
+
+        $this->syncPics($machine, $validated['pic_user_ids'] ?? []);
 
         return redirect()->route('machines.show', $machine->id)->with('success', "Mesin {$finalCode} dan QR berhasil terdaftar.");
     }
@@ -256,7 +325,7 @@ class MachineController extends Controller
      */
     public function edit(Request $request, $id): Response
     {
-        $machine = Machine::findOrFail($id);
+        $machine = Machine::with('pics')->findOrFail($id);
 
         $fixedKeys = ['brand', 'model', 'serial_number', 'manufacturing_year'];
         $specs = $machine->specifications ?? [];
@@ -279,6 +348,7 @@ class MachineController extends Controller
             : (string) ($machine->machine_status ?? 'RUNNING');
 
         return Inertia::render('machines/edit', [
+            'picCandidates' => $this->picCandidates(),
             'machine' => [
                 'id'                 => $machine->id,
                 'machine_code'       => $machine->machine_code,
@@ -293,7 +363,7 @@ class MachineController extends Controller
                 'location'           => $machine->location ?? '',
                 'department'         => $machine->department ?? '',
                 'area'               => $machine->area ?? '',
-                'pic_department'     => $machine->pic_department ?? '',
+                'pic_user_ids'       => $machine->pics->pluck('id')->map(fn ($id) => (int) $id)->values()->all(),
                 'status'             => $currentStatus,
                 'commission_date'    => $machine->commission_date ? $machine->commission_date->format('Y-m-d') : '',
                 'specifications'     => $customSpecs,
@@ -308,7 +378,7 @@ class MachineController extends Controller
     {
         $machine = Machine::findOrFail($id);
 
-        $validated = $request->validate([
+        $validated = $request->validate(array_merge([
             'machine_name'       => 'required|string|max:255',
             'category'           => 'required|string',
             'machine_type'       => 'required|string',
@@ -320,7 +390,6 @@ class MachineController extends Controller
             'department'         => 'nullable|string',
             'area'               => 'nullable|string',
             'location'           => 'required|string',
-            'pic_department'     => 'nullable|string',
             'commission_date'    => 'nullable|date',
             'status'             => 'nullable|string',
 
@@ -328,7 +397,7 @@ class MachineController extends Controller
             'specifications.*.key'   => 'nullable|string',
             'specifications.*.label' => 'nullable|string',
             'specifications.*.value' => 'nullable|string',
-        ]);
+        ], $this->picUserRules()));
 
         $specifications = [];
         if (!empty($validated['brand'])) {
@@ -360,11 +429,16 @@ class MachineController extends Controller
             'location'        => $validated['location'],
             'department'      => $validated['department'] ?? null,
             'area'            => $validated['area'] ?? null,
-            'pic_department'  => $validated['pic_department'] ?? null,
             'machine_status'  => $validated['status'] ?? $machine->machine_status,
             'commission_date' => $validated['commission_date'] ?? null,
             'specifications'  => $specifications,
         ]);
+
+        // Hanya sentuh pivot kalau form memang mengirim daftar PIC,
+        // supaya teks PIC lama tidak terhapus oleh flow lama.
+        if (array_key_exists('pic_user_ids', $validated)) {
+            $this->syncPics($machine, $validated['pic_user_ids'] ?? []);
+        }
 
         return redirect()->route('machines.show', $machine->id)->with('success', "Data mesin {$machine->machine_code} berhasil diperbarui.");
     }

@@ -62,4 +62,14 @@ class User extends Authenticatable {
     {
         return $this->belongsTo(Department::class, 'id');
     }
+
+    /**
+     * Mesin-mesin tempat user ini terdaftar sebagai PIC. Task pada mesin-mesin
+     * ini yang boleh dia kerjakan.
+     */
+    public function machines()
+    {
+        return $this->belongsToMany(Machine::class, 'machine_pics', 'user_id', 'machine_id')
+            ->withPivot('created_at');
+    }
 }

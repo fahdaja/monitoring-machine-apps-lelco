@@ -20,10 +20,15 @@ class Task extends Model {
     protected $fillable = [
         'id',
         'task_code',
+        'idempotency_key',
         'machine_id',
         'form_id',
         'assigned_user_id',
         'status',
+        'origin_type',
+        'source_task_id',
+        'source_condition_id',
+        'source_submission_id',
         'due_date',
         'end_date',
         'completed_at',
@@ -37,6 +42,8 @@ class Task extends Model {
         'completed_at' => 'datetime',
         'is_late'     => 'boolean',
         'late_days'   => 'integer',
+        // Origin task ini: SCHEDULE (dijadwalkan rutin) atau CONDITION (lanjutan lvl 2).
+        'origin_type' => 'string',
     ];
 
 
@@ -69,5 +76,27 @@ class Task extends Model {
     public function user()
     {
         return $this->belongsTo(User::class, 'assigned_user_id', 'id');
+    }
+
+    // ===== Provenance: dari mana task ini lahir =====
+
+    public function sourceTask()
+    {
+        return $this->belongsTo(Task::class, 'source_task_id', 'id');
+    }
+
+    public function triggerCondition()
+    {
+        return $this->belongsTo(ScheduleCondition::class, 'source_condition_id', 'id');
+    }
+
+    public function sourceSubmission()
+    {
+        return $this->belongsTo(TaskSubmission::class, 'source_submission_id', 'id');
+    }
+
+    public function isFollowUp(): bool
+    {
+        return $this->origin_type === 'CONDITION';
     }
 }

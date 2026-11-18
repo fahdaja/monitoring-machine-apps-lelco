@@ -16,8 +16,10 @@
     use App\Models\FormOption;
     use App\Models\Task;
     use App\Models\TaskSubmission;
+    use App\Models\ScheduleCondition;
     use App\Models\BreakdownTicket;
     use Carbon\Carbon;
+    use Illuminate\Database\UniqueConstraintViolationException;
 
     class TaskController extends Controller {
 
@@ -98,12 +100,31 @@
         ];
     }
 
-        public function index(){
-        $tasks = Task::with(['machine', 'form', 'user'])->whereIn('status', ['UPCOMING', 'IN_PROGRESS', 'OVERDUE', 'DUE', 'COMPLETED'])->orderBy('due_date', 'asc')->get();
+        /**
+         * Pesan penolakan seragam: user bukan PIC dari mesin pemilik task.
+         */
+        private function picDeniedMessage(Machine $machine): string
+        {
+            $pics = $machine->picNamesText();
 
-        $formattedTasks = $tasks->map(function($task){
+            return 'Task mesin ' . $machine->machine_name . ' (' . $machine->machine_code . ') '
+                . 'hanya boleh dikerjakan oleh PIC mesin tersebut'
+                . ($pics !== '' ? ": {$pics}" : '')
+                . '. Hubungi admin jika penanggung jawab mesin perlu diubah.';
+        }
+
+        public function index(){
+        $tasks = Task::with(['machine.pics', 'form', 'user', 'sourceTask.form', 'triggerCondition'])
+            ->whereIn('status', ['UPCOMING', 'IN_PROGRESS', 'OVERDUE', 'DUE', 'COMPLETED'])
+            ->orderBy('due_date', 'asc')
+            ->get();
+
+        $currentUser = auth()->user();
+
+        $formattedTasks = $tasks->map(function($task) use ($currentUser){
             $machine = $task->machine;
             $inspectorName = $task->user->full_name ?? 'Belum ditugaskan';
+            $sourceTask = $task->sourceTask;
 
             return [
                 'taskId' => $task->id,
@@ -112,12 +133,22 @@
                 'machineName' => $machine->machine_name,
                 'location' => $machine->location,
                 'activity' => $task->form->form_title,
+                'formLevel' => $task->form->form_level,
                 'scheduledDate' => $task->due_date ? $task->due_date->format('Y-m-d') : null,
                 'endDate'  => $task->end_date ? $task->end_date->format('Y-m-d') : null,
                 'status' => $task->status,
                 'inspectorName' => $inspectorName,
                 'completedAt' => $task->completed_at ? Carbon::parse($task->completed_at)->format('H:i') : null,
                 'assignedUserId' => $task->assigned_user_id,
+                // Provenance: panel detail & kalender butuh ini untuk membedakan task lanjutan.
+                'originType' => $task->origin_type ?: 'SCHEDULE',
+                'sourceTaskId' => $task->source_task_id,
+                'sourceTaskCode' => $sourceTask?->task_code,
+                'sourceFormTitle' => $sourceTask?->form?->form_title,
+                'conditionCode' => $task->triggerCondition?->condition_code,
+                // Gate PIC: tombol action di kalender hanya aktif untuk penanggung jawab mesin.
+                'canWork' => $machine ? $machine->canBeWorkedBy($currentUser) : true,
+                'picNames' => $machine?->picNamesText() ?? '',
             ];
         });
 
@@ -130,7 +161,6 @@
             'today' => $now->toDateString(),
             'tasks' => $formattedTasks,
         ];
-        // dd($tasks->toArray());
             return Inertia::render('tasks/index', [
                 'calendarData' => $calendarData
             ]);
@@ -140,6 +170,7 @@
         public function show($id)
     {
         $task = Task::with([
+            'machine.pics',
             'form.machine',
             'form.sections' => function($query) {
                 $query->orderBy('section_order', 'asc');
@@ -149,7 +180,10 @@
             },
             'form.sections.questions.options' => function($query) {
                 $query->orderBy('option_order', 'asc');
-            }
+            },
+            'sourceTask.form',
+            'triggerCondition.triggerQuestion',
+            'triggerCondition.triggerOption',
         ])->findOrFail($id);
 
         $userId = auth()->id();
@@ -159,13 +193,23 @@
             return redirect()->route('tasks.index')->with('error', 'Task ini sudah selesai dikerjakan.');
         }
 
+        // Gate PIC: hanya penanggung jawab mesin yang boleh membuka form inspeksi ini.
+        $machine = $task->machine;
+
+        if ($machine && ! $machine->canBeWorkedBy(auth()->user())) {
+            return redirect()->route('tasks.index')->with('error', $this->picDeniedMessage($machine));
+        }
+
         if (!is_null($task->assigned_user_id) && $task->assigned_user_id !== $userId) {
             return redirect()->route('tasks.index')
                 ->with('error', 'Task ini sedang dikerjakan atau sudah di-assign ke teknisi lain.');
         }
 
         if (is_null($task->assigned_user_id)) {
-            $updateData['assigned_user_id'] = $userId;
+            // Admin boleh melihat tanpa merampas penugasan dari PIC-nya.
+            if (! $machine || $machine->mayOwnTask(auth()->user())) {
+                $updateData['assigned_user_id'] = $userId;
+            }
         }
 
         if (in_array($task->status, ['DUE', 'OVERDUE', null ])) {
@@ -213,17 +257,40 @@
             }
         }
 
+        // Asal-usul task lanjutan: operator harus tahu kenapa form lvl 2 ini muncul.
+        $followUp = null;
+
+        if ($task->isFollowUp()) {
+            $followUp = [
+                'sourceTaskId'        => $task->source_task_id,
+                'sourceTaskCode'      => $task->sourceTask?->task_code,
+                'sourceFormTitle'     => $task->sourceTask?->form?->form_title,
+                'conditionCode'       => $task->triggerCondition?->condition_code,
+                'triggerQuestionText' => $task->triggerCondition?->triggerQuestion?->question_text,
+                'triggerOptionText'   => $task->triggerCondition?->triggerOption?->option_text,
+            ];
+        }
+
         // Kirim ke Inertia React
         return Inertia::render('tasks/show', [
             'task' => $task,
-            'initialAnswers' => $initialAnswersMap
+            'initialAnswers' => $initialAnswersMap,
+            'followUp' => $followUp,
         ]);
     }
     public function submit(Request $request, $id)
         {
             // 1. Load task beserta relasi form, sections, questions, dan options
             $task = Task::with(['form.sections.questions.options', 'form.machine'])->findOrFail($id);
-            
+
+            // 1b. Gate PIC: tolak submit dari user yang bukan penanggung jawab mesin
+            // (misalnya tab lama yang masih terbuka setelah PIC mesin diubah).
+            $taskMachine = $task->machine;
+
+            if ($taskMachine && ! $taskMachine->canBeWorkedBy(auth()->user())) {
+                return redirect()->route('tasks.index')->with('error', $this->picDeniedMessage($taskMachine));
+            }
+
             // 2. Validasi input dasar dari frontend
             $validated = $request->validate([
                 'answers' => 'nullable|array',
@@ -401,6 +468,10 @@
         Machine::where('id', $machineId)->update(['machine_status' => 'DOWN']);
         $submission->update(['escalation_ticket_id' => $ticket->id]);
     }
+
+                // 7b. Evaluasi kondisi trigger antar level form (task lvl 2 dibuat untuk besok)
+                $this->evaluateScheduleConditions($task, $enterpriseSnapshot, $submission->id ?? null);
+
                 // 8. Update status task jadi selesai (COMPLETED)
                 // Task OVERDUE tetap boleh disubmit — keterlambatan hanya dicatat untuk audit.
                 $isLate = $task->end_date && Carbon::today()->greaterThan($task->end_date);
@@ -438,9 +509,141 @@
         }
         
 
+    /**
+     * Evaluasi ScheduleCondition untuk form yang baru disubmit.
+     * Jika snapshot jawaban mengandung opsi trigger kondisi aktif,
+     * buat task lanjutan (lvl 2) dengan due_date besok.
+     *
+     * Dua invariant sekaligus:
+     *  1. satu follow-up per submission pemicu -> ditegakkan unique index tasks.idempotency_key
+     *  2. satu task per form target per tanggal due -> sama dengan invariant tasks:generate
+     * Keduanya dicatat ke log, jadi tidak ada lagi skenario "dilewati diam-diam".
+     */
+    public function evaluateScheduleConditions(Task $task, array $enterpriseSnapshot, ?int $submissionId = null): void
+    {
+        $conditions = ScheduleCondition::with(['triggerOption', 'targetForm'])
+            ->where('is_active', true)
+            ->where('trigger_form_id', $task->form_id)
+            ->get();
+
+        foreach ($conditions as $condition) {
+            if (!$this->snapshotMatchesTrigger($enterpriseSnapshot, $condition)) {
+                continue;
+            }
+
+            $targetForm = $condition->targetForm;
+
+            if (!$targetForm) {
+                Log::warning('Kondisi trigger dilewati: form target tidak ditemukan', [
+                    'condition_code' => $condition->condition_code,
+                    'source_task_id' => $task->id,
+                ]);
+
+                continue;
+            }
+
+            $dueDate = Carbon::tomorrow();
+            $windowDays = max(1, (int) $condition->due_window_days);
+            $idempotencyKey = 'COND:' . $task->id . ':' . $condition->id;
+
+            // Invariant 1: submission pemicu yang sama tidak boleh menghasilkan dua task.
+            if (Task::where('idempotency_key', $idempotencyKey)->exists()) {
+                Log::info('Kondisi trigger dilewati: task lanjutan dari submission ini sudah ada', [
+                    'condition_code'  => $condition->condition_code,
+                    'idempotency_key' => $idempotencyKey,
+                ]);
+
+                continue;
+            }
+
+            // Invariant 2: satu task per form target per tanggal due (cegah dobel di kalender
+            // saat dua task lvl 1 dengan due date berbeda disubmit pada hari yang sama).
+            $existingOnDate = Task::where('form_id', $condition->target_form_id)
+                ->whereDate('due_date', $dueDate->format('Y-m-d'))
+                ->first();
+
+            if ($existingOnDate) {
+                Log::info('Kondisi trigger dilewati: form target sudah punya task pada tanggal due itu', [
+                    'condition_code'   => $condition->condition_code,
+                    'source_task_id'   => $task->id,
+                    'existing_task_id' => $existingOnDate->id,
+                    'existing_task_code' => $existingOnDate->task_code,
+                    'due_date'         => $dueDate->toDateString(),
+                ]);
+
+                continue;
+            }
+
+            try {
+                $createdTask = Task::create([
+                    'machine_id'           => $targetForm->machine_id,
+                    'form_id'              => $condition->target_form_id,
+                    'task_code'            => 'TSK-' . strtoupper(uniqid()),
+                    'idempotency_key'      => $idempotencyKey,
+                    'due_date'             => $dueDate->format('Y-m-d'),
+                    'end_date'             => $dueDate->copy()->addDays($windowDays)->format('Y-m-d'),
+                    'status'               => 'UPCOMING',
+                    'assigned_user_id'     => null,
+                    'origin_type'          => 'CONDITION',
+                    'source_task_id'       => $task->id,
+                    'source_condition_id'  => $condition->id,
+                    'source_submission_id' => $submissionId,
+                ]);
+
+                Log::info('Kondisi trigger aktif: task lanjutan lvl 2 dibuat untuk besok', [
+                    'condition_code'  => $condition->condition_code,
+                    'source_task_id'  => $task->id,
+                    'trigger_form_id' => $condition->trigger_form_id,
+                    'target_form_id'  => $condition->target_form_id,
+                    'created_task_id' => $createdTask->id,
+                    'due_date'        => $dueDate->toDateString(),
+                ]);
+            } catch (UniqueConstraintViolationException $e) {
+                // Unique index idempotency_key = pagar terakhir saat dua submit balapan.
+                // Jenis error constraint lain tetap dilempar supaya transaction di-rollback.
+                Log::info('Kondisi trigger dilewati: idempotency_key sudah dipakai (race)', [
+                    'condition_code'  => $condition->condition_code,
+                    'idempotency_key' => $idempotencyKey,
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Cek apakah snapshot jawaban berisi opsi trigger dari sebuah kondisi.
+     */
+    private function snapshotMatchesTrigger(array $enterpriseSnapshot, ScheduleCondition $condition): bool
+    {
+        foreach ($enterpriseSnapshot['sections'] ?? [] as $section) {
+            foreach ($section['questions'] ?? [] as $question) {
+                if (($question['form_question_id'] ?? null) != $condition->trigger_question_id) {
+                    continue;
+                }
+
+                foreach ($question['selected_options'] ?? [] as $selected) {
+                    if ($selected['form_option_id'] == $condition->trigger_option_id) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
     public function saveDraft(Request $request, $id)
     {
         $task = Task::findOrFail($id);
+
+        $draftMachine = $task->machine;
+
+        if ($draftMachine && ! $draftMachine->canBeWorkedBy(auth()->user())) {
+            return response()->json([
+                'success' => false,
+                'message' => $this->picDeniedMessage($draftMachine),
+            ], 403);
+        }
+
         $rawAnswers = $request->input('answers', []);
         if (!is_array($rawAnswers)) {
             $rawAnswers = [];
@@ -610,6 +813,14 @@
             ], 404);
         }
 
+        // Scan hanya berhak mengambil task mesin yang PIC-nya user ini.
+        if (! $machine->canBeWorkedBy($request->user())) {
+            return response()->json([
+                'success' => false,
+                'message' => $this->picDeniedMessage($machine),
+            ], 403);
+        }
+
         // 2. Cari task aktif (DUE, OVERDUE, atau IN_PROGRESS) milik user ini
         $task = Task::where('machine_id', $machine->id)
             ->whereIn('status', ['DUE', 'OVERDUE', 'IN_PROGRESS'])
@@ -655,6 +866,14 @@
         if (!$machine) {
             return redirect()->route('tasks.index')
                 ->with('error', "Mesin dengan kode '{$machineCode}' tidak ditemukan di sistem.");
+        }
+
+        // Gate PIC untuk jalur scan QR (termasuk scan dari kamera HP).
+        $machine->load('pics');
+
+        if (! $machine->canBeWorkedBy($request->user())) {
+            return redirect()->route('tasks.index')
+                ->with('error', $this->picDeniedMessage($machine));
         }
 
         // Cari task apapun untuk mesin ini, tanpa filter user

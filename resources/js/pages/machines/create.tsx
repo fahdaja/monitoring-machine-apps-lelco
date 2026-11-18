@@ -2,6 +2,7 @@ import React from 'react';
 import { Head, Link, useForm } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import { Cpu, ArrowLeft, Save, ShieldCheck, MapPin, Plus, Trash2 } from 'lucide-react';
+import MachinePicPicker, { PicCandidate } from '@/components/machine-pic-picker';
 
 interface SpecItem {
     key: string;
@@ -9,7 +10,11 @@ interface SpecItem {
     value: string;
 }
 
-export default function MachineCreate() {
+interface MachineCreateProps {
+    picCandidates?: PicCandidate[];
+}
+
+export default function MachineCreate({ picCandidates = [] }: MachineCreateProps) {
     const { data, setData, post, processing, errors } = useForm({
         machine_name: '',
         category: '',
@@ -22,7 +27,7 @@ export default function MachineCreate() {
         location: '',
         department: '',
         area: '',
-        pic_department: '',
+        pic_user_ids: [] as number[],
         status: 'RUNNING',
         commission_date: '',
         specifications: [] as SpecItem[],
@@ -301,14 +306,16 @@ export default function MachineCreate() {
                             />
                         </div>
 
-                        <div>
-                            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">PIC Departemen</label>
-                            <input
-                                type="text"
-                                value={data.pic_department}
-                                onChange={e => setData('pic_department', e.target.value)}
-                                placeholder="Contoh: Budi Santoso"
-                                className="w-full border border-slate-200 rounded-xl px-4 py-3 text-xs outline-none focus:border-emerald-600 bg-slate-50/50 font-medium"
+                        {/* PIC bisa lebih dari satu orang: daftar ini yang mengunci siapa boleh mengerjakan task mesin */}
+                        <div className="sm:col-span-2 lg:col-span-3">
+                            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                                PIC Departemen (bisa lebih dari satu)
+                            </label>
+                            <MachinePicPicker
+                                candidates={picCandidates}
+                                value={data.pic_user_ids}
+                                onChange={ids => setData('pic_user_ids', ids)}
+                                error={errors.pic_user_ids}
                             />
                         </div>
 

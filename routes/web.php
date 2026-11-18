@@ -98,6 +98,13 @@ Route::middleware(['auth', 'CheckUserStatus','role:ADMIN'])->group(function () {
 Route::middleware(['auth', 'CheckUserStatus','role:ADMIN'])->group(function () {
     Route::get('/schedules', [ScheduleController::class, 'index'])->name('schedules.index');
     Route::post('/schedules', [ScheduleController::class, 'store'])->name('schedules.store');
+
+    // Kondisi trigger antar level form inspeksi (lvl 1 -> lvl 2)
+    Route::get('/schedules/condition-questions/{formId}', [ScheduleController::class, 'conditionQuestions'])->name('schedules.conditionQuestions');
+    Route::post('/schedule-conditions', [ScheduleController::class, 'storeCondition'])->name('schedule-conditions.store');
+    Route::put('/schedule-conditions/{id}', [ScheduleController::class, 'updateCondition'])->name('schedule-conditions.update');
+    Route::patch('/schedule-conditions/{id}/toggle', [ScheduleController::class, 'toggleConditionStatus'])->name('schedule-conditions.toggle');
+    Route::delete('/schedule-conditions/{id}', [ScheduleController::class, 'destroyCondition'])->name('schedule-conditions.destroy');
 });
 
 Route::middleware(['auth', 'CheckUserStatus', 'role:ADMIN'])->group(function () {

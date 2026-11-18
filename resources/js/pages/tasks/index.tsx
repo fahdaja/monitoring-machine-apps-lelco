@@ -18,7 +18,19 @@ export interface InspectionTask {
     inspectorName?: string;
     completedAt?: string;
     assignedUserId?: number | null;
+    // Provenance: CONDITION = task lanjutan lvl 2 hasil kondisi trigger.
+    formLevel?: number | null;
+    originType?: 'SCHEDULE' | 'CONDITION';
+    sourceTaskId?: number | null;
+    sourceTaskCode?: string | null;
+    sourceFormTitle?: string | null;
+    conditionCode?: string | null;
+    // Gate PIC: false = user login bukan penanggung jawab mesin pemilik task.
+    canWork?: boolean;
+    picNames?: string;
 }
+
+type OriginFilter = 'ALL' | 'ROUTINE' | 'FOLLOW_UP';
 
 interface InspectionCalendarData {
     year: number;
@@ -54,6 +66,19 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
     const [currentMonth, setCurrentMonth] = useState(currentCalendarData.month);
     const [selectedDate, setSelectedDate] = useState<string>(currentCalendarData.today);
     const [selectedTaskForModal, setSelectedTaskForModal] = useState<InspectionTask | null>(null);
+    const [originFilter, setOriginFilter] = useState<OriginFilter>('ALL');
+
+    const isFollowUp = (task: InspectionTask) => task.originType === 'CONDITION';
+
+    // Filter asal task dipakai bersama oleh kalender dan panel detail supaya jumlah
+    // titik/counter di kalender tidak melebihi daftar yang tampil.
+    const visibleTasks = currentCalendarData.tasks.filter((t) => {
+        if (originFilter === 'ROUTINE') return !isFollowUp(t);
+        if (originFilter === 'FOLLOW_UP') return isFollowUp(t);
+        return true;
+    });
+
+    const followUpCount = currentCalendarData.tasks.filter(isFollowUp).length;
 
 
     const handleVerifyAndStart = (task: InspectionTask, scannedCode: string) => {
@@ -89,7 +114,7 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
     return dateStr >= task.scheduledDate && dateStr <= task.endDate;
 };
 
-    const tasksForSelectedDate = currentCalendarData.tasks.filter((t) => isTaskOnDate(t, selectedDate, currentCalendarData.today));
+    const tasksForSelectedDate = visibleTasks.filter((t) => isTaskOnDate(t, selectedDate, currentCalendarData.today));
 
     // Navigasi Bulan Kalender
     const handlePrevMonth = () => {
@@ -140,6 +165,24 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
         return Math.ceil((end.getTime() - ref.getTime()) / (1000 * 60 * 60 * 24));
     }
 
+    // Task lanjutan digambar sebagai diamond oranye supaya langsung beda dari task rutin.
+    const getTaskDotClass = (task: InspectionTask) => {
+        if (isFollowUp(task)) return 'rotate-45 rounded-[1px] bg-orange-500';
+
+        const color =
+            task.status === 'OVERDUE'
+                ? 'bg-rose-500'
+                : task.status === 'DUE'
+                    ? 'bg-amber-500'
+                    : task.status === 'IN_PROGRESS'
+                        ? 'bg-indigo-500'
+                        : task.status === 'COMPLETED'
+                            ? 'bg-emerald-500'
+                            : 'bg-blue-500';
+
+        return `rounded-full ${color}`;
+    };
+
 
     // Render Hari Kalender (31 Hari)
     const renderCalendarDays = () => {
@@ -161,7 +204,7 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
         // 3. Tanggal-tanggal Bulan
         for (let day = 1; day <= currentCalendarData.daysInMonth; day++) {
             const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-            const dayTasks = currentCalendarData.tasks.filter((t) => isTaskOnDate(t, dateStr, currentCalendarData.today));
+            const dayTasks = visibleTasks.filter((t) => isTaskOnDate(t, dateStr, currentCalendarData.today));
             const isToday = dateStr === currentCalendarData.today;
             const isSelected = dateStr === selectedDate;
 
@@ -185,17 +228,7 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                 {dayTasks.slice(0, 3).map((t, idx) => (
                     <span
                         key={idx}
-                        className={`w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full ${
-                            t.status === 'OVERDUE'
-                                ? 'bg-rose-500'
-                                : t.status === 'DUE'
-                                    ? 'bg-amber-500'
-                                    : t.status === 'IN_PROGRESS'
-                                        ? 'bg-indigo-500'
-                                        : t.status === 'COMPLETED'
-                                            ? 'bg-emerald-500'
-                                            : 'bg-blue-500'
-                        }`}
+                        className={`w-1 h-1 sm:w-1.5 sm:h-1.5 ${getTaskDotClass(t)}`}
                     />
                 ))}
             </div>
@@ -234,7 +267,30 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
             Jadwal preventive inspection L1/L2. Pilih tanggal pada kalender untuk melihat task aktif.
         </p>
     </div>
-</div>
+
+                {/* Filter asal task: berlaku untuk kalender sekaligus panel detail */}
+                <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Tampilkan</span>
+                    {([
+                        ['ALL', 'Semua'],
+                        ['ROUTINE', 'Rutin'],
+                        ['FOLLOW_UP', `Lanjutan${followUpCount > 0 ? ` (${followUpCount})` : ''}`],
+                    ] as [OriginFilter, string][]).map(([value, label]) => (
+                        <button
+                            key={value}
+                            type="button"
+                            onClick={() => setOriginFilter(value)}
+                            className={`px-3 py-1.5 rounded-full text-[11px] font-bold border transition-colors cursor-pointer ${
+                                originFilter === value
+                                    ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                                    : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                            }`}
+                        >
+                            {label}
+                        </button>
+                    ))}
+                </div>
+            </div>
 
             {/* Calendar & Task Detail Layout */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -284,6 +340,7 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                         <span className="flex items-center gap-1 sm:gap-1.5"><i className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-blue-500 inline-block" /> Upcoming</span>
                         <span className="flex items-center gap-1 sm:gap-1.5"><i className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-indigo-500 inline-block" /> In Progress</span> {/* 🚀 Tambahan */}
                         <span className="flex items-center gap-1 sm:gap-1.5"><i className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-500 inline-block" /> Completed</span>
+                        <span className="flex items-center gap-1 sm:gap-1.5"><i className="w-1.5 h-1.5 sm:w-2 sm:h-2 rotate-45 rounded-[1px] bg-orange-500 inline-block" /> Lanjutan</span>
                     </div>
                 </div>
 
@@ -315,15 +372,30 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
 }`}
                                 >
                                     <div className="flex items-start justify-between gap-2 mb-2">
-    <div className="flex items-center gap-2 min-w-0">
+    <div className="flex items-center gap-2 min-w-0 flex-wrap">
         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${getBadgeClass(t.status)}`}>
             {t.status}
         </span>
+        {isFollowUp(t) && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 bg-orange-100 text-orange-800 border-orange-200 tracking-wider">
+                LANJUTAN
+            </span>
+        )}
     </div>
     <span className="text-[10px] font-mono text-slate-400 truncate shrink-0 max-w-[45%] text-right">{t.taskCode}</span>
 </div>
 
                                     <h4 className="font-extrabold text-slate-900 text-sm leading-snug">{t.activity}</h4>
+
+                                    {isFollowUp(t) && (
+                                        <p className="mt-1 text-[11px] font-semibold text-orange-700 leading-snug">
+                                            Lanjutan dari inspeksi lvl 1
+                                            <span className="block text-[10px] font-mono text-slate-500 mt-0.5">
+                                                {t.sourceTaskCode || '-'}
+                                                {t.conditionCode ? ` \u00b7 ${t.conditionCode}` : ''}
+                                            </span>
+                                        </p>
+                                    )}
 
                                     <div className="mt-2 text-xs text-slate-600 font-bold">
                                             {t.machineName}
@@ -377,6 +449,20 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                                                     <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 w-full text-center">
                                                         Inspeksi Selesai ✓
                                                     </span>
+                                                );
+                                            }
+
+                                            // 🛑 Bukan PIC mesin: task boleh dilihat, tapi tidak boleh dikerjakan
+                                            if (t.canWork === false) {
+                                                return (
+                                                    <div className="w-full py-2 px-3 text-[11px] font-semibold text-rose-800 bg-rose-50 border border-rose-200 rounded-lg text-center">
+                                                        ⛔ Hanya PIC mesin ini yang boleh mengerjakan
+                                                        {t.picNames ? (
+                                                            <span className="block font-normal text-[10px] mt-0.5 text-rose-700 break-words">
+                                                                PIC: {t.picNames}
+                                                            </span>
+                                                        ) : null}
+                                                    </div>
                                                 );
                                             }
 

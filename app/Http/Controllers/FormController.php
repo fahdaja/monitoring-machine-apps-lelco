@@ -13,6 +13,7 @@ use App\Models\Machine;
 use App\Models\FormSection;
 use App\Models\FormQuestion;
 use App\Models\FormOption;
+use App\Models\ScheduleCondition;
 use App\Models\Task;
 
 class FormController extends Controller
@@ -77,6 +78,27 @@ class FormController extends Controller
         return (int) $machineId;
     }
 
+    /**
+     * Level template hanya relevan untuk INSPECTION (rantai lvl 1 -> lvl 2).
+     * Non-INSPECTION selalu NULL; INSPECTION wajib memilih Level 1 / Level 2.
+     */
+    private function resolveFormLevel(FormType $type, $level): ?int
+    {
+        if ($type !== FormType::INSPECTION) {
+            return null;
+        }
+
+        $level = (int) $level;
+
+        if (! in_array($level, [1, 2], true)) {
+            throw ValidationException::withMessages([
+                'metadata.form_level' => 'Form INSPECTION wajib memilih level template (Level 1 atau Level 2).',
+            ]);
+        }
+
+        return $level;
+    }
+
     public function store(Request $request)
 {
     return DB::transaction(function () use ($request) {
@@ -84,6 +106,7 @@ class FormController extends Controller
         $validate = $request->validate([
             'metadata.form_type'                 => 'required|string|in:'.implode(',', FormType::values()),
             'metadata.machine_id'              => 'nullable|string|exists:machines,id',
+            'metadata.form_level'              => 'nullable|integer|in:1,2',
             'metadata.form_title'                => 'required|string|max:255',
             'metadata.form_description'          => 'nullable|string',
 
@@ -112,6 +135,7 @@ class FormController extends Controller
         $type = FormType::from($meta['form_type']);
         $machineId = $this->resolveMachineId($type, $meta['machine_id'] ?? null);
         $machine = $machineId ? Machine::find($machineId) : null;
+        $formLevel = $this->resolveFormLevel($type, $meta['form_level'] ?? null);
 
         do {
             $prefix = $type->isTicketTransition() ? 'TRN' : 'FRM'.substr(strtoupper((string) $machine->machine_type), 0, 3);
@@ -125,6 +149,7 @@ class FormController extends Controller
         $form->form_code        = $formCode;
         $form->form_title       = $meta['form_title'];
         $form->form_description = $meta['form_description'] ?? '-';
+        $form->form_level       = $formLevel;
         $form->save();
         
         // Array penampung untuk memetakan index section ke ID database asli (untuk goto_form_section_id)
@@ -223,9 +248,23 @@ class FormController extends Controller
     )->get();
 
 
+    // Rujukan kondisi trigger yang masih memakai pertanyaan/opsi form ini.
+    // Dipakai builder untuk menolak penghapusan sejak klik ikon trash (bukan saat submit).
+    $conditionRefs = ScheduleCondition::with('targetForm')
+        ->where('trigger_form_id', $form->id)
+        ->get()
+        ->map(fn ($condition) => [
+            'question_id'       => $condition->trigger_question_id,
+            'option_id'         => $condition->trigger_option_id,
+            'condition_code'    => $condition->condition_code,
+            'target_form_title' => $condition->targetForm?->form_title,
+        ])
+        ->values();
+
     return Inertia::render('forms/edit', [ // Ganti 'forms/{id}/edit' menjadi 'forms/edit' (atau 'forms/Edit')
         'form' => $form,
         'machines' => $machines,
+        'conditionRefs' => $conditionRefs,
     ]); 
 }
 
@@ -239,6 +278,7 @@ class FormController extends Controller
             $validate = $request->validate([
                 'metadata.form_type'                 => 'required|string|in:'.implode(',', FormType::values()),
                 'metadata.machine_id'              => 'nullable|string|exists:machines,id',
+                'metadata.form_level'              => 'nullable|integer|in:1,2',
                 'metadata.form_title'                => 'required|string|max:255',
                 'metadata.form_description'          => 'nullable|string',
 
@@ -263,16 +303,74 @@ class FormController extends Controller
                 'sections.*.questions.*.options.*.goto_form_section_id' => 'nullable|integer|exists:form_sections,id', // Tambahan validasi untuk goto section
                 'sections.*.questions.*.is_required'   => 'required|boolean',
                 'sections.*.questions.*.validation_rules' => 'nullable',
+            ], [
+                // Pesan ramah untuk kasus "hapus semua pertanyaan di satu bagian"
+                // (sebelumnya error generik 'sections.0.questions' yang membingungkan).
+                'sections.*.questions.required' => 'Setiap bagian harus memiliki minimal 1 pertanyaan.',
+                'sections.*.questions.min' => 'Setiap bagian harus memiliki minimal 1 pertanyaan.',
             ]);
+
+            // ===== Guard kondisi trigger =====
+            // Pertanyaan/opsi yang dibuang user di builder terhapus permanen, dan FK cascade
+            // ikut menghapus kondisi trigger yang masih merujuk ke situ secara diam-diam.
+            // Rename teks aman (ID dipertahankan updateOrCreate) — hanya penghapusan yang diblok.
+            $keptSectionIds = collect($validate['sections'])->pluck('id')->filter()->values();
+            $keptQuestionIds = collect($validate['sections'])
+                ->flatMap(fn ($section) => collect($section['questions'])->pluck('id'))
+                ->filter()->values();
+            $keptOptionIds = collect($validate['sections'])
+                ->flatMap(fn ($section) => collect($section['questions']))
+                ->flatMap(fn ($question) => collect($question['options'] ?? [])->pluck('id'))
+                ->filter()->values();
+
+            $doomedQuestionIds = FormQuestion::where('form_id', $form->id)
+                ->whereNotIn('id', $keptQuestionIds->isEmpty() ? [0] : $keptQuestionIds->all())
+                ->pluck('id');
+
+            $doomedOptionIds = FormOption::whereIn('form_question_id', $doomedQuestionIds->isEmpty() ? [0] : $doomedQuestionIds->all())
+                ->pluck('id')
+                ->merge(
+                    FormOption::whereIn('form_question_id', $keptQuestionIds->isEmpty() ? [0] : $keptQuestionIds->all())
+                        ->whereNotIn('id', $keptOptionIds->isEmpty() ? [0] : $keptOptionIds->all())
+                        ->pluck('id')
+                )
+                ->unique()->values();
+
+            if ($doomedQuestionIds->isNotEmpty() || $doomedOptionIds->isNotEmpty()) {
+                $brokenConditions = ScheduleCondition::where(function ($query) use ($doomedQuestionIds, $doomedOptionIds) {
+                    if ($doomedQuestionIds->isNotEmpty()) {
+                        $query->whereIn('trigger_question_id', $doomedQuestionIds->all());
+                    }
+                    if ($doomedOptionIds->isNotEmpty()) {
+                        $query->orWhereIn('trigger_option_id', $doomedOptionIds->all());
+                    }
+                })->get();
+
+                if ($brokenConditions->isNotEmpty()) {
+                    $targets = $brokenConditions->load('targetForm')
+                        ->map(fn ($condition) => $condition->targetForm?->form_title ?? $condition->condition_code)
+                        ->unique()
+                        ->implode(', ');
+
+                    // ValidationException agar edit.tsx menerima errors.condition di onError
+                    // (redirect dianggap success oleh Inertia dan memunculkan toast sukses palsu).
+                    throw ValidationException::withMessages([
+                        'condition' => "Perubahan tidak disimpan: pertanyaan/opsi yang dihapus masih dipakai kondisi trigger jadwal untuk form ({$targets}). Hapus atau ubah kondisi itu di halaman Pengaturan Pola Jadwal dulu.",
+                    ]);
+                }
+            }
 
             $meta = $validate['metadata'];
             $type = FormType::from($meta['form_type']);
             $machineId = $this->resolveMachineId($type, $meta['machine_id'] ?? null);
+            // Saat update: payload tanpa form_level (mis. tab lama) mempertahankan level lama.
+            $formLevel = $this->resolveFormLevel($type, $meta['form_level'] ?? $form->form_level);
 
             // Update info utama form
             $form->update([
                 'form_type'        => $type->value,
                 'machine_id'       => $machineId,
+                'form_level'       => $formLevel,
                 'form_title'       => $meta['form_title'],
                 'form_description' => $meta['form_description'] ?? '-',
             ]);
@@ -424,6 +522,21 @@ class FormController extends Controller
 
         return DB::transaction(function () use ($id) {
             $form = Form::with('sections.questions.options')->findOrFail($id);
+
+            // Guard: form masih dipakai kondisi trigger (lvl 1/lvl 2) — FK cascade akan
+            // menghapus kondisinya secara diam-diam, jadi penghapusan diblok.
+            $relatedConditions = ScheduleCondition::where(function ($query) use ($form) {
+                $query->where('trigger_form_id', $form->id)
+                    ->orWhere('target_form_id', $form->id);
+            })->get();
+
+            if ($relatedConditions->isNotEmpty()) {
+                $codes = $relatedConditions->pluck('condition_code')->implode(', ');
+
+                return redirect()->route('forms.index')
+                    ->with('error', "Form tidak dapat dihapus karena masih dipakai kondisi trigger jadwal ({$codes}). Hapus kondisi tersebut terlebih dahulu di halaman Pengaturan Pola Jadwal.");
+            }
+
             foreach ($form->sections as $section) {
                 foreach ($section->questions as $question) {
                     if ($question->question_image) {

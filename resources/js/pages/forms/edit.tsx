@@ -56,6 +56,7 @@ interface FormModel {
     id: number;
     form_code: string;
     form_type?: string;
+    form_level?: number | null;
     form_title: string;
     form_description?: string;
     machine_id: number | null;
@@ -64,9 +65,17 @@ interface FormModel {
     is_active: boolean;
 }
 
+interface ConditionRef {
+    question_id: number | null;
+    option_id: number | null;
+    condition_code: string;
+    target_form_title?: string | null;
+}
+
 interface Props {
     form: FormModel;
     machines: Machine[];
+    conditionRefs?: ConditionRef[];
 }
 
 interface ToastPayload {
@@ -75,13 +84,14 @@ interface ToastPayload {
     description: string;
 }
 
-export default function FormEdit({ form, machines }: Props) {
+export default function FormEdit({ form, machines, conditionRefs = [] }: Props) {
     const { data, setData, put, post, processing, errors } = useForm({
         metadata: {
             form_code: form?.form_code || '',
             form_type: form?.form_type || 'INSPECTION',
             form_title: form?.form_title || '',
             form_description: form?.form_description || '',
+            form_level: form?.form_level ?? null,
             machine_id: form?.machine_id || '',
         },
         sections: form?.sections && form.sections.length > 0 ? form.sections.map((sec, sIdx) => ({
@@ -112,8 +122,8 @@ export default function FormEdit({ form, machines }: Props) {
                         ? Number(opt.goto_form_section_id)
                         : null,
                 })) : [
-                    { option_text: 'Normal (OK)', is_normal: true, option_order: 1, goto_form_section_id: null },
-                    { option_text: 'Rusak (NG)', is_normal: false, option_order: 2, goto_form_section_id: null }
+                    { id: undefined, option_text: 'Normal (OK)', is_normal: true, option_order: 1, goto_form_section_id: null },
+                    { id: undefined, option_text: 'Rusak (NG)', is_normal: false, option_order: 2, goto_form_section_id: null }
                 ]
             })) : []
         })) : [
@@ -131,8 +141,8 @@ export default function FormEdit({ form, machines }: Props) {
                         standard_text: '',
                         validation_rules: [{ validation_error_message: '', expected_answer: '', allowed_file_type: [], max_file_size: '' }],
                         options: [
-                            { option_text: 'Normal (OK)', is_normal: true, option_order: 1, goto_form_section_id: null },
-                            { option_text: 'Rusak (NG)', is_normal: false, option_order: 2, goto_form_section_id: null }
+                            { id: undefined, option_text: 'Normal (OK)', is_normal: true, option_order: 1, goto_form_section_id: null },
+                            { id: undefined, option_text: 'Rusak (NG)', is_normal: false, option_order: 2, goto_form_section_id: null }
                         ],
                     }
                 ],
@@ -253,8 +263,32 @@ export default function FormEdit({ form, machines }: Props) {
         setData('sections', updated);
     };
 
+    // Ikon trash ditolak sejak klik kalau item yang dibuang masih dipakai kondisi trigger jadwal.
+    const conditionRefForQuestion = (questionId?: number) =>
+        questionId ? conditionRefs.find(ref => ref.question_id === questionId) : undefined;
+
+    const conditionRefForOption = (optionId?: number) =>
+        optionId ? conditionRefs.find(ref => ref.option_id === optionId) : undefined;
+
+    const blockConditionMessage = (ref: ConditionRef, what: string) =>
+        `${what} masih dipakai kondisi trigger jadwal untuk form (${ref.target_form_title || ref.condition_code}). Hapus atau ubah kondisi itu di halaman Pengaturan Pola Jadwal dulu.`;
+
     const removeSection = (sIndex: number) => {
         if (data.sections.length <= 1) return;
+        const section = data.sections[sIndex];
+        const refQuestion = section.questions.map(q => conditionRefForQuestion(q.id)).find(Boolean);
+        const refOption = section.questions
+            .flatMap(q => q.options ?? [])
+            .map(o => conditionRefForOption(o.id))
+            .find(Boolean);
+        if (refQuestion) {
+            setErrorMessage(blockConditionMessage(refQuestion, 'Bagian ini memuat pertanyaan yang'));
+            return;
+        }
+        if (refOption) {
+            setErrorMessage(blockConditionMessage(refOption, 'Bagian ini memuat jawaban yang'));
+            return;
+        }
         const updated = data.sections.filter((_, i) => i !== sIndex);
         setData('sections', updated);
         setActiveSectionIndex(Math.max(0, sIndex - 1));
@@ -262,10 +296,43 @@ export default function FormEdit({ form, machines }: Props) {
     };
 
     const removeQuestion = (sIndex: number, qIndex: number) => {
+        const section = data.sections[sIndex];
+        const question = section.questions[qIndex];
+
+        if (section.questions.length <= 1) {
+            setErrorMessage(`Bagian ${sIndex + 1} harus memiliki minimal 1 pertanyaan.`);
+            return;
+        }
+
+        const refQuestion = conditionRefForQuestion(question.id);
+        if (refQuestion) {
+            setErrorMessage(blockConditionMessage(refQuestion, 'Pertanyaan ini'));
+            return;
+        }
+
+        const refOption = (question.options ?? []).map(o => conditionRefForOption(o.id)).find(Boolean);
+        if (refOption) {
+            setErrorMessage(blockConditionMessage(refOption, 'Salah satu jawaban pertanyaan ini'));
+            return;
+        }
+
         const updated = [...data.sections];
         updated[sIndex].questions = updated[sIndex].questions.filter((_, i) => i !== qIndex);
         setData('sections', updated);
         setActiveFocus(Math.max(0, qIndex - 1));
+    };
+
+    const removeOption = (sIndex: number, qIndex: number, oIndex: number) => {
+        const question = data.sections[sIndex].questions[qIndex];
+        const option = question.options[oIndex];
+
+        const refOption = conditionRefForOption(option.id);
+        if (refOption) {
+            setErrorMessage(blockConditionMessage(refOption, 'Jawaban ini'));
+            return;
+        }
+
+        handleQuestionChange(sIndex, qIndex, 'options', question.options.filter((_, i) => i !== oIndex));
     };
 
     const duplicateQuestion = (sIndex: number, qIndex: number) => {
@@ -372,8 +439,20 @@ export default function FormEdit({ form, machines }: Props) {
             return;
         }
 
+        if (data.metadata.form_type === 'INSPECTION' && data.metadata.form_level !== 1 && data.metadata.form_level !== 2) {
+            setErrorMessage('Form INSPECTION wajib memilih level template (Level 1 / Level 2).');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            return;
+        }
+
         for (let sIndex = 0; sIndex < data.sections.length; sIndex++) {
             const section = data.sections[sIndex];
+
+            if (!section.questions || section.questions.length === 0) {
+                setErrorMessage(`Bagian ${sIndex + 1} harus memiliki minimal 1 pertanyaan.`);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                return;
+            }
 
             if (!isTicketing && (!section.section_title || section.section_title.trim() === '')) {
                 setErrorMessage(`Judul pada Bagian ${sIndex + 1} tidak boleh kosong!`);
@@ -414,6 +493,7 @@ export default function FormEdit({ form, machines }: Props) {
                 ...q,
                 validation_rules: q.validation_rules,
                 options: q.options.map(opt => ({
+                    id: opt.id ?? null,
                     option_text: opt.option_text,
                     is_normal: opt.is_normal,
                     option_order: opt.option_order,
@@ -431,8 +511,11 @@ export default function FormEdit({ form, machines }: Props) {
             onSuccess: () => {
                 setToast({ type: 'success', title: 'Berhasil Disimpan', description: 'Template form berhasil diperbarui.' });
             },
-            onError: () => {
-                setToast({ type: 'error', title: 'Gagal Menyimpan', description: 'Periksa kembali inputan Anda.' });
+            onError: (errors) => {
+                // Error paling relevan dulu: pesan kondisi trigger > pesan validasi lain > teks generik.
+                const firstError = errors?.condition || (Object.values(errors ?? {}) as Array<string | string[]>)[0];
+                const description = typeof firstError === 'string' ? firstError : firstError?.[0];
+                setToast({ type: 'error', title: 'Gagal Menyimpan', description: description || 'Periksa kembali inputan Anda.' });
             },
         });
     };
@@ -507,6 +590,25 @@ export default function FormEdit({ form, machines }: Props) {
                         className="w-full text-xs text-slate-600 border-b border-slate-100 pb-2 focus:border-emerald-600 focus:outline-none bg-transparent"
                     />
 
+                    {data.metadata.form_type === 'INSPECTION' && (
+                        <div>
+                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Level Template *</label>
+                            <div className="flex gap-2">
+                                {[1, 2].map(lvl => (
+                                    <button
+                                        key={lvl}
+                                        type="button"
+                                        onClick={() => handleMetadataChange('form_level', lvl)}
+                                        className={`px-3 py-2 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${data.metadata.form_level === lvl ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-emerald-300 hover:text-emerald-700'}`}
+                                    >
+                                        Level {lvl}
+                                    </button>
+                                ))}
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-medium mt-1 block">Level 1 = inspeksi rutin (dijadwalkan). Level 2 = form lanjutan yang dikerjakan otomatis dari kondisi trigger.</span>
+                        </div>
+                    )}
+
                     {requiresMachine && (
                     <div>
                         <label className="block text-[11px] font-semibold text-slate-600 mb-1">Target Mesin *</label>
@@ -518,7 +620,7 @@ export default function FormEdit({ form, machines }: Props) {
                             <option value="">Pilih Mesin...</option>
                             {machines.map(m => (
                                 <option key={m.machine_id} value={m.machine_id}>
-                                    {m.machine_code} - {m.machine_name} ({m.location})
+                                    {m.machine_code}  | Mesin {m.machine_name} |📍 {m.location}
                                 </option>
                             ))}
                         </select>
@@ -750,10 +852,7 @@ export default function FormEdit({ form, machines }: Props) {
                                                         {q.options.length > 1 && (
                                                             <button
                                                                 type="button"
-                                                                onClick={() => {
-                                                                    const opts = q.options.filter((_, i) => i !== oIndex);
-                                                                    handleQuestionChange(sIndex, qIndex, 'options', opts);
-                                                                }}
+                                                                onClick={() => removeOption(sIndex, qIndex, oIndex)}
                                                                 className="text-slate-400 hover:text-rose-600 px-1.5 font-bold cursor-pointer self-end sm:self-center shrink-0"
                                                             >
                                                                 &times;

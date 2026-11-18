@@ -2,6 +2,7 @@ import React from 'react';
 import { Head, Link, useForm } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import { Cpu, ArrowLeft, Save, ShieldCheck, MapPin, Plus, Trash2, Hash } from 'lucide-react';
+import MachinePicPicker, { PicCandidate } from '@/components/machine-pic-picker';
 
 interface SpecItem {
     key: string;
@@ -10,6 +11,7 @@ interface SpecItem {
 }
 
 interface MachineEditProps {
+    picCandidates?: PicCandidate[];
     machine: {
         id: number;
         machine_code: string;
@@ -24,14 +26,14 @@ interface MachineEditProps {
         location: string;
         department?: string;
         area?: string;
-        pic_department?: string;
+        pic_user_ids?: number[];
         status: string;
         commission_date?: string;
         specifications: SpecItem[];
     };
 }
 
-export default function MachineEdit({ machine }: MachineEditProps) {
+export default function MachineEdit({ machine, picCandidates = [] }: MachineEditProps) {
     const { data, setData, put, processing, errors } = useForm({
         machine_name: machine.machine_name || '',
         category: machine.category || '',
@@ -44,7 +46,7 @@ export default function MachineEdit({ machine }: MachineEditProps) {
         location: machine.location || '',
         department: machine.department || '',
         area: machine.area || '',
-        pic_department: machine.pic_department || '',
+        pic_user_ids: (machine.pic_user_ids || []) as number[],
         status: machine.status || 'RUNNING',
         commission_date: machine.commission_date || '',
         specifications: (machine.specifications || []) as SpecItem[],
@@ -325,14 +327,16 @@ export default function MachineEdit({ machine }: MachineEditProps) {
                             />
                         </div>
 
-                        <div>
-                            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">PIC Departemen</label>
-                            <input
-                                type="text"
-                                value={data.pic_department}
-                                onChange={e => setData('pic_department', e.target.value)}
-                                placeholder="Contoh: Budi Santoso"
-                                className="w-full border border-slate-200 rounded-xl px-4 py-3 text-xs outline-none focus:border-emerald-600 bg-slate-50/50 font-medium"
+                        {/* PIC mesin bisa banyak orang; hanya mereka (+ admin) yang boleh mengerjakan task mesin ini */}
+                        <div className="sm:col-span-2 lg:col-span-3">
+                            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                                PIC Departemen (bisa lebih dari satu)
+                            </label>
+                            <MachinePicPicker
+                                candidates={picCandidates}
+                                value={data.pic_user_ids}
+                                onChange={ids => setData('pic_user_ids', ids)}
+                                error={errors.pic_user_ids}
                             />
                         </div>
 
