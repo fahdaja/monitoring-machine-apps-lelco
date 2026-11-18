@@ -1,0 +1,115 @@
+# Cara pakai:
+#
+#   1. copy .env.docker.example .env.docker
+#      lalu isi APP_KEY (lihat cara ambilnya di file contoh itu).
+#   2. docker compose up -d --build
+#   3. buka http://localhost:8000
+#
+# Isi data contoh (admin/operator/maintenance + 4 mesin + form inspeksi):
+#   docker compose exec app php artisan migrate --seed --force
+#
+# Pakai MySQL yang sudah ada (lokal/server kantor), bukan container db:
+#   - set DB_HOST=host.docker.internal + kredensial aslinya di .env.docker
+#   - docker compose up -d --build --no-deps app
+#
+# KENAPA SEMUA KONFIG LEWAT env_file, BUKAN ${VARIABEL}:
+# Compose otomatis membaca file .env di folder proyek untuk interpolasi ${}.
+# Di proyek ini .env itu adalah .env development Laravel, yang isinya
+# APP_ENV=local, DB_USERNAME=root, DB_PASSWORD= (kosong). Kalau compose pakai
+# ${DB_USERNAME:-lelco}, nilai root dari .env Laravel diam-diam menimpa
+# .env.docker dan container dapat user yang tidak ada di MySQL. Jadi cukup:
+# - .env.docker  => konfigurasi container (dibaca via env_file)
+# - ${PORT}      => hanya untuk port, nama variabelnya tidak ada di .env Laravel.
+
+name: lelco-form
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: lelco-form:local
+    restart: unless-stopped
+    ports:
+      # Dalam container nginx listen 80; dari luar tetap 8000 supaya sama
+      # seperti kebiasaan dev (APP_URL=http://localhost:8000).
+      - "${APP_PORT:-8000}:80"
+    env_file:
+      - .env.docker
+    volumes:
+      # CUMA satu volumedata: storage/app. Isinya foto bukti pemeriksaan &
+      # gambar pertanyaan (disk `public`) = data user yang tidak ada di DB,
+      # jadi hilang kalau container di-recreate tanpa volume.
+      #
+      # bootstrap/cache dan storage/framework SENGAJA tidak dibuatkan volume.
+      # Keduanya cuma cache yang bisa dibangun ulang, dan volume named akan
+      # menyeret cache lama ke deploy berikutnya (config.php / compiled view
+      # lawas tetap terpakai walaupun image-nya sudah baru).
+      - app-storage:/var/www/html/storage/app
+    extra_hosts:
+      # Membuat DB_HOST=host.docker.internal benar-benar resolve (di Docker
+      # Desktop juga tidak merugikan).
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    # utf8mb4 dipaksa di server supaya option di bawah tidak bisa di-override
+    # koneksi client (kolom full_name / option_text berisi teks Indonesia).
+    # Zona waktu dipakai angka (+07:00), bukan nama (Asia/Jakarta): nama zona
+    # butuh paket tzdata di dalam image mysql, dan kalau tidak ada, mysqld bisa
+    # menolak start. Offset numerik selalu jalan.
+    # Catatan: tidak ada satu pun query app yang pakai NOW()/CURRENT_TIMESTAMP
+    # (semua tanggal dihitung di PHP, config/app.php timezone Asia/jakarta),
+    # jadi jam DB cuma cosmetic — tapi disamakan biar aman untuk query ke depan.
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-character-set-client-handshake
+      - --default-time-zone=+07:00
+    # MYSQL_* dibaca dari .env.docker yang sama; app container cuma menganggap
+    # variabel ekstra yang tidak dipakai, jadi satu file untuk dua service aman.
+    # Tanpa file itu, image MySQL menolak start ("MYSQL_ROOT_PASSWORD ... must
+    # be set") — itu bukan bug compose, itu perintah untuk langkah 1.
+    env_file:
+      - .env.docker
+    ports:
+      # 127.0.0.1 itu penting di server: tanpa prefix ini Docker bind ke
+      # 0.0.0.0 dan MySQL lu kejepit dari internet (cuma nunggu bot scan).
+      # Akses dari laptop pakai SSH tunnel: ssh -L 3307:127.0.0.1:3307 user@server
+      # lalu DBeaver ke localhost:3307. Kalau MySQL lokal di server sudah pakai
+      # 3307, geser lewat DB_HOST_PORT di .env.docker.
+      - "127.0.0.1:${DB_HOST_PORT:-3307}:3306"
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      # $$ supaya $MYSQL_ROOT_PASSWORD dievaluasi di dalam container, bukan
+      # oleh interpolasi compose.
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+
+  # Opsional. Nyalakan: docker compose --profile tools up -d
+  # lalu buka http://localhost:8081 (login server: db).
+  db-ui:
+    image: phpmyadmin:5
+    profiles: ["tools"]
+    restart: unless-stopped
+    ports:
+      - "${PMA_PORT:-8081}:80"
+    environment:
+      PMA_HOST: db
+      PMA_ARBITRARY: "1"
+      UPLOAD_LIMIT: 64M
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db-data:
+  app-storage:

@@ -1,0 +1,82 @@
+# Isi build context untuk image ini. Tujuannya dua:
+#   1. Build lebih cepat & image lebih kecil.
+#   2. Yang berbahaya tidak ikut terbawa: .env aslinya, public/hot, sqlite dev.
+#
+# PENTING: folder docker/ TIDAK di-ignore, karena Dockerfile COPY dari situ.
+
+# ---- Dependency & hasil build (dibuat ulang di dalam stage assets) ----
+node_modules
+vendor
+public/build
+public/hot
+public/storage
+composer.phar
+npm-debug.log*
+yarn-error.log*
+
+# ---- Rahasia & konfigurasi lokal ----
+# Image membaca konfigurasi dari environment (compose), bukan file .env.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+secrets/
+
+# ---- Database lokal & data runtime ----
+database/*.sqlite
+database/*.sqlite-journal
+database/*.sqlite-wal
+database/*.sqlite-shm
+storage/logs/*
+storage/framework/cache/data/*
+storage/framework/sessions/*
+storage/framework/views/*
+storage/framework/testing/*
+storage/inertia-devtools/*
+storage/app/private/*
+storage/app/public/*
+bootstrap/cache/*
+
+# ---- Alat bantu / sampah sementara di workspace ----
+temp_*.php
+tmp_*.php
+simulate_day.php
+*.log
+.phpunit.result.cache
+.phpunit.cache
+phpunit.xml.bak
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- Git & IDE ----
+.git
+.gitignore
+.gitattributes
+.github
+.idea
+.vscode
+.qoder
+.agents
+.claude
+.cursor
+.junie
+
+# ---- File Docker itu sendiri (tidak perlu masuk image) ----
+# docker/ sengaja tidak di-ignore: nginx.conf, supervisord.conf, entrypoint.sh
+# dibutuhkan oleh COPY di Dockerfile.
+Dockerfile
+.dockerignore
+docker-compose.yml
+docker-compose.*.yml
+
+# ---- Paling akhir: yang WAJIB tetap ikut ----
+# Aturan .dockerignore dipakai last-match-wins, jadi negasi harus di bawah
+# supaya tidak ditimpa oleh `storage/.../*` dan `bootstrap/cache/*` di atas.
+# Tanpa .gitignore ini, folder storage/logs & bootstrap/cache tidak ikut ke
+# context (Docker tidak menyalin folder yang isinya ke-saring habis).
+!storage/**/.gitignore
+!bootstrap/cache/.gitignore
+!docker/.gitignore
