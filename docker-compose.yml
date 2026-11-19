@@ -104,7 +104,7 @@ services:
       timeout: 5s
       retries: 30
       start_period: 40s
-sed -i 's/^      - --character-set-server=utf8mb4$/      - mysqld\n      - --character-set-server=utf8mb4/' docker-compose.yml
+
   # Opsional. Nyalakan: docker compose --profile tools up -d
   # lalu buka http://localhost:8081 (login server: db).
   db-ui:
