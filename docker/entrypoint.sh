@@ -37,6 +37,28 @@ if [ "${DB_CONNECTION}" != "sqlite" ] && [ -z "${DB_HOST}" ]; then
     exit 1
 fi
 
+# 2a. Penjaga konsistensi kredensial -------------------------------------
+# Service app (DB_*) dan container db (MYSQL_*) membaca SATU file yang sama,
+# jadi nilai yang berbeda berarti ada baris yang keliru ketik. Semua ini
+# menyebabkan 1044/1045 yang pesannya menyesatkan karena MySQL sudah di-init
+# dengan nilai lama (MYSQL_* hanya dibaca saat data dir kosong). Password tidak
+# pernah dicetak ke log, hanya panjangnya. MYSQL_* kosong = database eksternal,
+# tidak ada yang perlu dicocokkan.
+if [ -n "${MYSQL_USER}" ] || [ -n "${MYSQL_DATABASE}" ] || [ -n "${MYSQL_PASSWORD}" ]; then
+    if [ "${DB_USERNAME}" != "${MYSQL_USER}" ]; then
+        log "PERINGATAN: DB_USERNAME='${DB_USERNAME}' tetapi MYSQL_USER='${MYSQL_USER}'."
+        log "Container db membuat user '${MYSQL_USER}'; app login sebagai '${DB_USERNAME}' -> 1045."
+    fi
+    if [ "${DB_PASSWORD}" != "${MYSQL_PASSWORD}" ]; then
+        log "PERINGATAN: DB_PASSWORD dan MYSQL_PASSWORD beda panjang (${#DB_PASSWORD} vs ${#MYSQL_PASSWORD})."
+        log "App akan selalu ditolak MySQL kecuali password di file disamakan."
+    fi
+    if [ "${DB_DATABASE}" != "${MYSQL_DATABASE}" ]; then
+        log "PERINGATAN: DB_DATABASE='${DB_DATABASE}' tetapi MYSQL_DATABASE='${MYSQL_DATABASE}'."
+        log "Kalau '${DB_DATABASE}' belum pernah dibuat + diberi hak, query pertama app kena 1044."
+    fi
+fi
+
 if [ "${DB_CONNECTION}" != "sqlite" ] && [ -n "${DB_HOST}" ]; then
     attempt=0
     db_error=''
@@ -80,6 +102,35 @@ if [ "${DB_CONNECTION}" != "sqlite" ] && [ -n "${DB_HOST}" ]; then
         sleep 3
     done
     log "Database terhubung."
+
+    # Tahap dua: server hidup belum berarti database-nya boleh dipakai. Kesalahan
+    # yang paling mahal adalah MYSQL_DATABASE beda nama dari DB_DATABASE: login
+    # sukses, tapi semua query Laravel mati di error 1044 dengan stack trace
+    # panjang yang tidak nunjukin akar masalahnya.
+    if [ -n "${DB_DATABASE}" ]; then
+        sel_error=$(php -r '
+            try {
+                new PDO(sprintf("mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4",
+                    getenv("DB_HOST"), getenv("DB_PORT") ?: "3306", getenv("DB_DATABASE")),
+                    getenv("DB_USERNAME"), getenv("DB_PASSWORD"));
+            } catch (Throwable $e) {
+                fwrite(STDERR, $e->getMessage());
+                exit(1);
+            }
+        ' 2>&1) || {
+            log "GAGAL: login berhasil, tapi database '${DB_DATABASE}' tidak bisa dipakai."
+            log "Detail PDO: ${sel_error}"
+            log "Penyebab paling umum: MYSQL_DATABASE di .env.docker tidak sama dengan"
+            log "DB_DATABASE. Image mysql cuma membuat + memberi hak pada MYSQL_DATABASE,"
+            log "dan itu pun hanya saat data dir volume masih kosong. Urutan benerin:"
+            log "  1. samakan kedua nama di .env.docker"
+            log "  2. docker compose down"
+            log "  3. docker volume rm <project>_db-data   <-- isi database ikut terhapus"
+            log "  4. docker compose up -d"
+            exit 1
+        }
+        log "Database '${DB_DATABASE}' bisa dipakai oleh user '${DB_USERNAME}'."
+    fi
 
     # 3. Migrasi ---------------------------------------------------------
     # --force wajib: tanpa ini artisan minta konfirmasi di mode non-interaktif

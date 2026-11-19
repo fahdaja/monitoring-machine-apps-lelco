@@ -57,18 +57,29 @@ services:
   db:
     image: mysql:8.4
     restart: unless-stopped
-    # utf8mb4 dipaksa di server supaya option di bawah tidak bisa di-override
-    # koneksi client (kolom full_name / option_text berisi teks Indonesia).
+    # Charset/collation server dikunci ke utf8mb4 supaya tabel yang dibuat
+    # migration tidak pernah jatuh ke latin1 (kolom full_name & option_text
+    # berisi teks Indonesia, dan nanti bisa berisi emoji).
+    # utf8mb4 cukup di level server. Sengaja TIDAK ada
+    # --skip-character-set-client-handshake: MySQL 8.4 menolak opsi itu
+    # ("unknown option '--skip-character-set-client-handshake'" -> Aborting),
+    # dan flag itu pun tidak diperlukan karena koneksi Laravel sudah nego
+    # charset/collation sendiri (config/database.php: DB_CHARSET=utf8mb4).
     # Zona waktu dipakai angka (+07:00), bukan nama (Asia/Jakarta): nama zona
     # butuh paket tzdata di dalam image mysql, dan kalau tidak ada, mysqld bisa
     # menolak start. Offset numerik selalu jalan.
     # Catatan: tidak ada satu pun query app yang pakai NOW()/CURRENT_TIMESTAMP
     # (semua tanggal dihitung di PHP, config/app.php timezone Asia/jakarta),
     # jadi jam DB cuma cosmetic — tapi disamakan biar aman untuk query ke depan.
+    # Argumen PERTAMA wajib `mysqld`: docker-entrypoint.sh image mysql cuma
+    # mau inisialisasi data + start server kalau $1 == mysqld. Kalau langsung
+    # diawali bendera (--character-set-server=...), entrypoint meng-exec nama
+    # itu sebagai program -> exit 1 -> container restart terus -> unhealthy ->
+    # app tidak pernah start (depends_on service_healthy).
     command:
+      - mysqld
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
-      - --skip-character-set-client-handshake
       - --default-time-zone=+07:00
     # MYSQL_* dibaca dari .env.docker yang sama; app container cuma menganggap
     # variabel ekstra yang tidak dipakai, jadi satu file untuk dua service aman.
@@ -93,7 +104,7 @@ services:
       timeout: 5s
       retries: 30
       start_period: 40s
-
+sed -i 's/^      - --character-set-server=utf8mb4$/      - mysqld\n      - --character-set-server=utf8mb4/' docker-compose.yml
   # Opsional. Nyalakan: docker compose --profile tools up -d
   # lalu buka http://localhost:8081 (login server: db).
   db-ui:
