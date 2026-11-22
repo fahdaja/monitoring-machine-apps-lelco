@@ -51,52 +51,25 @@ class FormController extends Controller
 
     public function create(Request $request)
     {
-        $machines = Machine::select('id as machine_id', 'machine_code', 'machine_name', 'location')->get();
         return Inertia::render('forms/create', [
-            'machines' => $machines,
             'defaultType' => FormType::normalize($request->query('category')) ?? FormType::INSPECTION->value,
-            'defaultMachineId' => $request->query('machine_id'),
         ]);
     }
 
     /**
-     * Kategori INSPECTION / MANUAL_REPORT wajib punya target mesin, sedangkan
-     * form transisi tiket (START_REPAIR / CLOSE_TICKET) berlaku global.
+     * Form murni sebagai template pertanyaan (tidak terikat mesin).
      */
     private function resolveMachineId(FormType $type, mixed $machineId): ?int
     {
-        if (! $type->requiresMachine()) {
-            return null;
-        }
-
-        if (empty($machineId)) {
-            throw ValidationException::withMessages([
-                'metadata.machine_id' => "Form kategori {$type->label()} wajib memilih target mesin.",
-            ]);
-        }
-
-        return (int) $machineId;
+        return !empty($machineId) ? (int) $machineId : null;
     }
 
     /**
-     * Level template hanya relevan untuk INSPECTION (rantai lvl 1 -> lvl 2).
-     * Non-INSPECTION selalu NULL; INSPECTION wajib memilih Level 1 / Level 2.
+     * Level template tidak lagi dipakai pada form inspeksi.
      */
     private function resolveFormLevel(FormType $type, $level): ?int
     {
-        if ($type !== FormType::INSPECTION) {
-            return null;
-        }
-
-        $level = (int) $level;
-
-        if (! in_array($level, [1, 2], true)) {
-            throw ValidationException::withMessages([
-                'metadata.form_level' => 'Form INSPECTION wajib memilih level template (Level 1 atau Level 2).',
-            ]);
-        }
-
-        return $level;
+        return null;
     }
 
     public function store(Request $request)
@@ -138,7 +111,7 @@ class FormController extends Controller
         $formLevel = $this->resolveFormLevel($type, $meta['form_level'] ?? null);
 
         do {
-            $prefix = $type->isTicketTransition() ? 'TRN' : 'FRM'.substr(strtoupper((string) $machine->machine_type), 0, 3);
+            $prefix = $type->isTicketTransition() ? 'TRN' : 'FRM' . ($machine ? substr(strtoupper((string) $machine->machine_type), 0, 3) : '');
             $formCode = $prefix . strtoupper(uniqid());
         } while (Form::where('form_code', $formCode)->exists());
 
@@ -363,14 +336,13 @@ class FormController extends Controller
             $meta = $validate['metadata'];
             $type = FormType::from($meta['form_type']);
             $machineId = $this->resolveMachineId($type, $meta['machine_id'] ?? null);
-            // Saat update: payload tanpa form_level (mis. tab lama) mempertahankan level lama.
-            $formLevel = $this->resolveFormLevel($type, $meta['form_level'] ?? $form->form_level);
+            $formLevel = null;
 
             // Update info utama form
             $form->update([
                 'form_type'        => $type->value,
                 'machine_id'       => $machineId,
-                'form_level'       => $formLevel,
+                'form_level'       => null,
                 'form_title'       => $meta['form_title'],
                 'form_description' => $meta['form_description'] ?? '-',
             ]);

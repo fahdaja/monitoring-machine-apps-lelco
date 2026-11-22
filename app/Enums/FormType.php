@@ -10,11 +10,11 @@ enum FormType: string
     case CLOSE_TICKET = 'CLOSE_TICKET';
 
     /**
-     * Form yang terikat ke satu mesin tertentu.
+     * Form tidak lagi terikat ke target mesin saat pembuatan template.
      */
     public function requiresMachine(): bool
     {
-        return in_array($this, [self::INSPECTION, self::MANUAL_REPORT], true);
+        return false;
     }
 
     /**

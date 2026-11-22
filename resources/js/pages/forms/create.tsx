@@ -53,7 +53,7 @@ interface SectionItem {
 }
 
 interface Props {
-    machines: Machine[];
+    machines?: Machine[];
     defaultType?: string;
     defaultMachineId?: string | number | null;
 }
@@ -64,15 +64,15 @@ interface ToastPayload {
     description: string;
 }
 
-export default function FormCreate({ machines, defaultType = 'INSPECTION', defaultMachineId }: Props) {
+export default function FormCreate({ machines = [], defaultType = 'INSPECTION', defaultMachineId }: Props) {
     const { data, setData, post, processing } = useForm({
         metadata: {
             form_code: '',
             form_type: defaultType,
             form_title: 'Formulir Pemantauan Tanpa Judul',
             form_description: '',
-            form_level: defaultType === 'INSPECTION' ? 1 : null,
-            machine_id: defaultMachineId ? Number(defaultMachineId) : '',
+            form_level: null as number | null,
+            machine_id: defaultMachineId ? Number(defaultMachineId) : '' as string | number,
         },
         sections: [
             {
@@ -326,18 +326,6 @@ export default function FormCreate({ machines, defaultType = 'INSPECTION', defau
         e.preventDefault();
         setErrorMessage(null);
 
-        if (requiresMachine && !data.metadata.machine_id) {
-            setErrorMessage("Target Mesin wajib dipilih terlebih dahulu!");
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-            return;
-        }
-
-        if (data.metadata.form_type === 'INSPECTION' && data.metadata.form_level !== 1 && data.metadata.form_level !== 2) {
-            setErrorMessage('Form INSPECTION wajib memilih level template (Level 1 / Level 2).');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-            return;
-        }
-
         for (let sIndex = 0; sIndex < data.sections.length; sIndex++) {
             const section = data.sections[sIndex];
 
@@ -484,43 +472,6 @@ export default function FormCreate({ machines, defaultType = 'INSPECTION', defau
                         placeholder="Deskripsi singkat formulir (opsional)"
                         className="w-full text-xs text-slate-600 border-b border-slate-100 pb-2 focus:border-emerald-600 focus:outline-none bg-transparent"
                     />
-
-                    {data.metadata.form_type === 'INSPECTION' && (
-                        <div>
-                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Level Template *</label>
-                            <div className="flex gap-2">
-                                {[1, 2].map(lvl => (
-                                    <button
-                                        key={lvl}
-                                        type="button"
-                                        onClick={() => handleMetadataChange('form_level', lvl)}
-                                        className={`px-3 py-2 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${data.metadata.form_level === lvl ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-emerald-300 hover:text-emerald-700'}`}
-                                    >
-                                        Level {lvl}
-                                    </button>
-                                ))}
-                            </div>
-                            <span className="text-[10px] text-slate-400 font-medium mt-1 block">Level 1 = inspeksi rutin (dijadwalkan). Level 2 = form lanjutan yang dikerjakan otomatis dari kondisi trigger.</span>
-                        </div>
-                    )}
-
-                    {requiresMachine && (
-                    <div>
-                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">Target Mesin *</label>
-                        <select
-                            value={data.metadata.machine_id}
-                            onChange={e => handleMetadataChange('machine_id', e.target.value ? Number(e.target.value): '')}
-                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-slate-50 focus:border-emerald-600 outline-none font-medium"
-                        >
-                            <option value="">Pilih Mesin...</option>
-                            {machines.map(m => (
-                                <option key={m.machine_id} value={m.machine_id}>
-                                  {m.machine_code}  | Mesin {m.machine_name} |📍 {m.location}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                    )}
                 </div>
 
                 <form onSubmit={submit} className="space-y-4">
@@ -918,7 +869,7 @@ export default function FormCreate({ machines, defaultType = 'INSPECTION', defau
                                     <h2 className="text-base sm:text-lg font-bold break-words">{data.metadata.form_title || 'Formulir Pemantauan'}</h2>
                                     {data.metadata.form_description && <p className="text-xs text-slate-300 break-words">{data.metadata.form_description}</p>}
                                     <div className="pt-2 text-[11px] text-emerald-400 font-semibold">
-                                        Target Mesin: {data.metadata.machine_type || 'Belum dipilih'}
+                                        Tipe: {data.metadata.form_type}
                                     </div>
                                 </div>
                             )}

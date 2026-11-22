@@ -23,6 +23,7 @@ class Task extends Model {
         'idempotency_key',
         'machine_id',
         'form_id',
+        'schedule_id',
         'assigned_user_id',
         'status',
         'origin_type',
@@ -76,6 +77,17 @@ class Task extends Model {
     public function user()
     {
         return $this->belongsTo(User::class, 'assigned_user_id', 'id');
+    }
+
+    public function schedule()
+    {
+        return $this->belongsTo(Schedule::class, 'schedule_id', 'id');
+    }
+
+    public function assignedUsers()
+    {
+        return $this->belongsToMany(User::class, 'task_assigned_users', 'task_id', 'user_id')
+            ->withTimestamps();
     }
 
     // ===== Provenance: dari mana task ini lahir =====

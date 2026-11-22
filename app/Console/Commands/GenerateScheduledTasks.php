@@ -9,7 +9,6 @@ use App\Models\Schedule;
 use App\Models\Task;
 use Carbon\Carbon;
 
-
 class GenerateScheduledTasks extends Command
 {
    /**
@@ -22,42 +21,85 @@ class GenerateScheduledTasks extends Command
 
    protected $signature = 'tasks:generate';
    protected $description = 'Generate task otomatis berdasarkan pola jadwal';
+
    public function handle()
-{
-    $schedules = Schedule::where('is_active', true)->with('form')->get();
+   {
+       $schedules = Schedule::where('is_active', true)
+           ->with(['form', 'scheduleMachines.machine.pics'])
+           ->get();
 
-    $count = 0;
+       $count = 0;
 
-    foreach ($schedules as $schedule) {
-        $windowDays = max(1, (int) ($schedule->due_window_days ?? 1));
+       foreach ($schedules as $schedule) {
+           $windowDays = max(1, (int) ($schedule->due_window_days ?? 1));
 
-        foreach ($this->dueDatesFor($schedule) as $targetDate) {
-            $dueDateStr = $targetDate->format('Y-m-d');
+           // Ambil daftar mesin dari schedule_machines (atau fallback ke form->machine_id jika ada legacy)
+           $machinesData = [];
+           if ($schedule->scheduleMachines->isNotEmpty()) {
+               foreach ($schedule->scheduleMachines as $sm) {
+                   $targeted = !empty($sm->assigned_user_ids) ? (array) $sm->assigned_user_ids : [];
+                   // Jika tidak ada user spesifik yang ditargetkan, seluruh PIC mesin menjadi kandidat
+                   if (empty($targeted) && $sm->machine) {
+                       $targeted = $sm->machine->pics->pluck('id')->values()->all();
+                   }
+                   $machinesData[] = [
+                       'machine_id' => $sm->machine_id,
+                       'targeted_user_ids' => $targeted,
+                   ];
+               }
+           } elseif ($schedule->form && $schedule->form->machine_id) {
+               $machinesData[] = [
+                   'machine_id' => $schedule->form->machine_id,
+                   'targeted_user_ids' => [],
+               ];
+           }
 
-            // Cegah duplikat: skip jika sudah ada task untuk form ini di tanggal yang sama
-            $exists = Task::where('form_id', $schedule->form_id)
-                ->whereDate('due_date', $dueDateStr)
-                ->exists();
+           if (empty($machinesData)) {
+               continue;
+           }
 
-            if ($exists) {
-                continue;
-            }
+           foreach ($machinesData as $mData) {
+               $machineId = $mData['machine_id'];
+               $targetedUserIds = $mData['targeted_user_ids'];
 
-            Task::create([
-                'machine_id'       => $schedule->form->machine_id,
-                'form_id'          => $schedule->form_id,
-                'task_code'        => 'TSK-' . strtoupper(uniqid()),
-                'due_date'         => $dueDateStr,
-                'end_date'         => $targetDate->copy()->addDays($windowDays)->format('Y-m-d'),
-                'status'           => 'UPCOMING',
-                'assigned_user_id' => null,
-            ]);
-            $count++;
-        }
-    }
+               foreach ($this->dueDatesFor($schedule) as $targetDate) {
+                   $dueDateStr = $targetDate->format('Y-m-d');
 
-    $this->info("✅ {$count} task UPCOMING dibuat (daily rolling ".self::DAILY_HORIZON_DAYS." hari, weekly = minggu depan, monthly = bulan depan).");
-}
+                   // Cegah duplikat: cek task untuk form ini dan mesin ini pada tanggal yang sama
+                   $existingTask = Task::where('form_id', $schedule->form_id)
+                       ->where('machine_id', $machineId)
+                       ->whereDate('due_date', $dueDateStr)
+                       ->first();
+
+                   if ($existingTask) {
+                       if (!empty($targetedUserIds)) {
+                           $existingTask->assignedUsers()->syncWithoutDetaching($targetedUserIds);
+                       }
+                       continue;
+                   }
+
+                   $task = Task::create([
+                       'machine_id'       => $machineId,
+                       'form_id'          => $schedule->form_id,
+                       'schedule_id'      => $schedule->id,
+                       'task_code'        => 'TSK-' . strtoupper(uniqid()),
+                       'due_date'         => $dueDateStr,
+                       'end_date'         => $targetDate->copy()->addDays($windowDays)->format('Y-m-d'),
+                       'status'           => 'UPCOMING',
+                       'assigned_user_id' => null,
+                   ]);
+
+                   if (!empty($targetedUserIds)) {
+                       $task->assignedUsers()->sync($targetedUserIds);
+                   }
+
+                   $count++;
+               }
+           }
+       }
+
+       $this->info("✅ {$count} task UPCOMING dibuat (daily rolling ".self::DAILY_HORIZON_DAYS." hari, weekly = minggu depan, monthly = bulan depan).");
+   }
 
     /**
      * Daftar tanggal (Carbon) yang seharusnya punya task untuk sebuah jadwal.

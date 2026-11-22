@@ -16,19 +16,10 @@ class CheckUserStatus
      */
     public function handle(Request $request, Closure $next, ...$roles): Response
     {
-        if(Auth::check() && Auth::user()->is_active === true){
+        if (Auth::check()) {
             return $next($request);
-        }   
-
-        if (Auth::check()) {    
-            $user = Auth::user();
-            $user->update(['is_active' => 0]); 
         }
 
-
-        Auth::logout();
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
-        return redirect()->route('login')->with('error', 'Akun anda belum aktif atau sesi anda habis');
+        return redirect()->route('login');
     }
 }

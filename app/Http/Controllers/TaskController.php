@@ -114,26 +114,56 @@
         }
 
         public function index(){
-        $tasks = Task::with(['machine.pics', 'form', 'user', 'sourceTask.form', 'triggerCondition'])
-            ->whereIn('status', ['UPCOMING', 'IN_PROGRESS', 'OVERDUE', 'DUE', 'COMPLETED'])
-            ->orderBy('due_date', 'asc')
-            ->get();
-
         $currentUser = auth()->user();
+
+        $query = Task::with(['machine.pics', 'form', 'user', 'sourceTask.form', 'triggerCondition', 'assignedUsers'])
+            ->whereIn('status', ['UPCOMING', 'IN_PROGRESS', 'OVERDUE', 'DUE', 'COMPLETED']);
+
+        // PIC departemen yang tidak terdaftar di dalam sebuah mesin tidak boleh melihat task mesin tersebut
+        if (! $currentUser->hasRole(User::ROLE_ADMIN)) {
+            $query->whereHas('machine.pics', function ($q) use ($currentUser) {
+                $q->where('users.id', $currentUser->id);
+            });
+        }
+
+        $tasks = $query->orderBy('due_date', 'asc')->get();
 
         $formattedTasks = $tasks->map(function($task) use ($currentUser){
             $machine = $task->machine;
-            $inspectorName = $task->user->full_name ?? 'Belum ditugaskan';
             $sourceTask = $task->sourceTask;
+
+            if ($task->user) {
+                $inspectorName = $task->user->full_name;
+            } elseif ($task->assignedUsers->isNotEmpty()) {
+                $inspectorName = $task->assignedUsers->pluck('full_name')->implode(', ');
+            } else {
+                $inspectorName = 'Semua PIC Mesin';
+            }
+
+            // Hitung hak kerja (canWork)
+            $canWork = true;
+            if ($task->status === 'COMPLETED') {
+                $canWork = false;
+            } elseif ($currentUser->hasRole(User::ROLE_ADMIN)) {
+                $canWork = true;
+            } else {
+                if (! $machine || ! $machine->isPic($currentUser)) {
+                    $canWork = false;
+                } elseif ($task->assignedUsers->isNotEmpty() && ! $task->assignedUsers->contains('id', $currentUser->id)) {
+                    $canWork = false;
+                } elseif (!is_null($task->assigned_user_id) && (int) $task->assigned_user_id !== (int) $currentUser->id && $task->status === 'IN_PROGRESS') {
+                    $canWork = false;
+                }
+            }
 
             return [
                 'taskId' => $task->id,
                 'taskCode' => $task->task_code,
-                'machineCode' => $machine->machine_code,
-                'machineName' => $machine->machine_name,
-                'location' => $machine->location,
-                'activity' => $task->form->form_title,
-                'formLevel' => $task->form->form_level,
+                'machineCode' => $machine?->machine_code,
+                'machineName' => $machine?->machine_name,
+                'location' => $machine?->location,
+                'activity' => $task->form?->form_title,
+                'formLevel' => $task->form?->form_level,
                 'scheduledDate' => $task->due_date ? $task->due_date->format('Y-m-d') : null,
                 'endDate'  => $task->end_date ? $task->end_date->format('Y-m-d') : null,
                 'status' => $task->status,
@@ -146,8 +176,7 @@
                 'sourceTaskCode' => $sourceTask?->task_code,
                 'sourceFormTitle' => $sourceTask?->form?->form_title,
                 'conditionCode' => $task->triggerCondition?->condition_code,
-                // Gate PIC: tombol action di kalender hanya aktif untuk penanggung jawab mesin.
-                'canWork' => $machine ? $machine->canBeWorkedBy($currentUser) : true,
+                'canWork' => $canWork,
                 'picNames' => $machine?->picNamesText() ?? '',
             ];
         });
@@ -193,11 +222,24 @@
             return redirect()->route('tasks.index')->with('error', 'Task ini sudah selesai dikerjakan.');
         }
 
+        if ($task->status === 'UPCOMING') {
+            return redirect()->route('tasks.index')->with('error', 'Task ini belum dapat dikerjakan karena jadwal belum dimulai.');
+        }
+
         // Gate PIC: hanya penanggung jawab mesin yang boleh membuka form inspeksi ini.
         $machine = $task->machine;
+        $currentUser = auth()->user();
 
-        if ($machine && ! $machine->canBeWorkedBy(auth()->user())) {
+        if ($machine && ! $machine->canBeWorkedBy($currentUser)) {
             return redirect()->route('tasks.index')->with('error', $this->picDeniedMessage($machine));
+        }
+
+        // Jika task memiliki daftar teknisi/PIC khusus yang ditargetkan
+        if (! $currentUser->hasRole(User::ROLE_ADMIN) && $task->assignedUsers()->exists()) {
+            if (! $task->assignedUsers()->where('users.id', $userId)->exists()) {
+                return redirect()->route('tasks.index')
+                    ->with('error', 'Anda tidak ditugaskan untuk mengerjakan task inspeksi mesin ini.');
+            }
         }
 
         if (!is_null($task->assigned_user_id) && $task->assigned_user_id !== $userId) {
@@ -824,9 +866,19 @@
         // 2. Cari task aktif (DUE, OVERDUE, atau IN_PROGRESS) milik user ini
         $task = Task::where('machine_id', $machine->id)
             ->whereIn('status', ['DUE', 'OVERDUE', 'IN_PROGRESS'])
-            ->where(function($query) use ($userId) {
-                $query->where('assigned_user_id', $userId)
-                    ->orWhereNull('assigned_user_id');
+            ->where(function($query) use ($userId, $request) {
+                if (! $request->user()->hasRole(User::ROLE_ADMIN)) {
+                    $query->where(function ($sub) use ($userId) {
+                        $sub->where('assigned_user_id', $userId)
+                            ->orWhere(function ($q2) use ($userId) {
+                                $q2->whereNull('assigned_user_id')
+                                   ->where(function ($q3) use ($userId) {
+                                       $q3->whereDoesntHave('assignedUsers')
+                                          ->orWhereHas('assignedUsers', fn($u) => $u->where('users.id', $userId));
+                                   });
+                            });
+                    });
+                }
             })
             ->orderBy('due_date', 'asc')
             ->first();
@@ -903,6 +955,14 @@
             $assignee = $task->user?->full_name ?? 'teknisi lain';
             return redirect()->route('tasks.index')
                 ->with('error', "Task untuk mesin {$machine->machine_name} sedang dikerjakan oleh {$assignee} (status: {$task->status}).");
+        }
+
+        // Kasus 2b: bukan PIC yang ditargetkan untuk task ini
+        if (! auth()->user()->hasRole(User::ROLE_ADMIN) && $task->assignedUsers()->exists()) {
+            if (! $task->assignedUsers()->where('users.id', $userId)->exists()) {
+                return redirect()->route('tasks.index')
+                    ->with('error', "Anda tidak ditugaskan untuk mengerjakan task inspeksi mesin {$machine->machine_name}.");
+            }
         }
 
         // Kasus 3: task milik user atau belum di-assign → arahkan ke form

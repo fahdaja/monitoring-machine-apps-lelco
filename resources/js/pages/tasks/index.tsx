@@ -433,6 +433,15 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
     );
 })()}
 
+                                    {t.status !== 'COMPLETED' && (
+                                        <div className="mt-2 text-[11px] text-slate-500 flex items-center gap-1.5 flex-wrap">
+                                            <span className="font-semibold text-slate-600">Petugas:</span>
+                                            <span className="text-slate-800 font-medium bg-slate-100 px-2 py-0.5 rounded text-[10px]">
+                                                {t.inspectorName || 'Semua PIC Mesin'}
+                                            </span>
+                                        </div>
+                                    )}
+
                                     {t.completedAt && (
                                         <p className="text-[11px] text-emerald-700 font-semibold mt-2">
                                             Selesai oleh {t.inspectorName} jam {t.completedAt}
@@ -441,7 +450,7 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
 
                                     <div className="mt-3.5 pt-2.5 border-t border-slate-200/60 flex items-center justify-end gap-2">
                                         {(() => {
-                                            // Ambil ID user yang sedang login dari Inertia props (pastikan auth.user dikirim dari controller)
+                                            // Ambil ID user yang sedang login dari Inertia props
                                             const isAssignedToOther = t.assignedUserId && t.assignedUserId !== currentUserId;
 
                                             if (t.status === 'COMPLETED') {
@@ -452,11 +461,20 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                                                 );
                                             }
 
-                                            // 🛑 Bukan PIC mesin: task boleh dilihat, tapi tidak boleh dikerjakan
+                                            // 🛑 Task UPCOMING belum bisa dikerjakan siapapun sampai jadwal tiba
+                                            if (t.status === 'UPCOMING') {
+                                                return (
+                                                    <span className="text-[11px] font-medium text-slate-400 bg-slate-100 px-3 py-1.5 rounded-lg w-full text-center">
+                                                        Jadwal Belum Dimulai
+                                                    </span>
+                                                );
+                                            }
+
+                                            // 🛑 Bukan PIC mesin / bukan PIC yang ditargetkan
                                             if (t.canWork === false) {
                                                 return (
                                                     <div className="w-full py-2 px-3 text-[11px] font-semibold text-rose-800 bg-rose-50 border border-rose-200 rounded-lg text-center">
-                                                        ⛔ Hanya PIC mesin ini yang boleh mengerjakan
+                                                        ⛔ Hanya PIC yang ditugaskan yang boleh mengerjakan
                                                         {t.picNames ? (
                                                             <span className="block font-normal text-[10px] mt-0.5 text-rose-700 break-words">
                                                                 PIC: {t.picNames}
@@ -466,20 +484,12 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                                                 );
                                             }
 
-                                            // 🛑 Jika task sedang dikerjakan / di-assign ke teknisi lain
-                                            if (isAssignedToOther) {
+                                            // 🛑 Jika task SEDANG DIKERJAKAN oleh teknisi lain (status IN_PROGRESS)
+                                            if (isAssignedToOther && t.status === 'IN_PROGRESS') {
                                                 return (
                                                     <div className="w-full py-2 px-3 text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg text-center">
                                                         ⚠️ Sedang dikerjakan oleh {t.inspectorName || 'Teknisi Lain'}
                                                     </div>
-                                                );
-                                            }
-
-                                            if (t.status === 'UPCOMING') {
-                                                return (
-                                                    <span className="text-[11px] font-medium text-slate-400 bg-slate-100 px-3 py-1.5 rounded-lg w-full text-center">
-                                                        Jadwal Belum Dimulai
-                                                    </span>
                                                 );
                                             }
 

@@ -19,7 +19,7 @@ Route::get('/admin/login', [AuthController::class, 'adminCreate'])->name('admin.
 Route::post('/admin/login', [AuthController::class, 'adminStore']);
 Route::post('/logout', [AuthController::class, 'destroy']);
 Route::get('/scan/machine/{machineCode}', [TaskController::class, 'handleQrScanRedirect']);
-Route::get('/inspection-calender', [TaskController::class, 'index'])->name('tasks.index')->middleware(['auth', 'role:ADMIN,OPERATOR']);
+Route::get('/inspection-calender', [TaskController::class, 'index'])->name('tasks.index')->middleware(['auth', 'CheckUserStatus', 'role:ADMIN,OPERATOR,MAINTENANCE,MAINTENANCE_L2,SUPERVISOR,ENGINEERING']);
 Route::get('/api/scan-task/{code}', [TaskController::class, 'apiFindTaskByMachine']);
 Route::get('/scan-task/{code}', [TaskController::class, 'handleQrScanRedirect'])
     ->name('scan-task');
@@ -28,7 +28,7 @@ Route::get('/scan-task/{code}', [TaskController::class, 'handleQrScanRedirect'])
 Route::patch('/schedules/{id}/toggle', [ScheduleController::class, 'toggleStatus'])->name('schedules.toggle');   
 Route::put('/schedules/{id}', [ScheduleController::class, 'update'])->name('schedules.update');
 Route::delete('/schedules/{id}', [ScheduleController::class, 'destroy'])->name('schedules.destroy');
-Route::middleware(['auth', 'CheckUserStatus','role:ADMIN,OPERATOR'])->group(function () {
+Route::middleware(['auth', 'CheckUserStatus', 'role:ADMIN,OPERATOR,MAINTENANCE,MAINTENANCE_L2,SUPERVISOR,ENGINEERING'])->group(function () {
     Route::get('/inspection-form/{id}',[TaskController::class, 'show'])->name('tasks.show');
     Route::post('/inspection-form/upload-temp', [TaskController::class, 'uploadTempFile']);
     Route::post('/inspection-form/remove-file', [TaskController::class, 'removeFile']);
@@ -54,7 +54,7 @@ Route::get('/dashboard', function () {
         ],
         'syncedAt' => now()->format('H:i:s'),
     ]);
-})->middleware(['auth','CheckUserStatus','role:ADMIN,OPERATOR,MAINTENANCE_L2', ]);
+})->middleware(['auth','CheckUserStatus','role:ADMIN,OPERATOR,MAINTENANCE,MAINTENANCE_L2,SUPERVISOR,ENGINEERING']);
 
 Route::get('/machines', [MachineController::class, 'index'])->name('machines.index');
 Route::middleware(['auth', 'CheckUserStatus','role:ADMIN'])->group(function () {

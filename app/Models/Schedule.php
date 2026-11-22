@@ -4,6 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Schedule extends Model
 {
@@ -25,8 +28,20 @@ class Schedule extends Model
         'is_active' => 'boolean',
     ];
 
-    public function form()
+    public function form(): BelongsTo
     {
         return $this->belongsTo(Form::class, 'form_id');
+    }
+
+    public function scheduleMachines(): HasMany
+    {
+        return $this->hasMany(ScheduleMachine::class, 'schedule_id');
+    }
+
+    public function machines(): BelongsToMany
+    {
+        return $this->belongsToMany(Machine::class, 'schedule_machines', 'schedule_id', 'machine_id')
+            ->withPivot('assigned_user_ids')
+            ->withTimestamps();
     }
 }

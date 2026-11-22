@@ -6,8 +6,11 @@ use Inertia\Inertia;
 use Illuminate\Http\Request;
 use App\Models\Schedule;
 use App\Models\ScheduleCondition;
+use App\Models\ScheduleMachine;
 use App\Models\Form;
+use App\Models\Machine;
 use App\Models\Task;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
@@ -18,8 +21,8 @@ class ScheduleController extends Controller
      */
     public function index()
     {
-        // Ambil semua jadwal beserta relasi form dan machine-nya
-        $schedules = Schedule::with(['form.machine'])->latest()->get()->map(function ($schedule) {
+        // Ambil semua jadwal beserta form dan mesin-mesin yang terdaftar
+        $schedules = Schedule::with(['form', 'scheduleMachines.machine.pics'])->latest()->get()->map(function ($schedule) {
             return [
                 'id' => $schedule->id,
                 'schedule_code' => $schedule->schedule_code,
@@ -27,8 +30,24 @@ class ScheduleController extends Controller
                     'id' => $schedule->form->id,
                     'form_title' => $schedule->form->form_title,
                     'form_code' => $schedule->form->form_code,
-                    'machine_name' => $schedule->form->machine?->machine_name,
                 ] : null,
+                'machines' => $schedule->scheduleMachines->map(function ($sm) {
+                    $m = $sm->machine;
+                    $targetedIds = (array) ($sm->assigned_user_ids ?? []);
+                    $targetedUsers = $m ? $m->pics->whereIn('id', $targetedIds)->values() : collect();
+
+                    return [
+                        'machine_id' => $sm->machine_id,
+                        'machine_name' => $m?->machine_name,
+                        'machine_code' => $m?->machine_code,
+                        'location' => $m?->location,
+                        'assigned_user_ids' => $targetedIds,
+                        'targeted_pics' => $targetedUsers->map(fn ($u) => [
+                            'id' => $u->id,
+                            'full_name' => $u->full_name,
+                        ])->all(),
+                    ];
+                })->values()->all(),
                 'frequency_type' => $schedule->frequency_type,
                 'selected_days' => $schedule->selected_days ?? [],
                 'selected_dates' => $schedule->selected_dates ?? [],
@@ -37,18 +56,39 @@ class ScheduleController extends Controller
             ];
         });
 
-        // Ambil form INSPECTION saja untuk pilihan di dropdown modal
-        $forms = Form::ofType(\App\Enums\FormType::INSPECTION)->with('machine')->get()->map(function ($form) {
+        // Ambil form INSPECTION template murni (tanpa keterikatan mesin atau level)
+        $forms = Form::ofType(\App\Enums\FormType::INSPECTION)->get()->map(function ($form) {
             return [
                 'id' => $form->id,
                 'form_title' => $form->form_title,
                 'form_code' => $form->form_code,
-                'machine_name' => $form->machine?->machine_name,
-                'form_level' => $form->form_level,
             ];
         });
 
-        // Ambil semua kondisi trigger antar level form inspeksi (lvl 1 -> lvl 2)
+        // Ambil seluruh mesin terdaftar beserta PIC-nya
+        $machines = Machine::with(['pics' => function ($q) {
+            $q->orderBy('full_name');
+        }])
+        ->orderBy('machine_code')
+        ->get()
+        ->map(function ($m) {
+            return [
+                'id' => $m->id,
+                'machine_code' => $m->machine_code,
+                'machine_name' => $m->machine_name,
+                'location' => $m->location ?? '-',
+                'department' => $m->department ?? $m->pic_department ?? '-',
+                'pics' => $m->pics->map(fn ($p) => [
+                    'id' => $p->id,
+                    'full_name' => $p->full_name,
+                    'user_code' => $p->user_code,
+                    'role' => $p->role,
+                    'department' => $p->department,
+                ])->values()->all(),
+            ];
+        });
+
+        // Ambil semua kondisi trigger antar form inspeksi
         $conditions = ScheduleCondition::with([
             'triggerForm.machine',
             'triggerQuestion',
@@ -62,7 +102,6 @@ class ScheduleController extends Controller
                     'id' => $condition->triggerForm->id,
                     'form_title' => $condition->triggerForm->form_title,
                     'form_code' => $condition->triggerForm->form_code,
-                    'machine_name' => $condition->triggerForm->machine?->machine_name,
                 ] : null,
                 'trigger_question' => $condition->triggerQuestion ? [
                     'id' => $condition->triggerQuestion->id,
@@ -77,7 +116,6 @@ class ScheduleController extends Controller
                     'id' => $condition->targetForm->id,
                     'form_title' => $condition->targetForm->form_title,
                     'form_code' => $condition->targetForm->form_code,
-                    'machine_name' => $condition->targetForm->machine?->machine_name,
                 ] : null,
                 'due_window_days' => $condition->due_window_days,
                 'is_active' => $condition->is_active,
@@ -87,6 +125,7 @@ class ScheduleController extends Controller
         return Inertia::render('schedules/index', [
             'schedules' => $schedules,
             'forms' => $forms,
+            'machines' => $machines,
             'conditions' => $conditions,
         ]);
     }
@@ -97,81 +136,96 @@ class ScheduleController extends Controller
     public function store(Request $request)
     {
         $validate = $request->validate([
-            'form_id' => ['required', Rule::exists('forms', 'id')->where(function ($query) {
-                // Jadwal hanya boleh menarget form INSPECTION Lvl 1 (atau tanpa level);
-                // form Lvl 2 dikerjakan otomatis lewat kondisi trigger.
-                $query->where('form_type', 'INSPECTION')
-                    ->where(function ($sub) {
-                        $sub->whereNull('form_level')->orWhere('form_level', 1);
-                    });
-            })],
+            'form_id' => ['required', Rule::exists('forms', 'id')->where('form_type', 'INSPECTION')],
             'frequency_type' => 'required|in:DAILY,WEEKLY,MONTHLY',
             'due_window_days' => 'required|integer|min:1|max:30',
             'selected_days' => 'required_if:frequency_type,WEEKLY|array',
             'selected_days.*' => 'integer|between:1,7',
             'selected_dates' => 'required_if:frequency_type,MONTHLY|array',
             'selected_dates.*' => 'integer|between:1,31',
+            'machine_assignments' => 'required|array|min:1',
+            'machine_assignments.*.machine_id' => 'required|integer|exists:machines,id',
+            'machine_assignments.*.assigned_user_ids' => 'nullable|array',
+            'machine_assignments.*.assigned_user_ids.*' => 'integer|exists:users,id',
         ]);
 
-        // Generate kode jadwal unik
-        do {
-            $scheduleCode = 'SCH-' . strtoupper(uniqid());
-        } while (Schedule::where('schedule_code', $scheduleCode)->exists());
+        return DB::transaction(function () use ($request, $validate) {
+            do {
+                $scheduleCode = 'SCH-' . strtoupper(uniqid());
+            } while (Schedule::where('schedule_code', $scheduleCode)->exists());
 
-        Schedule::create([
-            'schedule_code'    => $scheduleCode,
-            'form_id'          => $validate['form_id'],
-            'frequency_type'   => $validate['frequency_type'],
-            'due_window_days'  => $validate['due_window_days'],
-            'selected_days'    => $request->selected_days ?? [],
-            'selected_dates'   => $request->selected_dates ?? [],
-            'is_active'        => true,
-        ]);
+            $schedule = Schedule::create([
+                'schedule_code'    => $scheduleCode,
+                'form_id'          => $validate['form_id'],
+                'frequency_type'   => $validate['frequency_type'],
+                'due_window_days'  => $validate['due_window_days'],
+                'selected_days'    => $request->selected_days ?? [],
+                'selected_dates'   => $request->selected_dates ?? [],
+                'is_active'        => true,
+            ]);
 
-        return redirect()->back()->with('success', 'Pengaturan jadwal berhasil dibuat!');
+            foreach ($validate['machine_assignments'] as $ma) {
+                $assignedIds = !empty($ma['assigned_user_ids']) ? array_values(array_unique($ma['assigned_user_ids'])) : null;
+                $schedule->scheduleMachines()->create([
+                    'machine_id' => $ma['machine_id'],
+                    'assigned_user_ids' => $assignedIds,
+                ]);
+            }
+
+            Artisan::call('tasks:generate');
+
+            return redirect()->back()->with('success', 'Pengaturan jadwal berhasil dibuat dan task telah digenerate!');
+        });
     }
-
 
     public function update(Request $request, $id)
     {
         $oldSchedule = Schedule::findOrFail($id);
 
-        // 1. Matikan jadwal lama (Nonaktifkan) agar tidak generate task lagi
-        $oldSchedule->update(['is_active' => false]);
-
-        // 2. Buat jadwal baru berdasarkan input edit
         $validate = $request->validate([
-            'form_id' => ['required', Rule::exists('forms', 'id')->where(function ($query) {
-                // Jadwal hanya boleh menarget form INSPECTION Lvl 1 (atau tanpa level);
-                // form Lvl 2 dikerjakan otomatis lewat kondisi trigger.
-                $query->where('form_type', 'INSPECTION')
-                    ->where(function ($sub) {
-                        $sub->whereNull('form_level')->orWhere('form_level', 1);
-                    });
-            })],
+            'form_id' => ['required', Rule::exists('forms', 'id')->where('form_type', 'INSPECTION')],
             'frequency_type' => 'required|in:DAILY,WEEKLY,MONTHLY',
             'due_window_days' => 'required|integer|min:1|max:30',
             'selected_days' => 'required_if:frequency_type,WEEKLY|array',
             'selected_days.*' => 'integer|between:1,7',
             'selected_dates' => 'required_if:frequency_type,MONTHLY|array',
             'selected_dates.*' => 'integer|between:1,31',
+            'machine_assignments' => 'required|array|min:1',
+            'machine_assignments.*.machine_id' => 'required|integer|exists:machines,id',
+            'machine_assignments.*.assigned_user_ids' => 'nullable|array',
+            'machine_assignments.*.assigned_user_ids.*' => 'integer|exists:users,id',
         ]);
 
-        do {
-            $scheduleCode = 'SCH-' . strtoupper(uniqid());
-        } while (Schedule::where('schedule_code', $scheduleCode)->exists());
+        return DB::transaction(function () use ($request, $oldSchedule, $validate) {
+            // Matikan jadwal lama
+            $oldSchedule->update(['is_active' => false]);
 
-        Schedule::create([
-            'schedule_code'    => $scheduleCode,
-            'form_id'          => $validate['form_id'],
-            'frequency_type'   => $validate['frequency_type'],
-            'due_window_days'  => $validate['due_window_days'],
-            'selected_days'    => $request->selected_days ?? [],
-            'selected_dates'   => $request->selected_dates ?? [],
-            'is_active'        => true,
-        ]);
+            do {
+                $scheduleCode = 'SCH-' . strtoupper(uniqid());
+            } while (Schedule::where('schedule_code', $scheduleCode)->exists());
 
-        return redirect()->back()->with('success', 'Jadwal berhasil diperbarui! (Jadwal lama telah dinonaktifkan).');
+            $schedule = Schedule::create([
+                'schedule_code'    => $scheduleCode,
+                'form_id'          => $validate['form_id'],
+                'frequency_type'   => $validate['frequency_type'],
+                'due_window_days'  => $validate['due_window_days'],
+                'selected_days'    => $request->selected_days ?? [],
+                'selected_dates'   => $request->selected_dates ?? [],
+                'is_active'        => true,
+            ]);
+
+            foreach ($validate['machine_assignments'] as $ma) {
+                $assignedIds = !empty($ma['assigned_user_ids']) ? array_values(array_unique($ma['assigned_user_ids'])) : null;
+                $schedule->scheduleMachines()->create([
+                    'machine_id' => $ma['machine_id'],
+                    'assigned_user_ids' => $assignedIds,
+                ]);
+            }
+
+            Artisan::call('tasks:generate');
+
+            return redirect()->back()->with('success', 'Jadwal berhasil diperbarui! (Jadwal lama telah dinonaktifkan).');
+        });
     }
 
     /**
@@ -180,12 +234,16 @@ class ScheduleController extends Controller
     public function toggleStatus(Request $request, $id)
     {
         $schedule = Schedule::findOrFail($id);
-        
+
         $schedule->update([
-            'is_active' => !$schedule->is_active
+            'is_active' => $request->boolean('is_active')
         ]);
 
-        return redirect()->back()->with('success', 'Status jadwal berhasil diubah.');
+        if ($schedule->is_active) {
+            Artisan::call('tasks:generate');
+        }
+
+        return redirect()->back()->with('success', 'Status jadwal berhasil diperbarui!');
     }
 
     /**
@@ -196,89 +254,77 @@ class ScheduleController extends Controller
         $schedule = Schedule::findOrFail($id);
         $schedule->delete();
 
-        return redirect()->back()->with('success', 'Pengaturan jadwal berhasil dihapus.');
+        return redirect()->back()->with('success', 'Pengaturan jadwal berhasil dihapus!');
     }
 
-    // ==================== KONDISI TRIGGER (LEVEL FORM INSPECTION) ====================
+    // =========================================================================
+    // KONDISI TRIGGER ANTAR FORM INSPEKSI
+    // =========================================================================
 
-    /**
-     * Data pertanyaan + opsi milik form INSPECTION (untuk memilih trigger jawaban).
-     * Hanya pertanyaan yang punya opsi yang dikembalikan.
-     */
     public function conditionQuestions($formId)
     {
-        $form = Form::ofType(\App\Enums\FormType::INSPECTION)->findOrFail($formId);
+        $form = Form::with(['sections.questions' => function ($q) {
+            $q->whereIn('input_type', ['SELECT', 'DROPDOWN', 'CHECKBOX'])
+              ->with('options');
+        }])->findOrFail($formId);
 
-        $questions = $form->questions()
-            ->with(['options' => fn ($query) => $query->orderBy('option_order', 'asc')])
-            ->orderBy('question_order', 'asc')
-            ->get()
-            ->filter(fn ($question) => $question->options->isNotEmpty())
-            ->values()
-            ->map(function ($question) {
+        $questions = $form->sections->flatMap(function ($section) {
+            return $section->questions->map(function ($question) {
                 return [
                     'id' => $question->id,
                     'question_text' => $question->question_text,
-                    'input_type' => $question->input_type instanceof \App\Enums\InputType
-                        ? $question->input_type->value
-                        : strtoupper((string) $question->input_type),
-                    'options' => $question->options->map(fn ($option) => [
-                        'id' => $option->id,
-                        'option_text' => $option->option_text,
-                        'is_normal' => (bool) $option->is_normal,
-                    ])->values(),
+                    'input_type' => $question->input_type,
+                    'options' => $question->options->map(function ($opt) {
+                        return [
+                            'id' => $opt->id,
+                            'option_text' => $opt->option_text,
+                            'is_normal' => (bool) $opt->is_normal,
+                        ];
+                    })->values()->all(),
                 ];
             });
+        })->values()->all();
 
         return response()->json($questions);
     }
 
-    /**
-     * Menyimpan kondisi trigger baru (form lvl 1 -> form lvl 2).
-     */
     public function storeCondition(Request $request)
     {
-        $validate = $this->validateCondition($request);
+        $validated = $this->validateCondition($request);
 
         do {
-            $conditionCode = 'CON-' . strtoupper(uniqid());
-        } while (ScheduleCondition::where('condition_code', $conditionCode)->exists());
+            $code = 'CND-' . strtoupper(uniqid());
+        } while (ScheduleCondition::where('condition_code', $code)->exists());
 
         ScheduleCondition::create([
-            'condition_code'      => $conditionCode,
-            'trigger_form_id'     => $validate['trigger_form_id'],
-            'trigger_question_id' => $validate['trigger_question_id'],
-            'trigger_option_id'   => $validate['trigger_option_id'],
-            'target_form_id'      => $validate['target_form_id'],
-            'due_window_days'     => $validate['due_window_days'],
+            'condition_code'      => $code,
+            'trigger_form_id'     => $validated['trigger_form_id'],
+            'trigger_question_id' => $validated['trigger_question_id'],
+            'trigger_option_id'   => $validated['trigger_option_id'],
+            'target_form_id'      => $validated['target_form_id'],
+            'due_window_days'     => $validated['due_window_days'],
             'is_active'           => true,
         ]);
 
-        return redirect()->back()->with('success', 'Kondisi trigger berhasil dibuat!');
+        return redirect()->back()->with('success', 'Kondisi trigger berhasil ditambahkan!');
     }
 
-    /**
-     * Memperbarui kondisi trigger (langsung, tanpa versioning).
-     */
     public function updateCondition(Request $request, $id)
     {
         $condition = ScheduleCondition::findOrFail($id);
-        $validate = $this->validateCondition($request);
+        $validated = $this->validateCondition($request);
 
         $condition->update([
-            'trigger_form_id'     => $validate['trigger_form_id'],
-            'trigger_question_id' => $validate['trigger_question_id'],
-            'trigger_option_id'   => $validate['trigger_option_id'],
-            'target_form_id'      => $validate['target_form_id'],
-            'due_window_days'     => $validate['due_window_days'],
+            'trigger_form_id'     => $validated['trigger_form_id'],
+            'trigger_question_id' => $validated['trigger_question_id'],
+            'trigger_option_id'   => $validated['trigger_option_id'],
+            'target_form_id'      => $validated['target_form_id'],
+            'due_window_days'     => $validated['due_window_days'],
         ]);
 
         return redirect()->back()->with('success', 'Kondisi trigger berhasil diperbarui!');
     }
 
-    /**
-     * Mengubah status AKTIF / NONAKTIF pada kondisi trigger.
-     */
     public function toggleConditionStatus($id)
     {
         $condition = ScheduleCondition::findOrFail($id);
@@ -287,9 +333,6 @@ class ScheduleController extends Controller
         return redirect()->back()->with('success', 'Status kondisi trigger berhasil diubah.');
     }
 
-    /**
-     * Menghapus kondisi trigger.
-     */
     public function destroyCondition($id)
     {
         $condition = ScheduleCondition::findOrFail($id);
@@ -298,16 +341,13 @@ class ScheduleController extends Controller
         return redirect()->back()->with('success', 'Kondisi trigger berhasil dihapus.');
     }
 
-    /**
-     * Validasi bersama kondisi trigger: rantai form -> pertanyaan -> opsi harus konsisten.
-     */
     private function validateCondition(Request $request): array
     {
         return $request->validate([
-            'trigger_form_id' => ['required', Rule::exists('forms', 'id')->where('form_type', 'INSPECTION')->where('form_level', 1)],
+            'trigger_form_id' => ['required', Rule::exists('forms', 'id')->where('form_type', 'INSPECTION')],
             'trigger_question_id' => ['required', Rule::exists('form_questions', 'id')->where('form_id', $request->input('trigger_form_id'))],
             'trigger_option_id' => ['required', Rule::exists('form_options', 'id')->where('form_question_id', $request->input('trigger_question_id'))],
-            'target_form_id' => ['required', 'different:trigger_form_id', Rule::exists('forms', 'id')->where('form_type', 'INSPECTION')->where('form_level', 2)],
+            'target_form_id' => ['required', 'different:trigger_form_id', Rule::exists('forms', 'id')->where('form_type', 'INSPECTION')],
             'due_window_days' => 'required|integer|min:1|max:30',
         ]);
     }

@@ -108,15 +108,10 @@ export default function FormIndex({ forms, filters, typeCounts, machines = [] }:
     };
 
     const handleCreateManualReport = () => {
-        if (!selectedMachineId) return;
-        router.get('/forms/create', {
-            category: 'MANUAL_REPORT',
-            machine_id: selectedMachineId,
-        });
+        router.get('/forms/create', { category: 'MANUAL_REPORT' });
     };
 
     const handleCreateTransitionForm = (type: 'START_REPAIR' | 'CLOSE_TICKET') => {
-        // Sesuaikan route ini dengan route lu
         router.get('/forms/create', { category: type });
     };
 
@@ -267,9 +262,6 @@ export default function FormIndex({ forms, filters, typeCounts, machines = [] }:
                                             <td className="p-3 sm:p-4 text-center">
                                                 <div className="flex items-center justify-center gap-1.5 flex-wrap">
                                                     {renderFormTypeBadge(f.form_type)}
-                                                    {f.form_type === 'INSPECTION' && f.form_level != null && (
-                                                        <span className="bg-indigo-100 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wider">LVL {f.form_level}</span>
-                                                    )}
                                                 </div>
                                             </td>
                                             {/* KOLOM DIGUNAKAN UNTUK (MESIN / PIPELINE) */}
@@ -355,14 +347,14 @@ export default function FormIndex({ forms, filters, typeCounts, machines = [] }:
                             {/* 2. Manual Report */}
                             <button
                                 type="button"
-                                onClick={() => setSelectedFormType(selectedFormType === 'MANUAL_REPORT' ? null : 'MANUAL_REPORT')}
-                                className={`group text-left p-4 rounded-2xl border-2 transition-all cursor-pointer ${selectedFormType === 'MANUAL_REPORT' ? 'border-amber-500 bg-amber-50/50' : 'border-slate-200 hover:border-amber-500 hover:bg-amber-50/50'}`}
+                                onClick={handleCreateManualReport}
+                                className="group text-left p-4 rounded-2xl border-2 border-slate-200 hover:border-amber-500 hover:bg-amber-50/50 transition-all cursor-pointer"
                             >
-                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 transition-colors ${selectedFormType === 'MANUAL_REPORT' ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-600 group-hover:bg-amber-500 group-hover:text-white'}`}>
+                                <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center mb-3 group-hover:bg-amber-500 group-hover:text-white transition-colors">
                                     <Wrench className="w-5 h-5" />
                                 </div>
                                 <p className="text-sm font-extrabold text-slate-900">Form Laporan Breakdown</p>
-                                <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">Form terikat ke satu mesin. Dibuat dari detail mesin untuk laporan manual.</p>
+                                <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">Form template untuk pelaporan kerusakan mesin.</p>
                             </button>
 
                             {/* 3. Start Repair */}
@@ -391,40 +383,6 @@ export default function FormIndex({ forms, filters, typeCounts, machines = [] }:
                                 <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">Muncul saat tiket akan di-close / diverifikasi selesai oleh teknisi.</p>
                             </button>
                         </div>
-
-                        {/* Munculkan Select Mesin kalau milih MANUAL_REPORT */}
-                        {selectedFormType === 'MANUAL_REPORT' && (
-                            <div className="space-y-2 pt-2 border-t border-slate-100">
-                                <label className="text-xs font-bold text-slate-700">Pilih Mesin</label>
-                                <select
-                                    value={selectedMachineId}
-                                    onChange={(e) => setSelectedMachineId(Number(e.target.value))}
-                                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-slate-900 focus:border-slate-900 outline-none"
-                                >
-                                    <option value="">-- Pilih mesin --</option>
-                                    {machineOptions.map((m) => (
-                                        <option key={m.id} value={m.id}>
-                                            {m.machine_code ? `${m.machine_code} | ` : ''}
-                                            {m.machine_name ?? m.machine_type}
-                                            {m.location ? ` (\u{1F4CD} ${m.location})` : m.machine_type ? ` (${m.machine_type})` : ''}
-                                        </option>
-                                    ))}
-                                </select>
-                                {machineOptions.length === 0 && (
-                                    <p className="text-[10px] text-slate-400">
-                                        Belum ada mesin terdaftar. Tambahkan mesin dulu di menu Mesin.
-                                    </p>
-                                )}
-                                <button
-                                    type="button"
-                                    disabled={!selectedMachineId}
-                                    onClick={handleCreateManualReport}
-                                    className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-colors shadow-lg shadow-amber-600/30 disabled:opacity-50 cursor-pointer"
-                                >
-                                    Lanjut Buat Form Breakdown
-                                </button>
-                            </div>
-                        )}
 
                         <div className="pt-2">
                             <button

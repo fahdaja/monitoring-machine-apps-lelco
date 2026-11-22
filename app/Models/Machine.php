@@ -75,7 +75,6 @@ class Machine extends Model
         }
 
         return $this->pics
-            ->where('is_active', true)
             ->contains(fn ($pic) => (int) $pic->id === (int) $user->id);
     }
 

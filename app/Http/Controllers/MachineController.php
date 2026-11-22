@@ -43,8 +43,7 @@ class MachineController extends Controller
      */
     private function picCandidates(): array
     {
-        return User::where('is_active', true)
-            ->whereRaw('UPPER(role) <> ?', [User::ROLE_ADMIN])
+        return User::whereRaw('UPPER(role) <> ?', [User::ROLE_ADMIN])
             ->orderBy('full_name')
             ->get()
             ->map(fn (User $user) => [
@@ -53,14 +52,14 @@ class MachineController extends Controller
                 'user_code'            => $user->user_code,
                 'role'                 => (string) $user->role,
                 'department'           => $user->department,
-                'can_access_inspection' => $user->hasRole(['ADMIN', 'OPERATOR']),
+                'can_access_inspection' => $user->hasRole(['ADMIN', 'OPERATOR', 'MAINTENANCE', 'MAINTENANCE_L2', 'SUPERVISOR', 'ENGINEERING']),
             ])
             ->values()
             ->all();
     }
 
     /**
-     * Aturan validasi PIC: id harus user aktif dan bukan ADMIN (admin bukan kandidat PIC).
+     * Aturan validasi PIC: id bukan ADMIN (admin bukan kandidat PIC).
      */
     private function picUserRules(): array
     {
@@ -69,7 +68,6 @@ class MachineController extends Controller
             'pic_user_ids.*' => [
                 'integer',
                 Rule::exists('users', 'id')->where(fn ($query) => $query
-                    ->where('is_active', true)
                     ->whereRaw('UPPER(role) <> ?', [User::ROLE_ADMIN])),
             ],
         ];
