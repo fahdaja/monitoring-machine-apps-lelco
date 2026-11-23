@@ -137,6 +137,11 @@
     body {
         @apply bg-background text-foreground;
     }
+
+    input::-ms-reveal,
+    input::-ms-clear {
+        display: none;
+    }
 }
 
 /* Font untuk Paragraf & Teks Biasa (font-normal / 400) */

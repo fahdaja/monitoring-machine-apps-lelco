@@ -118,10 +118,18 @@ class KanbanController extends Controller
 
         $ticket->update($updateData);
 
-       if ($validated['status'] === 'IN_PROGRESS') {
-        Machine::where('id', $ticket->machine_id)
-         ->update(['machine_status' => 'UNDER_REPAIR']);
+        $machineStatusMap = [
+            'IN_PROGRESS'       => 'UNDER_REPAIR',
+            'WAITING_SPAREPART' => 'WAITING_SPAREPART',
+            'WAITING_VENDOR'    => 'WAITING_VENDOR',
+            'READY_FOR_CLOSING' => 'WAITING_VERIFICATION',
+        ];
+
+        if ($ticket->machine_id && isset($machineStatusMap[$validated['status']])) {
+            Machine::where('id', $ticket->machine_id)
+                ->update(['machine_status' => $machineStatusMap[$validated['status']]]);
         }
+
         return redirect()->back()->with('success', 'Status perbaikan berhasil diperbarui.');
     }
 
@@ -146,6 +154,11 @@ class KanbanController extends Controller
             'breakdown_minutes' => $downtime,
         ]);
 
+        if ($ticket->machine_id) {
+            Machine::where('id', $ticket->machine_id)
+                ->update(['machine_status' => 'WAITING_VERIFICATION']);
+        }
+
         return redirect()->back()->with('success', 'Tiket berhasil diajukan ke tahap Closing.');
     }
 
@@ -154,6 +167,10 @@ class KanbanController extends Controller
      */
     public function verifyClose(Request $request, string $ticketCode): RedirectResponse
     {
+        if (! $request->user()?->hasRole(['ADMIN', 'SUPERVISOR'])) {
+            abort(403, 'Hanya Admin atau Supervisor yang dapat memverifikasi penutupan tiket.');
+        }
+
         $ticket = BreakdownTicket::where('ticket_code', $ticketCode)->firstOrFail();
         
         $verifiedAt = now();
@@ -186,7 +203,7 @@ class KanbanController extends Controller
         ])->where('ticket_code', $ticketCode)->firstOrFail();
 
         if (! $this->canReadSubmissions($request->user(), $ticket)) {
-            abort(403, 'Hanya admin atau verifikator tiket yang bisa membaca isi submission.');
+            abort(403, 'Hanya admin, supervisor, atau verifikator tiket yang bisa membaca isi submission.');
         }
 
         $status = is_object($ticket->status) ? $ticket->status->value : strtoupper((string) $ticket->status);
@@ -254,7 +271,7 @@ class KanbanController extends Controller
     }
 
     /**
-     * Admin membaca semua submission; user lain hanya tiket yang ia verifikasi.
+     * Admin & Supervisor membaca semua submission; user lain hanya tiket yang ia verifikasi.
      */
     private function canReadSubmissions(?User $user, BreakdownTicket $ticket): bool
     {
@@ -262,7 +279,7 @@ class KanbanController extends Controller
             return false;
         }
 
-        if (strtoupper((string) $user->role) === 'ADMIN') {
+        if ($user->hasRole(['ADMIN', 'SUPERVISOR'])) {
             return true;
         }
 
@@ -552,6 +569,11 @@ class KanbanController extends Controller
                         ? (int) $ticket->reported_at->diffInMinutes($closedAt)
                         : 0,
                 ]);
+
+                if ($ticket->machine_id) {
+                    Machine::where('id', $ticket->machine_id)
+                        ->update(['machine_status' => 'WAITING_VERIFICATION']);
+                }
             }
         });
 

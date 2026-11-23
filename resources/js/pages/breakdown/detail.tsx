@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../layouts/app-layout';
 import {
     ArrowLeft,
@@ -118,6 +118,20 @@ function TextBlock({ label, value, tone = 'slate' }: { label: string; value?: st
 
 export default function BreakdownTicketDetail({ ticket, machine, people, timeline, submissions }: Props) {
     const [zoom, setZoom] = useState<string | null>(null);
+    const [showVerifyModal, setShowVerifyModal] = useState(false);
+    const [isVerifying, setIsVerifying] = useState(false);
+
+    const userRole = (usePage<any>().props?.auth?.user?.role || '').toUpperCase();
+    const canVerify = (userRole === 'ADMIN' || userRole === 'SUPERVISOR') && ticket.status === 'READY_FOR_CLOSING';
+
+    const handleVerifyClose = () => {
+        setIsVerifying(true);
+        router.put(`/breakdowns/${ticket.ticket_code}/verify-close`, {}, {
+            preserveScroll: true,
+            onSuccess: () => setShowVerifyModal(false),
+            onFinish: () => setIsVerifying(false),
+        });
+    };
 
     const photoCount = submissions.reduce((total, s) => total + s.photo_count, 0);
     const statusTone = STATUS_TONE[ticket.status] ?? 'bg-slate-100 text-slate-700 border-slate-200';
@@ -148,6 +162,17 @@ export default function BreakdownTicketDetail({ ticket, machine, people, timelin
                             </Link>
                         </div>
                     </div>
+
+                    {canVerify && (
+                        <button
+                            type="button"
+                            onClick={() => setShowVerifyModal(true)}
+                            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition-colors cursor-pointer"
+                        >
+                            <CheckCircle2 className="w-4 h-4" />
+                            Verifikasi &amp; Selesaikan (Closed)
+                        </button>
+                    )}
                 </div>
 
                 {/* Profil tiket */}
@@ -241,7 +266,7 @@ export default function BreakdownTicketDetail({ ticket, machine, people, timelin
                                         </span>
                                     </div>
 
-                                    <div className="divide-y divide-slate-100">
+                                    <div className="divide-y divide-slate-100 max-h-[480px] overflow-y-auto">
                                         {submission.sections.map((section, sIndex) => (
                                             <div key={`${submission.context}-s-${sIndex}`} className="p-4">
                                                 {submission.sections.length > 1 && (
@@ -307,6 +332,45 @@ export default function BreakdownTicketDetail({ ticket, machine, people, timelin
                     </div>
                 )}
             </div>
+
+            {/* Modal Konfirmasi Verifikasi */}
+            {showVerifyModal && (
+                <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 p-6 space-y-5 text-center">
+                        <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-2xl mx-auto flex items-center justify-center shadow-inner">
+                            <CheckCircle2 className="w-7 h-7" />
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <h3 className="text-base font-extrabold text-slate-900">Verifikasi &amp; Tutup Tiket?</h3>
+                            <p className="text-xs text-slate-500 leading-relaxed px-2">
+                                Tiket <strong className="font-mono text-slate-800">{ticket.ticket_code}</strong> pada mesin{' '}
+                                <strong className="text-slate-800">{machine.machine_name}</strong> akan ditutup (<strong className="text-emerald-700">CLOSED</strong>) dan status mesin dikembalikan menjadi{' '}
+                                <strong className="text-emerald-700">RUNNING</strong>.
+                            </p>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 pt-1">
+                            <button
+                                type="button"
+                                disabled={isVerifying}
+                                onClick={() => setShowVerifyModal(false)}
+                                className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                                Batal
+                            </button>
+                            <button
+                                type="button"
+                                disabled={isVerifying}
+                                onClick={handleVerifyClose}
+                                className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors shadow-sm cursor-pointer disabled:opacity-50"
+                            >
+                                {isVerifying ? 'Memverifikasi...' : 'Ya, Verifikasi'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Lightbox foto */}
             {zoom && (

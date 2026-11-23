@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../layouts/app-layout';
-import { QrCode } from 'lucide-react';
+import { triggerQrScanner } from '../../components/qr/FloatingQrButton';
 
 // Type Definitions
 export interface InspectionTask {
@@ -389,7 +389,7 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
 
                                     {isFollowUp(t) && (
                                         <p className="mt-1 text-[11px] font-semibold text-orange-700 leading-snug">
-                                            Lanjutan dari inspeksi lvl 1
+                                            Lanjutan dari {t.sourceFormTitle || 'inspeksi sebelumnya'}
                                             <span className="block text-[10px] font-mono text-slate-500 mt-0.5">
                                                 {t.sourceTaskCode || '-'}
                                                 {t.conditionCode ? ` \u00b7 ${t.conditionCode}` : ''}
@@ -493,24 +493,30 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                                                 );
                                             }
 
-                                            // ⚠️ OVERDUE: task tetap boleh dikerjakan, tapi tampilkan tombol merah
-                                            // agar operator sadar bahwa ini tercatat sebagai terlambat.
+                                            // ⚠️ OVERDUE: wajib scan QR fisik mesin terlebih dahulu
                                             if (t.status === 'OVERDUE') {
                                                 const lateDays = t.endDate ? Math.abs(daysLeft(t.endDate, selectedDate)) : null;
                                                 return (
                                                     <button
                                                         type="button"
-                                                        onClick={() => setSelectedTaskForModal(t)}
+                                                        onClick={() =>
+                                                            triggerQrScanner({
+                                                                expectedMachineCode: t.machineCode,
+                                                                targetTaskId: t.taskId,
+                                                                machineName: t.machineName,
+                                                                activity: t.activity,
+                                                            })
+                                                        }
                                                         className="w-full py-2 px-3 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg text-center transition-colors cursor-pointer shadow-sm"
                                                     >
                                                         {lateDays !== null
-                                                            ? `⚠️ Kerjakan (Terlambat ${lateDays} hari)`
-                                                            : '⚠️ Kerjakan (Terlambat)'}
+                                                            ? `⚠️ Scan QR & Kerjakan (Terlambat ${lateDays} hari)`
+                                                            : '⚠️ Scan QR & Kerjakan (Terlambat)'}
                                                     </button>
                                                 );
                                             }
 
-                                            // Jika milik user ini atau belum di-assign sama sekali
+                                            // Jika sudah IN_PROGRESS milik user ini, langsung lanjutkan tanpa scan ulang
                                             return (
                                                 <button
                                                     type="button"
@@ -518,8 +524,12 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                                                         if (t.status === 'IN_PROGRESS') {
                                                             router.visit(`/inspection-form/${t.taskId}`);
                                                         } else {
-                                                            // Jika status DUE / OVERDUE, tetap wajib verifikasi scan QR dulu
-                                                            setSelectedTaskForModal(t);
+                                                            triggerQrScanner({
+                                                                expectedMachineCode: t.machineCode,
+                                                                targetTaskId: t.taskId,
+                                                                machineName: t.machineName,
+                                                                activity: t.activity,
+                                                            });
                                                         }
                                                     }}
                                                     className="w-full py-2 px-3 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg text-center transition-colors cursor-pointer shadow-sm"
@@ -540,81 +550,6 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                 </div>
 
             </div>
-
-            {/* Modal Verifikasi QR sebelum Mulai Inspeksi */}
-            {selectedTaskForModal && (
-                <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-200 text-center max-h-[90dvh] overflow-y-auto">
-                        <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-900 font-black text-xl">
-                            <QrCode />
-                        </div>
-                        <h3 className="text-lg font-extrabold text-slate-900">Verifikasi QR Mesin</h3>
-                        <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                            Scan QR fisik mesin <strong className="text-slate-900">{selectedTaskForModal.machineCode}</strong> sebelum memulai pengisian lembar inspeksi.
-                        </p>
-
-                        {/* ⚠️ Peringatan keterlambatan (tetap boleh dikerjakan, hanya tercatat untuk audit) */}
-                        {selectedTaskForModal.status === 'OVERDUE' && (() => {
-                            const lateDays = selectedTaskForModal.endDate
-                                ? Math.abs(daysLeft(selectedTaskForModal.endDate, currentCalendarData.today))
-                                : null;
-                            return (
-                                <div className="mt-3 p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-left">
-                                    <p className="text-[11px] font-semibold text-rose-700 leading-relaxed">
-                                        {lateDays !== null
-                                            ? `⚠️ Task ini terlambat ${lateDays} hari. Anda tetap bisa mengerjakannya, tapi akan tercatat sebagai terlambat.`
-                                            : '⚠️ Task ini terlambat. Anda tetap bisa mengerjakannya, tapi akan tercatat sebagai terlambat.'}
-                                    </p>
-                                </div>
-                            );
-                        })()}
-
-                        <div className="my-4 p-3 rounded-xl bg-slate-50 border border-slate-200 text-left text-xs">
-                            <span className="text-[10px] font-mono text-slate-400 block">{selectedTaskForModal.taskCode}</span>
-                            <strong className="block text-slate-900 text-sm font-bold mt-0.5">{selectedTaskForModal.activity}</strong>
-                            <span className="block text-slate-500 mt-1">{selectedTaskForModal.machineName} ({selectedTaskForModal.location})</span>
-                        </div>
-
-                        {/* Input simulasi / hasil scan dari kamera */}
-                        <div className="mb-4 text-left space-y-1">
-                            <label className="text-[11px] font-bold text-slate-700">Hasil Scan / Kode QR Mesin:</label>
-                            <input
-                                type="text"
-                                value={scannedInput}
-                                onChange={(e) => setScannedInput(e.target.value)}
-                                placeholder="Scan atau ketik kode mesin..."
-                                className="w-full p-2.5 text-xs bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900"
-                            />
-                            {scanError && (
-                                <p className="text-[11px] font-semibold text-rose-600 mt-1 bg-rose-50 p-2 rounded-lg border border-rose-200">
-                                    {scanError}
-                                </p>
-                            )}
-                        </div>
-
-                        <div className="space-y-2">
-                            <button
-                                type="button"
-                                onClick={() => handleVerifyAndStart(selectedTaskForModal, scannedInput)}
-                                className="w-full py-2.5 px-4 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
-                            >
-                                Verifikasi &amp; Mulai Inspeksi
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setSelectedTaskForModal(null);
-                                    setScannedInput('');
-                                    setScanError(null);
-                                }}
-                                className="w-full py-2 px-4 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
-                            >
-                                Batal
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </AppLayout>
     );
 }

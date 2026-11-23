@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Head, Link, router, usePage } from '@inertiajs/react';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import { toast } from 'sonner';
-import { AlertCircle, AlertTriangle, CheckCircle2, Loader2, Trash2 } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle2, KeyRound, Loader2, Trash2 } from 'lucide-react';
 
 interface User {
     id: number;
@@ -53,6 +53,49 @@ export default function UserIndex({ users = [], user }: UserIndexProps) {
     const [isDeleting, setIsDeleting] = useState(false);
     // State untuk toast pesan sukses/gagal di atas
     const [toastMessage, setToastMessage] = useState<ToastPayload | null>(null);
+    // Filter role
+    const [roleFilter, setRoleFilter] = useState<string>('ALL');
+    const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+
+    const {
+        data: pwdData,
+        setData: setPwdData,
+        put: putPassword,
+        processing: pwdProcessing,
+        errors: pwdErrors,
+        reset: resetPwd,
+        clearErrors: clearPwdErrors,
+    } = useForm({
+        current_password: '',
+        password: '',
+        password_confirmation: '',
+    });
+
+    const openPasswordModal = () => {
+        resetPwd();
+        clearPwdErrors();
+        setIsPasswordModalOpen(true);
+    };
+
+    const closePasswordModal = () => {
+        setIsPasswordModalOpen(false);
+        resetPwd();
+        clearPwdErrors();
+    };
+
+    const submitAdminPassword = (e: React.FormEvent) => {
+        e.preventDefault();
+        putPassword('/users/admin/password', {
+            preserveScroll: true,
+            onSuccess: () => closePasswordModal(),
+        });
+    };
+
+    const visibleUsers = users.filter((u) => {
+        const r = (u.role || '').toUpperCase();
+        if (roleFilter === 'ALL') return true;
+        return r === roleFilter;
+    });
 
     // Efek otomatis menghilangkan toast pesan setelah 4 detik
     useEffect(() => {
@@ -106,7 +149,7 @@ export default function UserIndex({ users = [], user }: UserIndexProps) {
                 setToastMessage({
                     type: 'error',
                     title: 'Gagal Dihapus',
-                    description: `Terjadi kesalahan saat menghapus user "${name}".`,
+                    description: `Terjadi kesalahan saat menghapus user "${full_name}".`,
                 });
             },
         });
@@ -115,6 +158,96 @@ export default function UserIndex({ users = [], user }: UserIndexProps) {
     return (
         <AppLayout>
             <Head title="Manajemen User" />
+
+            {/* 1. MODAL KONFIRMASI DI TENGAH LAYAR (MUNCUL SAAT KLIK HAPUS USER) */}
+            {isPasswordModalOpen && (
+                <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-100 p-6 space-y-4">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <div>
+                                <h3 className="text-base font-extrabold text-slate-900">Ubah Kata Sandi Admin</h3>
+                                <p className="text-[11px] text-slate-500 mt-0.5">
+                                    Perbarui kata sandi untuk akun Admin yang sedang login ({currentUser?.username}).
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={closePasswordModal}
+                                className="text-slate-400 hover:text-slate-700 font-bold text-lg cursor-pointer"
+                            >
+                                &times;
+                            </button>
+                        </div>
+
+                        <form onSubmit={submitAdminPassword} className="space-y-3.5">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1">Kata Sandi Lama *</label>
+                                <input
+                                    type="password"
+                                    value={pwdData.current_password}
+                                    onChange={(e) => setPwdData('current_password', e.target.value)}
+                                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
+                                    placeholder="Masukkan kata sandi saat ini"
+                                    required
+                                />
+                                {pwdErrors.current_password && (
+                                    <span className="text-[10px] text-rose-600 font-bold mt-1 block">
+                                        {pwdErrors.current_password}
+                                    </span>
+                                )}
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1">Kata Sandi Baru * (Min. 8 karakter)</label>
+                                <input
+                                    type="password"
+                                    value={pwdData.password}
+                                    onChange={(e) => setPwdData('password', e.target.value)}
+                                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
+                                    placeholder="Minimal 8 karakter"
+                                    minLength={8}
+                                    required
+                                />
+                                {pwdErrors.password && (
+                                    <span className="text-[10px] text-rose-600 font-bold mt-1 block">
+                                        {pwdErrors.password}
+                                    </span>
+                                )}
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1">Konfirmasi Kata Sandi Baru *</label>
+                                <input
+                                    type="password"
+                                    value={pwdData.password_confirmation}
+                                    onChange={(e) => setPwdData('password_confirmation', e.target.value)}
+                                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
+                                    placeholder="Ulangi kata sandi baru"
+                                    minLength={8}
+                                    required
+                                />
+                            </div>
+
+                            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                                <button
+                                    type="button"
+                                    onClick={closePasswordModal}
+                                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
+                                >
+                                    Batal
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={pwdProcessing}
+                                    className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
+                                >
+                                    {pwdProcessing ? 'Menyimpan...' : 'Simpan Sandi Baru'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
 
             {/* 1. MODAL KONFIRMASI DI TENGAH LAYAR (MUNCUL SAAT KLIK HAPUS USER) */}
             {deleteTarget && (
@@ -189,21 +322,56 @@ export default function UserIndex({ users = [], user }: UserIndexProps) {
                         </p>
                     </div>
                     {isAdmin && (
-                        <Link
-                            href="/users/create"
-                            className="inline-flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-colors shadow-sm"
-                        >
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                            </svg>
-                            Tambah User Baru
-                        </Link>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={openPasswordModal}
+                                className="inline-flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-bold px-4 py-2.5 rounded-xl transition-colors shadow-xs cursor-pointer"
+                            >
+                                <KeyRound className="w-4 h-4 text-slate-600" />
+                                Ubah Sandi Admin
+                            </button>
+                            <Link
+                                href="/users/create"
+                                className="inline-flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-colors shadow-sm"
+                            >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                </svg>
+                                Tambah User Baru
+                            </Link>
+                        </div>
                     )}
+                </div>
+
+                {/* Filter Role Chips */}
+                <div className="flex flex-wrap items-center gap-2">
+                    {[
+                        { key: 'ALL', label: 'Semua' },
+                        { key: 'SUPERVISOR', label: 'Supervisor' },
+                        { key: 'OPERATOR', label: 'Operator' },
+                        { key: 'MAINTENANCE', label: 'Maintenance' },
+                        { key: 'ENGINEERING', label: 'Engineering' },
+                        { key: 'VENDOR', label: 'Vendor' },
+                    ].map((tab) => (
+                        <button
+                            key={tab.key}
+                            type="button"
+                            onClick={() => setRoleFilter(tab.key)}
+                            className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors cursor-pointer ${
+                                roleFilter === tab.key
+                                    ? 'bg-slate-900 text-white border-slate-900'
+                                    : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'
+                            }`}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
                 </div>
 
                 {/* Table Section */}
                 <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
                         <table className="w-full text-center border-collapse">
                             <thead>
                                 <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-black text-slate-400 uppercase tracking-wider">
@@ -218,8 +386,8 @@ export default function UserIndex({ users = [], user }: UserIndexProps) {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-600">
-                                {users.length > 0 ? (
-                                    users.map((item) => (
+                                {visibleUsers.length > 0 ? (
+                                    visibleUsers.map((item) => (
                                         <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
                                             <td className="py-4 px-6 text-center">
                                                 <div className="flex items-center justify-center gap-3">

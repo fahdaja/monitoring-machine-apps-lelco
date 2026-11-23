@@ -64,14 +64,6 @@ class FormController extends Controller
         return !empty($machineId) ? (int) $machineId : null;
     }
 
-    /**
-     * Level template tidak lagi dipakai pada form inspeksi.
-     */
-    private function resolveFormLevel(FormType $type, $level): ?int
-    {
-        return null;
-    }
-
     public function store(Request $request)
 {
     return DB::transaction(function () use ($request) {
@@ -79,7 +71,6 @@ class FormController extends Controller
         $validate = $request->validate([
             'metadata.form_type'                 => 'required|string|in:'.implode(',', FormType::values()),
             'metadata.machine_id'              => 'nullable|string|exists:machines,id',
-            'metadata.form_level'              => 'nullable|integer|in:1,2',
             'metadata.form_title'                => 'required|string|max:255',
             'metadata.form_description'          => 'nullable|string',
 
@@ -108,7 +99,6 @@ class FormController extends Controller
         $type = FormType::from($meta['form_type']);
         $machineId = $this->resolveMachineId($type, $meta['machine_id'] ?? null);
         $machine = $machineId ? Machine::find($machineId) : null;
-        $formLevel = $this->resolveFormLevel($type, $meta['form_level'] ?? null);
 
         do {
             $prefix = $type->isTicketTransition() ? 'TRN' : 'FRM' . ($machine ? substr(strtoupper((string) $machine->machine_type), 0, 3) : '');
@@ -122,7 +112,6 @@ class FormController extends Controller
         $form->form_code        = $formCode;
         $form->form_title       = $meta['form_title'];
         $form->form_description = $meta['form_description'] ?? '-';
-        $form->form_level       = $formLevel;
         $form->save();
         
         // Array penampung untuk memetakan index section ke ID database asli (untuk goto_form_section_id)
@@ -251,7 +240,6 @@ class FormController extends Controller
             $validate = $request->validate([
                 'metadata.form_type'                 => 'required|string|in:'.implode(',', FormType::values()),
                 'metadata.machine_id'              => 'nullable|string|exists:machines,id',
-                'metadata.form_level'              => 'nullable|integer|in:1,2',
                 'metadata.form_title'                => 'required|string|max:255',
                 'metadata.form_description'          => 'nullable|string',
 
@@ -336,13 +324,11 @@ class FormController extends Controller
             $meta = $validate['metadata'];
             $type = FormType::from($meta['form_type']);
             $machineId = $this->resolveMachineId($type, $meta['machine_id'] ?? null);
-            $formLevel = null;
 
             // Update info utama form
             $form->update([
                 'form_type'        => $type->value,
                 'machine_id'       => $machineId,
-                'form_level'       => null,
                 'form_title'       => $meta['form_title'],
                 'form_description' => $meta['form_description'] ?? '-',
             ]);

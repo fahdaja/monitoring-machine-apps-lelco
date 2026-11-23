@@ -1,4 +1,37 @@
 import React, { useState, useEffect, useRef, PointerEvent } from 'react';
+import { router } from '@inertiajs/react';
+
+export interface QrScanTarget {
+    expectedMachineCode: string;
+    targetTaskId: number | string;
+    machineName?: string;
+    activity?: string;
+}
+
+export function triggerQrScanner(target?: QrScanTarget) {
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('open-qr-scanner', { detail: target || null }));
+    }
+}
+
+export function extractMachineCodeFromQr(raw: string): string {
+    let scannedValue = (raw || '').trim();
+    if (!scannedValue) return '';
+
+    if (scannedValue.includes('http://') || scannedValue.includes('https://')) {
+        try {
+            const urlObj = new URL(scannedValue);
+            const segments = urlObj.pathname.split('/').filter(Boolean);
+            scannedValue = segments[segments.length - 1] || scannedValue;
+        } catch {
+            scannedValue = scannedValue.split('/').pop() || scannedValue;
+        }
+    } else if (scannedValue.includes('/')) {
+        scannedValue = scannedValue.split('/').pop() || scannedValue;
+    }
+
+    return scannedValue.trim().toUpperCase();
+}
 
 interface FloatingQrButtonProps {
     onScanSuccess?: (decodedText: string) => void;
@@ -15,6 +48,9 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
     const [isDragging, setIsDragging] = useState(false);
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [isInsecureHttp, setIsInsecureHttp] = useState(false);
+    const [scanTarget, setScanTarget] = useState<QrScanTarget | null>(null);
+    const [copiedFlagUrl, setCopiedFlagUrl] = useState(false);
 
     const dragRef = useRef({
         startX: 0,
@@ -25,16 +61,17 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
     });
 
     const scannerInstanceRef = useRef<any>(null);
+    const videoStreamRef = useRef<MediaStream | null>(null);
+    const rafIdRef = useRef<number | null>(null);
+    const hasHandledResultRef = useRef<boolean>(false);
 
-    // Perkiraan ukuran tombol (lebar & tinggi dalam pixel)
-    const BUTTON_WIDTH = 110; 
+    const BUTTON_WIDTH = 110;
     const BUTTON_HEIGHT = 60;
-    const PADDING = 16; // Jarak aman dari pinggir layar
+    const PADDING = 16;
 
-    // Fungsi utilitas untuk memastikan posisi tidak pernah keluar layar
     const clampPosition = (x: number, y: number) => {
         if (typeof window === 'undefined') return { x, y };
-        
+
         const maxX = window.innerWidth - BUTTON_WIDTH - PADDING;
         const maxY = window.innerHeight - BUTTON_HEIGHT - PADDING;
 
@@ -44,47 +81,101 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
         };
     };
 
-    // 1. Load posisi dari localStorage & atur posisi awal / resize listener
     useEffect(() => {
         setIsClient(true);
-        if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem('md_qr_btn_pos_v2');
-            if (saved) {
-                try {
-                    const parsed = JSON.parse(saved);
-                    // Validasi agar posisi lama tidak di luar layar
-                    setPosition(clampPosition(parsed.x, parsed.y));
-                } catch (e) {
-                    setPosition(clampPosition(window.innerWidth - BUTTON_WIDTH - 20, window.innerHeight - BUTTON_HEIGHT - 40));
-                }
-            } else {
+        if (typeof window === 'undefined') return;
+
+        setIsInsecureHttp(!window.isSecureContext);
+
+        const saved = localStorage.getItem('md_qr_btn_pos_v2');
+        if (saved) {
+            try {
+                const parsed = JSON.parse(saved);
+                setPosition(clampPosition(parsed.x, parsed.y));
+            } catch {
                 setPosition(clampPosition(window.innerWidth - BUTTON_WIDTH - 20, window.innerHeight - BUTTON_HEIGHT - 40));
             }
-
-            // Handler jika ukuran layar berubah (misal rotasi HP / resize window)
-            const handleResize = () => {
-                setPosition((prev) => clampPosition(prev.x, prev.y));
-            };
-
-            window.addEventListener('resize', handleResize);
-
-            // Inject script html5-qrcode ke dokumen jika belum ada
-            // @ts-ignore
-            if (!window.Html5Qrcode && !document.getElementById('html5-qrcode-cdn')) {
-                const script = document.createElement('script');
-                script.id = 'html5-qrcode-cdn';
-                script.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
-                script.async = true;
-                document.body.appendChild(script);
-            }
-
-            return () => {
-                window.removeEventListener('resize', handleResize);
-            };
+        } else {
+            setPosition(clampPosition(window.innerWidth - BUTTON_WIDTH - 20, window.innerHeight - BUTTON_HEIGHT - 40));
         }
+
+        const handleResize = () => {
+            setPosition((prev) => clampPosition(prev.x, prev.y));
+        };
+
+        const handleExternalOpen = (e: Event) => {
+            const customEvent = e as CustomEvent<QrScanTarget | null>;
+            openScannerModal(customEvent.detail || null);
+        };
+
+        window.addEventListener('resize', handleResize);
+        window.addEventListener('open-qr-scanner', handleExternalOpen);
+
+        // Fallback library html5-qrcode bila browser belum punya BarcodeDetector native
+        // @ts-ignore
+        if (!window.Html5Qrcode && !document.getElementById('html5-qrcode-cdn')) {
+            const script = document.createElement('script');
+            script.id = 'html5-qrcode-cdn';
+            script.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
+            script.async = true;
+            document.body.appendChild(script);
+        }
+
+        return () => {
+            window.removeEventListener('resize', handleResize);
+            window.removeEventListener('open-qr-scanner', handleExternalOpen);
+            stopAllCameraStreams();
+        };
     }, []);
 
-    // Dragging Handlers
+    const stopAllCameraStreams = () => {
+        if (rafIdRef.current !== null) {
+            cancelAnimationFrame(rafIdRef.current);
+            rafIdRef.current = null;
+        }
+
+        if (videoStreamRef.current) {
+            videoStreamRef.current.getTracks().forEach((track) => track.stop());
+            videoStreamRef.current = null;
+        }
+
+        const currentScanner = scannerInstanceRef.current;
+        if (currentScanner) {
+            scannerInstanceRef.current = null;
+            try {
+                currentScanner.stop().catch(() => {});
+            } catch {}
+        }
+    };
+
+    const handleDecodedQr = (rawText: string, activeTarget: QrScanTarget | null) => {
+        const cleanedCode = extractMachineCodeFromQr(rawText);
+        if (!cleanedCode || hasHandledResultRef.current) return;
+
+        if (activeTarget && activeTarget.expectedMachineCode) {
+            const expected = activeTarget.expectedMachineCode.trim().toUpperCase();
+            if (cleanedCode !== expected) {
+                setErrorMessage(
+                    `QR Code tidak cocok! Anda menscan "${cleanedCode}", sedangkan task ini untuk mesin "${expected}".`
+                );
+                return;
+            }
+
+            hasHandledResultRef.current = true;
+            stopAllCameraStreams();
+            setIsScannerOpen(false);
+            router.visit(`/inspection-form/${activeTarget.targetTaskId}`);
+            return;
+        }
+
+        hasHandledResultRef.current = true;
+        stopAllCameraStreams();
+        setIsScannerOpen(false);
+        if (onScanSuccess) {
+            onScanSuccess(cleanedCode);
+        }
+    };
+
     const handlePointerDown = (e: PointerEvent<HTMLButtonElement>) => {
         const button = e.currentTarget;
         button.setPointerCapture(e.pointerId);
@@ -111,12 +202,7 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
 
         if (!dragRef.current.hasMoved) return;
 
-        // Hitung posisi baru berdasarkan pergerakan kursor/sentuhan
-        const rawX = dragRef.current.initialX + dx;
-        const rawY = dragRef.current.initialY + dy;
-
-        // Batasi dengan fungsi clamp agar tidak bisa keluar layar saat digeser
-        const clamped = clampPosition(rawX, rawY);
+        const clamped = clampPosition(dragRef.current.initialX + dx, dragRef.current.initialY + dy);
         setPosition(clamped);
     };
 
@@ -125,114 +211,155 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
         setIsDragging(false);
         try {
             e.currentTarget.releasePointerCapture(e.pointerId);
-        } catch (err) {}
+        } catch {}
 
         if (dragRef.current.hasMoved) {
             localStorage.setItem('md_qr_btn_pos_v2', JSON.stringify(position));
         } else {
-            openScannerModal();
+            openScannerModal(null);
         }
     };
 
-    // 🚀 Buka Scanner Modal & Inisialisasi Kamera
-    const openScannerModal = () => {
+    /**
+     * Fast-path 1: Native BarcodeDetector + HD getUserMedia
+     * Jauh lebih cepat (<100ms) saat membaca QR di layar monitor & tidak butuh internet/CDN.
+     */
+    const startNativeFastScanner = async (container: HTMLElement, activeTarget: QrScanTarget | null): Promise<boolean> => {
+        // @ts-ignore
+        const BarcodeDetectorClass = typeof window !== 'undefined' ? window.BarcodeDetector : undefined;
+        if (!BarcodeDetectorClass || !navigator.mediaDevices?.getUserMedia) {
+            return false;
+        }
+
+        try {
+            const detector = new BarcodeDetectorClass({ formats: ['qr_code'] });
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: { ideal: 'environment' },
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                },
+                audio: false,
+            });
+
+            videoStreamRef.current = stream;
+            container.innerHTML = '';
+
+            const video = document.createElement('video');
+            video.srcObject = stream;
+            video.setAttribute('playsinline', 'true');
+            video.muted = true;
+            video.className = 'w-full h-[260px] object-cover rounded-xl';
+            container.appendChild(video);
+
+            await video.play();
+
+            let isDetecting = false;
+            const tick = async () => {
+                if (!videoStreamRef.current || hasHandledResultRef.current) return;
+
+                if (!isDetecting && video.readyState >= 2) {
+                    isDetecting = true;
+                    try {
+                        const barcodes = await detector.detect(video);
+                        if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+                            handleDecodedQr(barcodes[0].rawValue, activeTarget);
+                        }
+                    } catch {
+                        // Lanjut frame berikutnya
+                    } finally {
+                        isDetecting = false;
+                    }
+                }
+
+                if (videoStreamRef.current && !hasHandledResultRef.current) {
+                    rafIdRef.current = requestAnimationFrame(tick);
+                }
+            };
+
+            rafIdRef.current = requestAnimationFrame(tick);
+            return true;
+        } catch {
+            return false;
+        }
+    };
+
+    const openScannerModal = (target: QrScanTarget | null = null) => {
+        stopAllCameraStreams();
+        hasHandledResultRef.current = false;
+        setScanTarget(target);
         setIsScannerOpen(true);
         setErrorMessage(null);
 
-        setTimeout(() => {
+        const insecure = typeof window !== 'undefined' && !window.isSecureContext;
+        setIsInsecureHttp(insecure);
+
+        setTimeout(async () => {
+            const targetElement = document.getElementById('reader-target-box');
+            if (!targetElement) return;
+
+            if (insecure || !navigator.mediaDevices?.getUserMedia) {
+                setErrorMessage(
+                    'Browser memblokir akses live kamera di jaringan HTTP lokal. Gunakan HTTPS, localhost, atau aktifkan flag Chrome di bawah.'
+                );
+                return;
+            }
+
+            // 1. Coba Native BarcodeDetector (sangat cepat untuk layar monitor & 100% lokal)
+            const nativeStarted = await startNativeFastScanner(targetElement, target);
+            if (nativeStarted) return;
+
+            // 2. Fallback ke Html5Qrcode dengan akselerasi BarcodeDetector & khusus format QR
             // @ts-ignore
             const Html5Qrcode = window.Html5Qrcode;
-
             if (!Html5Qrcode) {
-                setErrorMessage("Modul pemindai sedang dimuat. Coba beberapa saat lagi.");
-                return;
-            }
-
-            const targetElement = document.getElementById("reader-target-box");
-            if (!targetElement) {
-                setErrorMessage("Container kamera belum siap.");
+                setErrorMessage('Modul pemindai kamera belum siap. Coba tutup dan buka kembali.');
                 return;
             }
 
             try {
-                const scanner = new Html5Qrcode("reader-target-box");
+                const scanner = new Html5Qrcode('reader-target-box', {
+                    experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+                    formatsToSupport: [0], // 0 = QR_CODE saja supaya tidak lambat mengecek 1D barcode
+                    verbose: false,
+                });
                 scannerInstanceRef.current = scanner;
 
-                scanner.start(
-                    { facingMode: "environment" },
-                    { fps: 15, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0  },
+                await scanner.start(
+                    { facingMode: 'environment' },
+                    {
+                        fps: 25,
+                        qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+                            const size = Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.78);
+                            return { width: Math.max(180, size), height: Math.max(180, size) };
+                        },
+                        disableFlip: false,
+                    },
                     (decodedText: string) => {
-                        if (decodedText && decodedText.trim() !== "") {
-                            scanner.stop().then(() => {
-                                setIsScannerOpen(false);
-                                scannerInstanceRef.current = null;
-                                if (onScanSuccess) {
-                                    onScanSuccess(decodedText.trim());
-                                }
-                            }).catch(() => {
-                                setIsScannerOpen(false);
-                                scannerInstanceRef.current = null;
-                            });
+                        if (decodedText && decodedText.trim() !== '') {
+                            handleDecodedQr(decodedText, target);
                         }
                     },
-                    (errorMessage: string) => {}
-                ).catch((err: any) => {
-                    setErrorMessage("Gagal mengakses kamera. Pastikan izin kamera diizinkan (Gunakan HTTPS atau Localhost).");
-                });
-            } catch (e) {
-                setErrorMessage("Terjadi kesalahan saat membuka modul kamera.");
+                    () => {}
+                );
+            } catch {
+                setErrorMessage('Gagal mengakses kamera. Pastikan izin kamera di browser telah diizinkan.');
             }
-        }, 400);
+        }, 200);
     };
 
-    // 📸 Alternatif: Scan dari File Gambar / Galeri
-    const handleScanFromFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        // @ts-ignore
-        const Html5Qrcode = window.Html5Qrcode;
-        if (!Html5Qrcode) {
-            alert("Modul belum siap.");
-            return;
-        }
-
-        const html5QrCode = new Html5Qrcode("reader-target-box");
-        html5QrCode.scanFile(file, true)
-            .then((decodedText: string) => {
-                setIsScannerOpen(false);
-                if (scannerInstanceRef.current) {
-                    try { scannerInstanceRef.current.clear(); } catch (e) {}
-                    scannerInstanceRef.current = null;
-                }
-                if (decodedText && decodedText.trim() !== "") {
-                    if (onScanSuccess) onScanSuccess(decodedText.trim());
-                }
-            })
-            .catch((err: any) => {
-                alert("QR Code tidak ditemukan atau tidak terbaca pada gambar tersebut.");
-            });
-    }; 
-
-    // Tutup Scanner / Matikan Kamera
     const closeScannerModal = () => {
-        const currentScanner = scannerInstanceRef.current;
-        if (currentScanner) {
-            try {
-                currentScanner.stop().then(() => {
-                    scannerInstanceRef.current = null;
-                    setIsScannerOpen(false);
-                }).catch(() => {
-                    scannerInstanceRef.current = null;
-                    setIsScannerOpen(false);
-                });
-            } catch (e) {
-                scannerInstanceRef.current = null;
-                setIsScannerOpen(false);
-            }
-        } else {
-            setIsScannerOpen(false);
-        }
+        stopAllCameraStreams();
+        setIsScannerOpen(false);
+        setScanTarget(null);
+        setErrorMessage(null);
+    };
+
+    const copyOriginForChromeFlag = () => {
+        if (typeof window === 'undefined') return;
+        navigator.clipboard?.writeText(window.location.origin);
+        setCopiedFlagUrl(true);
+        setTimeout(() => setCopiedFlagUrl(false), 2500);
     };
 
     if (!isClient) return null;
@@ -270,20 +397,58 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
             {/* Modal Kamera & Scanner */}
             {isScannerOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4">
-                    <div className="bg-white rounded-2xl max-w-sm w-full p-5 relative shadow-2xl flex flex-col items-center">
-                        <h3 className="text-sm font-bold text-slate-800 mb-2">Scan QR Code Mesin</h3>
-                        
-                        <div id="reader-target-box" className="w-full rounded-xl overflow-hidden bg-slate-100 min-h-[260px] relative"></div>
+                    <div className="bg-white rounded-2xl max-w-sm w-full p-5 relative shadow-2xl flex flex-col items-center max-h-[92dvh] overflow-y-auto">
+                        <h3 className="text-sm font-extrabold text-slate-900 mb-1">
+                            {scanTarget ? 'Verifikasi Scan QR Mesin' : 'Scan QR Code Mesin'}
+                        </h3>
 
-                        {errorMessage && (
-                            <div className="mt-3 w-full bg-rose-50 border border-rose-200 p-2.5 rounded-xl text-center">
-                                <p className="text-[11px] text-rose-600 font-medium leading-relaxed">
-                                    {errorMessage}
+                        {scanTarget && (
+                            <div className="w-full mb-3 p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-center">
+                                <p className="text-[11px] text-slate-500">
+                                    Arahkan ke QR mesin:{' '}
+                                    <strong className="font-mono text-slate-900">{scanTarget.expectedMachineCode}</strong>
                                 </p>
+                                {scanTarget.machineName && (
+                                    <p className="text-xs font-bold text-slate-800 mt-0.5 truncate">{scanTarget.machineName}</p>
+                                )}
+                                {scanTarget.activity && (
+                                    <p className="text-[11px] text-slate-500 truncate">{scanTarget.activity}</p>
+                                )}
                             </div>
                         )}
 
-                        <div className="mt-4 w-full flex flex-col gap-2">
+                        <div
+                            id="reader-target-box"
+                            className="w-full rounded-xl overflow-hidden bg-slate-900 min-h-[240px] relative flex items-center justify-center text-xs text-slate-400"
+                        >
+                            {isInsecureHttp ? 'Mode HTTP Lokal Aktif' : 'Menyiapkan kamera...'}
+                        </div>
+
+                        {errorMessage && (
+                            <div className="mt-3 w-full bg-rose-50 border border-rose-200 p-2.5 rounded-xl text-center">
+                                <p className="text-[11px] text-rose-600 font-semibold leading-relaxed">{errorMessage}</p>
+                            </div>
+                        )}
+
+                        <div className="mt-3.5 w-full flex flex-col gap-2">
+                            {isInsecureHttp && (
+                                <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-left space-y-1.5">
+                                    <p className="text-[10px] font-bold text-amber-900">
+                                        Tips Live Kamera di Jaringan HTTP Lokal:
+                                    </p>
+                                    <p className="text-[10px] text-amber-800 leading-relaxed">
+                                        Buka <code className="font-mono bg-white px-1 py-0.5 rounded">chrome://flags/#unsafely-treat-insecure-origin-as-secure</code> di Chrome HP, tempel URL server ini lalu pilih <strong>Enabled</strong>.
+                                    </p>
+                                    <button
+                                        type="button"
+                                        onClick={copyOriginForChromeFlag}
+                                        className="w-full py-1.5 px-2.5 text-[10px] font-bold bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg transition-colors cursor-pointer"
+                                    >
+                                        {copiedFlagUrl ? '✓ URL Server Disalin!' : `Salin URL Server (${typeof window !== 'undefined' ? window.location.origin : ''})`}
+                                    </button>
+                                </div>
+                            )}
+
                             <button
                                 type="button"
                                 onClick={closeScannerModal}

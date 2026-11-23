@@ -58,13 +58,13 @@ export default function FormLayout({
         <div className="min-h-[100dvh] bg-slate-100 text-slate-900 flex flex-col font-sans">
             {/* ============ HEADER ============ */}
             <header className="h-16 bg-slate-900 text-white flex items-center justify-between gap-2 sm:gap-3 px-3 sm:px-4 md:px-6 sticky top-0 z-40 shadow-md shrink-0">
-                <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
                     <img
-                        src="/logo.png"
-                        alt="Logo"
-                        className="w-9 h-9 sm:w-10 sm:h-10 shrink-0 object-contain"
+                        src="/images/logo_lelco_white.png"
+                        alt="Lelco Manufacturing"
+                        className="h-7 sm:h-8 w-auto shrink-0 object-contain"
                     />
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0 flex-1 border-l border-slate-700/80 pl-2.5 sm:pl-3">
                         <span className="block text-[8px] sm:text-[9px] text-slate-400 uppercase tracking-wide truncate">
                             PT LELCO TRINDO NUSANTARA
                         </span>

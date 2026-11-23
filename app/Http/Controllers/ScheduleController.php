@@ -8,11 +8,13 @@ use App\Models\Schedule;
 use App\Models\ScheduleCondition;
 use App\Models\ScheduleMachine;
 use App\Models\Form;
+use App\Models\FormQuestion;
 use App\Models\Machine;
 use App\Models\Task;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class ScheduleController extends Controller
 {
@@ -91,10 +93,12 @@ class ScheduleController extends Controller
         // Ambil semua kondisi trigger antar form inspeksi
         $conditions = ScheduleCondition::with([
             'triggerForm.machine',
-            'triggerQuestion',
+            'triggerQuestion.section',
             'triggerOption',
             'targetForm.machine',
         ])->latest()->get()->map(function ($condition) {
+            $section = $condition->triggerQuestion?->section;
+
             return [
                 'id' => $condition->id,
                 'condition_code' => $condition->condition_code,
@@ -103,10 +107,19 @@ class ScheduleController extends Controller
                     'form_title' => $condition->triggerForm->form_title,
                     'form_code' => $condition->triggerForm->form_code,
                 ] : null,
+                'trigger_section' => $section ? [
+                    'id' => $section->id,
+                    'section_order' => $section->section_order,
+                    'section_title' => $section->section_title,
+                ] : null,
                 'trigger_question' => $condition->triggerQuestion ? [
                     'id' => $condition->triggerQuestion->id,
                     'question_text' => $condition->triggerQuestion->question_text,
+                    'input_type' => $condition->triggerQuestion->input_type instanceof \BackedEnum
+                        ? $condition->triggerQuestion->input_type->value
+                        : (string) $condition->triggerQuestion->input_type,
                 ] : null,
+                'trigger_operator' => $condition->trigger_operator ?: 'option_selected',
                 'trigger_option' => $condition->triggerOption ? [
                     'id' => $condition->triggerOption->id,
                     'option_text' => $condition->triggerOption->option_text,
@@ -136,7 +149,11 @@ class ScheduleController extends Controller
     public function store(Request $request)
     {
         $validate = $request->validate([
-            'form_id' => ['required', Rule::exists('forms', 'id')->where('form_type', 'INSPECTION')],
+            'form_id' => [
+                'required',
+                Rule::exists('forms', 'id')->where('form_type', 'INSPECTION'),
+                Rule::unique('schedules', 'form_id'),
+            ],
             'frequency_type' => 'required|in:DAILY,WEEKLY,MONTHLY',
             'due_window_days' => 'required|integer|min:1|max:30',
             'selected_days' => 'required_if:frequency_type,WEEKLY|array',
@@ -144,10 +161,18 @@ class ScheduleController extends Controller
             'selected_dates' => 'required_if:frequency_type,MONTHLY|array',
             'selected_dates.*' => 'integer|between:1,31',
             'machine_assignments' => 'required|array|min:1',
-            'machine_assignments.*.machine_id' => 'required|integer|exists:machines,id',
+            'machine_assignments.*.machine_id' => 'required|integer|distinct|exists:machines,id',
             'machine_assignments.*.assigned_user_ids' => 'nullable|array',
             'machine_assignments.*.assigned_user_ids.*' => 'integer|exists:users,id',
+        ], [
+            'form_id.unique' => 'Form ini sudah memiliki pengaturan jadwal. Silakan edit jadwal yang sudah ada.',
         ]);
+
+        if (ScheduleCondition::where('target_form_id', $validate['form_id'])->exists()) {
+            throw ValidationException::withMessages([
+                'form_id' => 'Form ini sudah digunakan sebagai Form Lanjutan pada Kondisi Trigger sehingga tidak dapat dibuatkan jadwal rutin.',
+            ]);
+        }
 
         return DB::transaction(function () use ($request, $validate) {
             do {
@@ -180,10 +205,14 @@ class ScheduleController extends Controller
 
     public function update(Request $request, $id)
     {
-        $oldSchedule = Schedule::findOrFail($id);
+        $schedule = Schedule::findOrFail($id);
 
         $validate = $request->validate([
-            'form_id' => ['required', Rule::exists('forms', 'id')->where('form_type', 'INSPECTION')],
+            'form_id' => [
+                'required',
+                Rule::exists('forms', 'id')->where('form_type', 'INSPECTION'),
+                Rule::unique('schedules', 'form_id')->ignore($schedule->id),
+            ],
             'frequency_type' => 'required|in:DAILY,WEEKLY,MONTHLY',
             'due_window_days' => 'required|integer|min:1|max:30',
             'selected_days' => 'required_if:frequency_type,WEEKLY|array',
@@ -191,28 +220,23 @@ class ScheduleController extends Controller
             'selected_dates' => 'required_if:frequency_type,MONTHLY|array',
             'selected_dates.*' => 'integer|between:1,31',
             'machine_assignments' => 'required|array|min:1',
-            'machine_assignments.*.machine_id' => 'required|integer|exists:machines,id',
+            'machine_assignments.*.machine_id' => 'required|integer|distinct|exists:machines,id',
             'machine_assignments.*.assigned_user_ids' => 'nullable|array',
             'machine_assignments.*.assigned_user_ids.*' => 'integer|exists:users,id',
+        ], [
+            'form_id.unique' => 'Form ini sudah memiliki pengaturan jadwal. Silakan edit jadwal yang sudah ada.',
         ]);
 
-        return DB::transaction(function () use ($request, $oldSchedule, $validate) {
-            // Matikan jadwal lama
-            $oldSchedule->update(['is_active' => false]);
-
-            do {
-                $scheduleCode = 'SCH-' . strtoupper(uniqid());
-            } while (Schedule::where('schedule_code', $scheduleCode)->exists());
-
-            $schedule = Schedule::create([
-                'schedule_code'    => $scheduleCode,
-                'form_id'          => $validate['form_id'],
-                'frequency_type'   => $validate['frequency_type'],
-                'due_window_days'  => $validate['due_window_days'],
-                'selected_days'    => $request->selected_days ?? [],
-                'selected_dates'   => $request->selected_dates ?? [],
-                'is_active'        => true,
+        return DB::transaction(function () use ($request, $schedule, $validate) {
+            $schedule->update([
+                'form_id'         => $validate['form_id'],
+                'frequency_type'  => $validate['frequency_type'],
+                'due_window_days' => $validate['due_window_days'],
+                'selected_days'   => $request->selected_days ?? [],
+                'selected_dates'  => $request->selected_dates ?? [],
             ]);
+
+            $schedule->scheduleMachines()->delete();
 
             foreach ($validate['machine_assignments'] as $ma) {
                 $assignedIds = !empty($ma['assigned_user_ids']) ? array_values(array_unique($ma['assigned_user_ids'])) : null;
@@ -222,9 +246,11 @@ class ScheduleController extends Controller
                 ]);
             }
 
-            Artisan::call('tasks:generate');
+            if ($schedule->is_active) {
+                Artisan::call('tasks:generate');
+            }
 
-            return redirect()->back()->with('success', 'Jadwal berhasil diperbarui! (Jadwal lama telah dinonaktifkan).');
+            return redirect()->back()->with('success', 'Pengaturan jadwal berhasil diperbarui!');
         });
     }
 
@@ -263,17 +289,26 @@ class ScheduleController extends Controller
 
     public function conditionQuestions($formId)
     {
-        $form = Form::with(['sections.questions' => function ($q) {
-            $q->whereIn('input_type', ['SELECT', 'DROPDOWN', 'CHECKBOX'])
-              ->with('options');
-        }])->findOrFail($formId);
+        $form = Form::with([
+            'sections' => fn ($s) => $s->orderBy('section_order', 'asc'),
+            'sections.questions' => function ($q) {
+                $q->whereIn('input_type', ['SELECT', 'DROPDOWN', 'CHECKBOX', 'FILE'])
+                  ->orderBy('question_order', 'asc')
+                  ->with('options');
+            },
+        ])->findOrFail($formId);
 
         $questions = $form->sections->flatMap(function ($section) {
-            return $section->questions->map(function ($question) {
+            return $section->questions->map(function ($question) use ($section) {
                 return [
                     'id' => $question->id,
                     'question_text' => $question->question_text,
-                    'input_type' => $question->input_type,
+                    'input_type' => $question->input_type instanceof \BackedEnum
+                        ? $question->input_type->value
+                        : strtoupper((string) $question->input_type),
+                    'section_id' => $section->id,
+                    'section_order' => $section->section_order,
+                    'section_title' => $section->section_title,
                     'options' => $question->options->map(function ($opt) {
                         return [
                             'id' => $opt->id,
@@ -300,6 +335,7 @@ class ScheduleController extends Controller
             'condition_code'      => $code,
             'trigger_form_id'     => $validated['trigger_form_id'],
             'trigger_question_id' => $validated['trigger_question_id'],
+            'trigger_operator'    => $validated['trigger_operator'],
             'trigger_option_id'   => $validated['trigger_option_id'],
             'target_form_id'      => $validated['target_form_id'],
             'due_window_days'     => $validated['due_window_days'],
@@ -312,11 +348,12 @@ class ScheduleController extends Controller
     public function updateCondition(Request $request, $id)
     {
         $condition = ScheduleCondition::findOrFail($id);
-        $validated = $this->validateCondition($request);
+        $validated = $this->validateCondition($request, $condition->id);
 
         $condition->update([
             'trigger_form_id'     => $validated['trigger_form_id'],
             'trigger_question_id' => $validated['trigger_question_id'],
+            'trigger_operator'    => $validated['trigger_operator'],
             'trigger_option_id'   => $validated['trigger_option_id'],
             'target_form_id'      => $validated['target_form_id'],
             'due_window_days'     => $validated['due_window_days'],
@@ -341,14 +378,70 @@ class ScheduleController extends Controller
         return redirect()->back()->with('success', 'Kondisi trigger berhasil dihapus.');
     }
 
-    private function validateCondition(Request $request): array
+    private function validateCondition(Request $request, ?int $ignoreId = null): array
     {
-        return $request->validate([
+        $question = FormQuestion::find($request->input('trigger_question_id'));
+        $inputType = $question?->input_type instanceof \BackedEnum
+            ? strtoupper($question->input_type->value)
+            : strtoupper((string) ($question?->input_type ?? ''));
+        $isFileQuestion = $inputType === 'FILE';
+
+        $rules = [
             'trigger_form_id' => ['required', Rule::exists('forms', 'id')->where('form_type', 'INSPECTION')],
             'trigger_question_id' => ['required', Rule::exists('form_questions', 'id')->where('form_id', $request->input('trigger_form_id'))],
-            'trigger_option_id' => ['required', Rule::exists('form_options', 'id')->where('form_question_id', $request->input('trigger_question_id'))],
             'target_form_id' => ['required', 'different:trigger_form_id', Rule::exists('forms', 'id')->where('form_type', 'INSPECTION')],
             'due_window_days' => 'required|integer|min:1|max:30',
-        ]);
+        ];
+
+        if ($isFileQuestion) {
+            $rules['trigger_operator'] = ['required', 'in:file_uploaded,file_empty'];
+        } else {
+            $rules['trigger_option_id'] = ['required', Rule::exists('form_options', 'id')->where('form_question_id', $request->input('trigger_question_id'))];
+        }
+
+        $validated = $request->validate($rules);
+
+        $validated['trigger_operator'] = $isFileQuestion
+            ? $validated['trigger_operator']
+            : 'option_selected';
+        $validated['trigger_option_id'] = $isFileQuestion
+            ? null
+            : $validated['trigger_option_id'];
+
+        if (Schedule::where('form_id', $validated['target_form_id'])->exists()) {
+            throw ValidationException::withMessages([
+                'target_form_id' => 'Form ini sudah digunakan pada Pengaturan Pola Jadwal sehingga tidak dapat digunakan lagi sebagai Form Lanjutan.',
+            ]);
+        }
+
+        $targetUsedInCondition = ScheduleCondition::where('target_form_id', $validated['target_form_id'])
+            ->when($ignoreId, fn ($q) => $q->where('id', '!=', $ignoreId))
+            ->exists();
+
+        if ($targetUsedInCondition) {
+            throw ValidationException::withMessages([
+                'target_form_id' => 'Form Lanjutan ini sudah digunakan pada kondisi trigger lain.',
+            ]);
+        }
+
+        $duplicateQuery = ScheduleCondition::where('trigger_form_id', $validated['trigger_form_id'])
+            ->where('trigger_question_id', $validated['trigger_question_id'])
+            ->where('trigger_operator', $validated['trigger_operator'])
+            ->where('target_form_id', $validated['target_form_id'])
+            ->when($ignoreId, fn ($q) => $q->where('id', '!=', $ignoreId));
+
+        if ($isFileQuestion) {
+            $duplicateQuery->whereNull('trigger_option_id');
+        } else {
+            $duplicateQuery->where('trigger_option_id', $validated['trigger_option_id']);
+        }
+
+        if ($duplicateQuery->exists()) {
+            throw ValidationException::withMessages([
+                'target_form_id' => 'Kondisi trigger dengan kombinasi form, pertanyaan, jawaban, dan form lanjutan yang sama sudah ada. Silakan edit kondisi yang sudah ada.',
+            ]);
+        }
+
+        return $validated;
     }
 }

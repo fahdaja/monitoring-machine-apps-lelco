@@ -35,7 +35,7 @@ export interface MachineDetail {
     picDepartment?: string;
     commissionDate?: string;
     criticality: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-    status: 'RUNNING' | 'DOWN' | 'UNDER_REPAIR' | 'WAITING_VENDOR';
+    status: 'RUNNING' | 'DOWN' | 'UNDER_REPAIR' | 'WAITING_SPAREPART' | 'WAITING_VENDOR' | 'WAITING_VERIFICATION' | 'INACTIVE';
     isActive: boolean;
     specifications?: Record<string, any>;
 }
@@ -123,9 +123,9 @@ export default function MachineShow({
         isActive: true,
     };
 
-   const qrValue = currentMachine.machineCode
-    ? `${window.location.origin}/api/scan-task/${currentMachine.machineCode}`
-    : "";
+   // Gunakan kode mesin murni (11 karakter) agar grid QR berukuran besar (21x21)
+   // dan sangat cepat terbaca kamera HP dari layar monitor tanpa efek moiré.
+   const qrValue = currentMachine.machineCode || "";
 
     const handleCopyCode = () => {
         navigator.clipboard.writeText(qrValue);
@@ -279,6 +279,14 @@ export default function MachineShow({
                 return 'bg-rose-100 text-rose-800 border-rose-200';
             case 'UNDER_REPAIR':
                 return 'bg-amber-100 text-amber-800 border-amber-200';
+            case 'WAITING_SPAREPART':
+                return 'bg-indigo-100 text-indigo-800 border-indigo-200';
+            case 'WAITING_VENDOR':
+                return 'bg-purple-100 text-purple-800 border-purple-200';
+            case 'WAITING_VERIFICATION':
+                return 'bg-sky-100 text-sky-800 border-sky-200';
+            case 'INACTIVE':
+                return 'bg-slate-200 text-slate-700 border-slate-300';
             default:
                 return 'bg-slate-100 text-slate-700 border-slate-200';
         }
@@ -317,6 +325,7 @@ export default function MachineShow({
     const { auth } = usePage<pageProps>().props;
     const userRole = auth?.user?.role?.toUpperCase();
     const isAdmin = userRole === 'ADMIN';
+    const canVerify = userRole === 'ADMIN' || userRole === 'SUPERVISOR';
 
     return (
         <AppLayout>
@@ -414,9 +423,9 @@ export default function MachineShow({
                             <QRCodeCanvas
                                 ref={heroCanvasRef}
                                 value={qrValue}
-                                size={68}
+                                size={84}
                                 level="M"
-                                includeMargin={false}
+                                includeMargin={true}
                             />
                         </div>
                         <div className="flex flex-col justify-between">
@@ -443,7 +452,7 @@ export default function MachineShow({
                         </div>
                         <div className="hidden sm:flex flex-col items-end gap-2 pl-4 border-l border-slate-700">
                             <span className={`text-xs font-black px-3 py-1 rounded-full border shadow-sm ${getStatusBadge(currentMachine.status)}`}>
-                                {currentMachine.status}
+                                {String(currentMachine.status || '').replace(/_/g, ' ')}
                             </span>
                             <span className="text-[11px] text-slate-400 font-mono">
                                 Criticality: <strong className="text-white">{currentMachine.criticality}</strong>
@@ -570,7 +579,7 @@ export default function MachineShow({
                                 <p className="text-xs font-extrabold text-slate-900 leading-snug">{b.problem}</p>
                             </div>
                             <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full border bg-slate-100 text-slate-700 border-slate-200 shrink-0">
-                                {b.status}
+                                {b.status === 'READY_FOR_CLOSING' && !canVerify ? 'WAITING_VERIFICATION' : b.status}
                             </span>
                         </div>
                        <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-500">
@@ -622,13 +631,16 @@ export default function MachineShow({
                                 <h3 className="text-base font-bold text-slate-900">Riwayat Preventive Inspections</h3>
                                 <p className="text-xs text-slate-500">Histori pemeriksaan rutin dan pemeliharaan berjangka.</p>
                             </div>
-                            <Link href="/preventive-inspections" className="text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors">
-                                Lihat Inspeksi &rarr;
+                            <Link
+                                href={isAdmin ? '/schedules' : '/inspection-calender'}
+                                className="text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors"
+                            >
+                                {isAdmin ? 'Kelola Schedule →' : 'Lihat Kalender →'}
                             </Link>
                         </div>
 
                         {tasks && tasks.length > 0 ? (
-                            <div className="divide-y divide-slate-100">
+                            <div className="divide-y divide-slate-100 max-h-[420px] overflow-y-auto pr-1">
                                 {tasks.map((item) => (
                                     <div key={item.id} className="py-3.5 first:pt-0 last:pb-0">
                                         <div className="flex items-start justify-between gap-3 mb-1.5">
@@ -642,16 +654,33 @@ export default function MachineShow({
                                                         {item.resultStatus}
                                                     </span>
                                                 )}
-                                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-slate-100 text-slate-700 border-slate-200">
+                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                                    item.status === 'COMPLETED'
+                                                        ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                                        : item.status === 'OVERDUE'
+                                                        ? 'bg-rose-100 text-rose-800 border-rose-200'
+                                                        : item.status === 'DUE' || item.status === 'IN_PROGRESS'
+                                                        ? 'bg-amber-100 text-amber-800 border-amber-200'
+                                                        : 'bg-blue-100 text-blue-800 border-blue-200'
+                                                }`}>
                                                     {item.status}
                                                 </span>
                                             </div>
                                         </div>
 
                                         <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-500">
-                                            {item.started_at && <span>Inspeksi: <strong className="text-slate-700">{item.started_at}</strong></span>}
-                                            {item.inspectorName && <span>Inspector: <strong className="text-slate-700">{item.inspectorName}</strong></span>}
-                                            {item.next_schedule_at && <span>Jadwal Berikutnya: <strong className="text-blue-600 font-semibold">{item.next_schedule_at}</strong></span>}
+                                            {item.started_at && (
+                                                <span>
+                                                    {item.status === 'COMPLETED' ? 'Selesai:' : 'Jadwal:'}{' '}
+                                                    <strong className="text-slate-700">{item.started_at}</strong>
+                                                </span>
+                                            )}
+                                            {item.inspectorName && item.inspectorName !== '-' && (
+                                                <span>Inspector: <strong className="text-slate-700">{item.inspectorName}</strong></span>
+                                            )}
+                                            {item.next_schedule_at && (
+                                                <span>Batas Akhir: <strong className="text-blue-600 font-semibold">{item.next_schedule_at}</strong></span>
+                                            )}
                                         </div>
 
                                         {(item.findings || item.notes) && (
@@ -725,9 +754,9 @@ export default function MachineShow({
                                     <QRCodeCanvas
                                         ref={modalCanvasRef}
                                         value={qrValue}
-                                        size={180}
-                                        level="H"
-                                        includeMargin={false}
+                                        size={220}
+                                        level="M"
+                                        includeMargin={true}
                                     />
                                 </div>
 

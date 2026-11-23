@@ -662,7 +662,7 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                             </span>
                             {followUpInfo && (
                                 <span className="inline-flex items-center gap-1.5 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-orange-200 bg-orange-500/10 border border-orange-400/30 px-2 sm:px-2.5 py-1 rounded-full whitespace-nowrap">
-                                    ◆ Lanjutan Lvl 2
+                                    ◆ Inspeksi Lanjutan
                                 </span>
                             )}
                             <span className="text-[10px] sm:text-[11px] text-slate-300 font-mono truncate">
@@ -686,7 +686,7 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                         {followUpInfo && (
                             <div className="p-2.5 sm:p-3 rounded-lg bg-orange-500/10 border border-orange-400/25">
                                 <p className="text-[11px] sm:text-xs text-orange-100 leading-relaxed">
-                                    Task ini dibuat otomatis karena jawaban <strong className="text-white">“{followUpInfo.triggerOptionText || 'abnormal'}”</strong> pada pertanyaan <strong className="text-white">“{followUpInfo.triggerQuestionText || '-'}”</strong> di form <strong className="text-white">{followUpInfo.sourceFormTitle || 'inspeksi lvl 1'}</strong>
+                                    Task ini dibuat otomatis karena jawaban <strong className="text-white">“{followUpInfo.triggerOptionText || 'abnormal'}”</strong> pada pertanyaan <strong className="text-white">“{followUpInfo.triggerQuestionText || '-'}”</strong> di form <strong className="text-white">{followUpInfo.sourceFormTitle || 'inspeksi sebelumnya'}</strong>
                                     {followUpInfo.sourceTaskCode ? ` (task ${followUpInfo.sourceTaskCode})` : ''}
                                     {followUpInfo.conditionCode ? ` · kondisi ${followUpInfo.conditionCode}` : ''}.
                                 </p>

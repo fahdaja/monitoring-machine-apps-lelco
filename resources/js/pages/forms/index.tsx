@@ -38,7 +38,6 @@ interface FormItem {
     form_description?: string;
     form_type: 'INSPECTION' | 'MANUAL_REPORT' | 'START_REPAIR' | 'CLOSE_TICKET'; 
     machine?: Machine; // jadi optional, karena form transisi gak butuh mesin
-    form_level?: number | null;
     pipeline_stage?: string; // misal: "Corrective - Stage Report"
     created_at?: string;
     updated_at?: string;

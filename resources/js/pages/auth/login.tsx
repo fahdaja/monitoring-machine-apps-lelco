@@ -1,21 +1,7 @@
-import React, { useState, FormEvent, useEffect } from 'react';
+import React, { useState, FormEvent } from 'react';
 import { Head, useForm } from '@inertiajs/react';
 
-interface User {
-    id: number;
-    full_name: string;
-    role: {
-        id: number;
-        name: string;
-    };
-    department: {
-        id: number;
-        name: string;
-    };
-}
-
 interface LoginProps {
-    users?: User[];
     companyName?: string;
     appName?: string;
     tagline?: string;
@@ -25,11 +11,9 @@ interface LoginProps {
 }
 
 export default function Login({
-    users = [],
-    companyName = 'Nama Perusahaan',
-    appName = 'Machine Digitalization',
-    tagline = 'Machine Digitalization System',
-    logoUrl,
+    companyName = 'PT. Lelco Trindo Nusantara',
+    appName = 'Machine Digitalization System',
+    logoUrl = '/images/logo_lelco_dark.png',
     portal = 'inspection',
     action,
 }: LoginProps) {
@@ -38,13 +22,10 @@ export default function Login({
 
     // Inertia Form State
     const { data, setData, post, processing, errors } = useForm({
-        id: 0,
-        full_name: '',
-        role: '',
+        username: '',
         password: '',
     });
 
-    const userList: User[] = users
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
         post(actionUrl);
@@ -88,58 +69,32 @@ export default function Login({
                         <div className="text-[15px] font-extrabold text-[#12385f] mt-2">
                             {appName}
                         </div>
-                        <p className="text-[12px] text-[#6b7a90] mt-1">
-                            {tagline}
-                        </p>
                         <div className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold ${portal === 'management' ? 'bg-[#071b33] text-white' : 'bg-[#e7f0fb] text-[#12385f]'}`}>
-                            {portal === 'management' ? 'Portal Manajemen' : 'Aplikasi Inspeksi'}
+                            {portal === 'management' ? 'Portal Manajemen' : 'Portal Inspeksi'}
                         </div>
                     </div>
 
                     {/* Form Login */}
                     <form onSubmit={handleSubmit} className="mt-7 grid gap-2">
 
-                        {/* Field Select Identitas Petugas */}
+                        {/* Field Username */}
                         <div>
                             <label htmlFor="username" className="block text-[12px] font-extrabold text-[#455a72] mb-1">
-                                Identitas Petugas
+                                Username <b className="text-rose-600">*</b>
                             </label>
-
-                            {/* Wrap dengan kontainer relative */}
-                            <div className="relative w-full">
-                                <select
-                                    id="username"
-                                    value={data.id}
-                                    onChange={(e) => {
-                                        const selectedId = Number(e.target.value);
-                                        const selectedUser = userList.find((u) => u.id === selectedId);
-                                        setData({
-                                            id: selectedId,
-                                            full_name: selectedUser?.full_name ?? '',
-                                            role: selectedUser?.role?.name ?? '',
-                                        });
-                                    }}
-                                    className="w-full h-12 border border-[#dce4ee] rounded-xl pl-3 pr-10 bg-white text-[#10233d] text-sm outline-none focus:border-[#12385f] focus:ring-4 focus:ring-[#12385f]/10 transition-all cursor-pointer appearance-none"
-                                    required
-                                >
-                                    <option value="">Pilih petugas...</option>
-                                    {userList.map((u) => (
-                                        <option key={u.id} value={u.id}>
-                                            {u.full_name} &nbsp;-&nbsp; {u.role?.name}
-                                        </option>
-                                    ))}
-                                </select>
-
-                                {/* Custom Panah Dropdown */}
-                                <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-[#53677c]">
-                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                                    </svg>
-                                </div>
-                            </div>
-
-                            {errors.full_name && (
-                                <p className="text-xs text-rose-600 mt-1 font-semibold">{errors.full_name}</p>
+                            <input
+                                id="username"
+                                type="text"
+                                value={data.username}
+                                onChange={(e) => setData('username', e.target.value)}
+                                placeholder={portal === 'management' ? 'Masukkan username admin' : 'Masukkan username'}
+                                autoComplete="username"
+                                autoFocus
+                                className="w-full h-12 border border-[#dce4ee] rounded-xl px-3 bg-white text-[#10233d] text-sm outline-none focus:border-[#12385f] focus:ring-4 focus:ring-[#12385f]/10 transition-all"
+                                required
+                            />
+                            {errors.username && (
+                                <p className="text-xs text-rose-600 mt-1 font-semibold">{errors.username}</p>
                             )}
                         </div>
 

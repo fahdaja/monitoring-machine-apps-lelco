@@ -4,11 +4,10 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use App\Models\User;
 use Inertia\Inertia;
 
-class AuthController extends Controller {
-
+class AuthController extends Controller
+{
     /** Role yang boleh masuk portal manajemen. */
     private const MANAGEMENT_ROLES = ['ADMIN'];
 
@@ -17,28 +16,10 @@ class AuthController extends Controller {
         return in_array(strtoupper((string) $role), self::MANAGEMENT_ROLES, true);
     }
 
-    private function formatUsers($users)
-    {
-        return $users->map(function ($user) {
-            return [
-                'id' => $user->id,
-                'full_name' => $user->full_name,
-                'role' => $user->role ? [
-                    'id' => $user->id,
-                    'name' => $user->role,
-                ] : null,
-                'is_active' => $user->is_active,
-            ];
-        })->values();
-    }
-
     // Tampilkan halaman login aplikasi inspeksi (selain role manajemen)
     public function create()
     {
-        $users = User::all()->reject(fn ($u) => $this->isManagementRole($u->role))->values();
-
         return Inertia::render('auth/login', [
-            'users' => $this->formatUsers($users),
             'portal' => 'inspection',
             'action' => '/login',
         ]);
@@ -47,32 +28,25 @@ class AuthController extends Controller {
     // Tampilkan halaman login portal manajemen (khusus ADMIN)
     public function adminCreate()
     {
-        $users = User::all()->filter(fn ($u) => $this->isManagementRole($u->role))->values();
-
         return Inertia::render('auth/login', [
-            'users' => $this->formatUsers($users),
             'portal' => 'management',
             'action' => '/admin/login',
         ]);
     }
 
-    // Proses login
+    // Proses login aplikasi inspeksi
     public function store(Request $request)
     {
-       // 1. Validasi input yang dikirim dari form
         $credentials = $request->validate([
-            'full_name' => ['required', 'string'],
-            'role' => ['required', 'string'],
+            'username' => ['required', 'string'],
             'password' => ['required', 'string'],
         ]);
 
-        // 2. Gunakan Auth::attempt dengan array kolom kustom Anda
-        // Laravel akan otomatis mencocokkan full_name, role, DAN memverifikasi ke-hash-an password-nya
         if (Auth::attempt([
-            'full_name' => $credentials['full_name'], 
-            'role' => $credentials['role'], 
-            'password' => $credentials['password']
+            'username' => trim($credentials['username']),
+            'password' => $credentials['password'],
         ])) {
+            /** @var \App\Models\User $user */
             $user = Auth::user();
 
             // Pemisahan portal: akun manajemen tidak boleh login lewat aplikasi inspeksi.
@@ -83,7 +57,7 @@ class AuthController extends Controller {
 
                 return back()->withErrors([
                     'password' => 'Akun manajemen. Silakan login melalui Portal Manajemen.',
-                ])->onlyInput('full_name', 'role');
+                ])->onlyInput('username');
             }
 
             $request->session()->regenerate();
@@ -97,24 +71,23 @@ class AuthController extends Controller {
         }
 
         return back()->withErrors([
-            'password' => 'Nama, Role, atau Password yang Anda masukkan salah.',
-        ])->onlyInput('full_name', 'role');
+            'password' => 'Username atau Password yang Anda masukkan salah.',
+        ])->onlyInput('username');
     }
 
     // Proses login portal manajemen
     public function adminStore(Request $request)
     {
         $credentials = $request->validate([
-            'full_name' => ['required', 'string'],
-            'role' => ['required', 'string'],
+            'username' => ['required', 'string'],
             'password' => ['required', 'string'],
         ]);
 
         if (Auth::attempt([
-            'full_name' => $credentials['full_name'],
-            'role' => $credentials['role'],
+            'username' => trim($credentials['username']),
             'password' => $credentials['password'],
         ])) {
+            /** @var \App\Models\User $user */
             $user = Auth::user();
 
             // Pemisahan portal: hanya ADMIN yang boleh masuk manajemen.
@@ -125,7 +98,7 @@ class AuthController extends Controller {
 
                 return back()->withErrors([
                     'password' => 'Akun aplikasi inspeksi. Silakan login melalui Aplikasi Inspeksi.',
-                ])->onlyInput('full_name', 'role');
+                ])->onlyInput('username');
             }
 
             $request->session()->regenerate();
@@ -139,20 +112,18 @@ class AuthController extends Controller {
         }
 
         return back()->withErrors([
-            'password' => 'Nama, Role, atau Password yang Anda masukkan salah.',
-        ])->onlyInput('full_name', 'role');
+            'password' => 'Username atau Password yang Anda masukkan salah.',
+        ])->onlyInput('username');
     }
 
     // Logout
     public function destroy(Request $request)
     {
-
         $loginPath = '/login';
 
         if (Auth::check()) {
             /** @var \App\Models\User $user */
             $user = Auth::user();
-            // Ubah statusnya jadi 0 (Tidak aktif) saat logout
             $user->update(['is_active' => 0]);
 
             $loginPath = $this->isManagementRole($user->role) ? '/admin/login' : '/login';

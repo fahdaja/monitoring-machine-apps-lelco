@@ -46,7 +46,7 @@ class FormQuestion extends Model
 
     public function section()
     {
-        return $this->belongsTo(Section::class, 'form_section_id', 'id');
+        return $this->belongsTo(FormSection::class, 'form_section_id', 'id');
     }
 
     public function options()

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
+import { CheckCircle2 } from 'lucide-react';
 import AppLayout from '../../layouts/app-layout';
 import TicketFormModal, { TicketFormContext } from '../../components/ticket-form-modal';
 
@@ -72,6 +73,18 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
   const [selectedStages, setSelectedStages] = useState<BreakdownTicket['pipelineStage'][]>([]);
   const [continueRepair, setContinueRepair] = useState<BreakdownTicket | null>(null);
   const [ticketForm, setTicketForm] = useState<{ ticketCode: string; context: TicketFormContext } | null>(null);
+  const [verifyTarget, setVerifyTarget] = useState<BreakdownTicket | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+
+  const handleConfirmVerify = () => {
+    if (!verifyTarget) return;
+    setIsVerifying(true);
+    router.put(`/breakdowns/${verifyTarget.ticket_code}/verify-close`, {}, {
+      preserveScroll: true,
+      onSuccess: () => setVerifyTarget(null),
+      onFinish: () => setIsVerifying(false),
+    });
+  };
 
   const toggleStageFilter = (stageKey: BreakdownTicket['pipelineStage']) => {
     if (selectedStages.includes(stageKey)) {
@@ -137,6 +150,7 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
   const { auth } = usePage<PageProps>().props;
   const userRole = auth?.user?.role?.toUpperCase();
   const isAdmin = userRole === 'ADMIN';
+  const canVerify = userRole === 'ADMIN' || userRole === 'SUPERVISOR';
 
   return (
     <AppLayout>
@@ -217,7 +231,7 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
                 </span>
               </div>
 
-              <div className="space-y-3.5 flex-1">
+              <div className="space-y-3.5 flex-1 max-h-[70vh] overflow-y-auto pr-1">
                 {items.length > 0 ? (
                   items.map((b) => (
                     <article key={b.id} className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-sm hover:shadow-md transition-shadow">
@@ -254,7 +268,7 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
                           </span>
                         </div>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${getBadgeClass(b.status)}`}>
-                          {b.status}
+                          {b.status === 'READY_FOR_CLOSING' && !canVerify ? 'WAITING_VERIFICATION' : b.status}
                         </span>
                       </div>
 
@@ -368,26 +382,30 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
                       )}
 
                       {/* Status pengisian form transisi tiket */}
-                      {b.pipelineStage !== 'COMPLETED' && (
+                      {(b.pipelineStage !== 'COMPLETED' || b.can_view_detail) && (
                         <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[10px] font-bold">
-                          <span
-                            className={`px-2 py-0.5 rounded-full border ${
-                              b.has_repair_submission
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                : 'bg-slate-50 text-slate-500 border-slate-200'
-                            }`}
-                          >
-                            Form Repair: {b.has_repair_submission ? 'Sudah diisi' : 'Belum diisi'}
-                          </span>
-                          <span
-                            className={`px-2 py-0.5 rounded-full border ${
-                              b.has_closing_submission
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                : 'bg-slate-50 text-slate-500 border-slate-200'
-                            }`}
-                          >
-                            Form Closing: {b.has_closing_submission ? 'Sudah diisi' : 'Belum diisi'}
-                          </span>
+                          {b.pipelineStage !== 'COMPLETED' && (
+                            <>
+                              <span
+                                className={`px-2 py-0.5 rounded-full border ${
+                                  b.has_repair_submission
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                    : 'bg-slate-50 text-slate-500 border-slate-200'
+                                }`}
+                              >
+                                Form Repair: {b.has_repair_submission ? 'Sudah diisi' : 'Belum diisi'}
+                              </span>
+                              <span
+                                className={`px-2 py-0.5 rounded-full border ${
+                                  b.has_closing_submission
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                    : 'bg-slate-50 text-slate-500 border-slate-200'
+                                }`}
+                              >
+                                Form Closing: {b.has_closing_submission ? 'Sudah diisi' : 'Belum diisi'}
+                              </span>
+                            </>
+                          )}
                           {b.can_view_detail && (
                             <Link
                               href={`/breakdowns/${b.ticket_code}`}
@@ -456,15 +474,11 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
   </div>
 )}
 
-                        {b.pipelineStage === 'CLOSING & VERIFICATION' && isAdmin && (
+                        {b.pipelineStage === 'CLOSING & VERIFICATION' && canVerify && (
                           <button
                             type="button"
-                            onClick={() => {
-                              router.put(`/breakdowns/${b.ticket_code}/verify-close`, {}, {
-                                preserveScroll: true,
-                              });
-                            }}
-                            className="w-full py-1.5 px-2 text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg text-center transition-colors shadow-xs"
+                            onClick={() => setVerifyTarget(b)}
+                            className="w-full py-1.5 px-2 text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg text-center transition-colors shadow-xs cursor-pointer"
                           >
                             Verifikasi & Selesaikan (Closed)
                           </button>
@@ -502,6 +516,45 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
           );
         })}
       </div>
+
+      {verifyTarget && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 p-6 space-y-5 text-center">
+            <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-2xl mx-auto flex items-center justify-center shadow-inner">
+              <CheckCircle2 className="w-7 h-7" />
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="text-base font-extrabold text-slate-900">Verifikasi &amp; Tutup Tiket?</h3>
+              <p className="text-xs text-slate-500 leading-relaxed px-2">
+                Tiket <strong className="font-mono text-slate-800">{verifyTarget.ticket_code}</strong> pada mesin{' '}
+                <strong className="text-slate-800">{verifyTarget.machine_name}</strong> akan ditutup (
+                <strong className="text-emerald-700">CLOSED</strong>) dan status mesin dikembalikan menjadi{' '}
+                <strong className="text-emerald-700">RUNNING</strong>.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <button
+                type="button"
+                disabled={isVerifying}
+                onClick={() => setVerifyTarget(null)}
+                className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isVerifying}
+                onClick={handleConfirmVerify}
+                className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                {isVerifying ? 'Memverifikasi...' : 'Ya, Verifikasi'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {ticketForm && (
         <TicketFormModal

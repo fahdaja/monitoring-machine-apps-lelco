@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Inertia\Inertia;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use App\Models\User;
 use App\Models\Role;
 use App\Models\Department;
@@ -24,6 +25,7 @@ class UserController extends Controller
     public function index()
     {
         $users = User::select('id', 'user_code', 'username', 'email', 'full_name', 'department', 'role', 'phone_number', 'is_active')
+            ->whereRaw('UPPER(role) <> ?', [User::ROLE_ADMIN])
             ->orderBy('id', 'asc')
             ->get();
 
@@ -34,7 +36,9 @@ class UserController extends Controller
 
     public function create()
     {
-        $roles = Role::select('id', 'name')->get();
+        $roles = Role::select('id', 'name')
+            ->whereRaw('UPPER(name) <> ?', [User::ROLE_ADMIN])
+            ->get();
         $departments = Department::select('id', 'name')->get();
         return Inertia::render('users/create', [
             'roles' => $roles,
@@ -46,61 +50,73 @@ class UserController extends Controller
     {
         $validated = $request->validate([
             'full_name' => 'required|string|max:255',
-            'username' => 'required|string|unique:users,username|max:50',
-            'role' => 'required|string',
+            'username' => 'required|string|alpha_dash|unique:users,username|max:50',
+            'role' => [
+                'required',
+                'string',
+                Rule::exists('roles', 'name')->where(fn ($q) => $q->whereRaw('UPPER(name) <> ?', [User::ROLE_ADMIN])),
+            ],
             'department' => 'nullable|string|max:100',
-            'email' => 'nullable|email|max:255',
+            'email' => 'nullable|email|max:255|unique:users,email',
             'phone_number' => 'nullable|string|max:20',
-            'is_active' => 'boolean',
-            'password' => 'required|string|min:8|',
+            'is_active' => 'nullable|boolean',
+            'password' => 'required|string|min:8',
         ]);
 
-       // 1. AMBIL NAMA ROLE SECARA UTUH DAN UBAH JADI HURUF KAPITAL (Tanpa disingkat)
-    $roleName = strtoupper(trim($validated['role'])); // Contoh: "MAINTENANCE_L2" atau "ADMIN"
+        // 1. AMBIL NAMA ROLE SECARA UTUH DAN UBAH JADI HURUF KAPITAL (Tanpa disingkat)
+        $roleName = strtoupper(trim($validated['role'])); // Contoh: "MAINTENANCE" atau "ADMIN"
 
-    // 2. GENERATE ANGKA ACAK 3 DIGIT DI BELAKANG (Contoh: 042, 519, 873)
-    $randomNumber = str_pad(rand(1, 999), 3, '0', STR_PAD_LEFT);
+        // 2. GENERATE ANGKA ACAK 3 DIGIT DI BELAKANG (Contoh: 042, 519, 873)
+        $randomNumber = str_pad((string) rand(1, 999), 3, '0', STR_PAD_LEFT);
 
-    // 3. SUSUN FORMAT USER CODE (Contoh: USR-MAINTENANCE_L2-482)
-    $userCode = "USR-{$roleName}-{$randomNumber}";
-
-    // 4. PENGAMAN: Pastikan benar-benar unik (jika kebetulan angka acaknya kembar)
-    while (User::where('user_code', $userCode)->exists()) {
-        $randomNumber = str_pad(rand(1, 999), 3, '0', STR_PAD_LEFT);
+        // 3. SUSUN FORMAT USER CODE (Contoh: USR-MAINTENANCE-482)
         $userCode = "USR-{$roleName}-{$randomNumber}";
-    }
+
+        // 4. PENGAMAN: Pastikan benar-benar unik (jika kebetulan angka acaknya kembar)
+        while (User::where('user_code', $userCode)->exists()) {
+            $randomNumber = str_pad((string) rand(1, 999), 3, '0', STR_PAD_LEFT);
+            $userCode = "USR-{$roleName}-{$randomNumber}";
+        }
 
         User::create([
             'user_code' => $userCode,
-            'username' => $validated['username'],
-            'full_name' => $validated['full_name'],
-            'password' => bcrypt($validated['password']), // Hash password
-            'department' => $validated['department'],
-            'role' => $validated['role'],
-            'email' => $validated['email'] ?? null,
-            'phone_number' => $validated['phone_number'] ?? null,
-            'is_active' => true,
+            'username' => trim($validated['username']),
+            'full_name' => trim($validated['full_name']),
+            'password' => bcrypt($validated['password']),
+            'department' => $validated['department'] ?: null,
+            'role' => $roleName,
+            'email' => $validated['email'] ?: null,
+            'phone_number' => $validated['phone_number'] ?: null,
+            'is_active' => $validated['is_active'] ?? true,
         ]);
 
         return redirect()->route('users.index')
-            ->with('toast', ['type' => 'success', 'message' => 'User berhasil ditambahkan!']);
+            ->with('success', 'User berhasil ditambahkan!');
     }
 
     public function edit($id)
     {
         $user = User::findOrFail($id);
-        $roles = Role::select('id', 'name')->get();
+        if ($user->hasRole(User::ROLE_ADMIN)) {
+            return redirect()->route('users.index')
+                ->with('error', 'Akun ADMIN tidak dapat diubah.');
+        }
+
+        $roles = Role::select('id', 'name')
+            ->whereRaw('UPPER(name) <> ?', [User::ROLE_ADMIN])
+            ->get();
         $departments = Department::select('id', 'name')->get();
         return Inertia::render('users/edit', [
             'user' => [
                 'id'           => $user->id,
+                'user_code'    => $user->user_code,
                 'username'     => $user->username,
                 'full_name'    => $user->full_name,
                 'email'        => $user->email,
                 'phone_number' => $user->phone_number,
                 'role'         => $user->role,
                 'department'   => $user->department,
-                'is_active'    => $user->is_active,
+                'is_active'    => (bool) $user->is_active,
             ],
             'roles' => $roles,
             'departments' => $departments,
@@ -110,56 +126,55 @@ class UserController extends Controller
     public function update(Request $request, $id)
     {
         $user = User::findOrFail($id);
+        if ($user->hasRole(User::ROLE_ADMIN)) {
+            return redirect()->route('users.index')
+                ->with('error', 'Akun ADMIN tidak dapat diubah.');
+        }
+
         $validated = $request->validate([
-            'username' => 'nullable|string|max:50',
-            'full_name' => 'nullable|string|max:255',
-            'department' => 'nullable|string|',
-            'role' => 'nullable|string',
-            'email' => 'nullable|email|max:255',
+            'username' => ['required', 'string', 'alpha_dash', 'max:50', Rule::unique('users', 'username')->ignore($user->id)],
+            'full_name' => 'required|string|max:255',
+            'department' => 'nullable|string|max:100',
+            'role' => [
+                'required',
+                'string',
+                Rule::exists('roles', 'name')->where(fn ($q) => $q->whereRaw('UPPER(name) <> ?', [User::ROLE_ADMIN])),
+            ],
+            'email' => ['nullable', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
             'phone_number' => 'nullable|string|max:20',
+            'is_active' => 'required|boolean',
             'password' => 'nullable|string|min:8',
         ]);
 
+        $newRole = strtoupper(trim($validated['role']));
+        $isActiveNow = (bool) $validated['is_active'];
+
         $updateData = [
-            'username' => $validated['username'],
-            'full_name' => $validated['full_name'] ,
-            'department' => $validated['department'],
-            'role' => $validated['role'],
-            'email' => $validated['email'] ?? null,
-            'phone_number' => $validated['phone_number'] ?? null,
+            'username' => trim($validated['username']),
+            'full_name' => trim($validated['full_name']),
+            'department' => $validated['department'] ?: null,
+            'role' => $newRole,
+            'email' => $validated['email'] ?: null,
+            'phone_number' => $validated['phone_number'] ?: null,
+            'is_active' => $isActiveNow,
         ];
 
-        // Cegah terkunci: jangan sampai tidak ada ADMIN tersisa.
-        $newRole = strtoupper(trim((string) ($validated['role'] ?? '')));
-        $wasAdmin = strtoupper((string) $user->role) === User::ROLE_ADMIN;
-        $isAdminNow = $newRole === User::ROLE_ADMIN;
-
-        if ($wasAdmin && ! $isAdminNow && $this->otherAdmins($user->id) === 0) {
-            return back()->with('toast', ['type' => 'error', 'message' => 'Minimal satu ADMIN harus tetap ada.']);
-        }
-
         // Jika password diubah, validasi dan hash
-        if(!empty($validated['password'])){
+        if (!empty($validated['password'])) {
             $updateData['password'] = bcrypt($validated['password']);
         }
         $user->update($updateData);
 
         return redirect()->route('users.index')
-            ->with('toast', ['type' => 'success', 'message' => 'User berhasil diupdate!']);
+            ->with('success', 'User berhasil diperbarui!');
     }
 
     public function destroy($id)
     {
         $user = User::findOrFail($id);
-        if (auth()->id() === $user->id) {
+        if ($user->hasRole(User::ROLE_ADMIN)) {
             return redirect()->back()
-                ->with('toast', ['type' => 'error', 'message' => 'Anda tidak dapat menghapus akun sendiri!']);
-        }
-
-        if (strtoupper((string) $user->role) === User::ROLE_ADMIN
-            && $this->otherAdmins($user->id) === 0) {
-            return redirect()->back()
-                ->with('toast', ['type' => 'error', 'message' => 'Tidak dapat menghapus ADMIN terakhir.']);
+                ->with('error', 'Akun ADMIN tidak dapat dihapus.');
         }
 
         $user->delete();
@@ -177,5 +192,32 @@ class UserController extends Controller
             'type' => 'success',
             'message' => $user->is_active ? 'User berhasil diaktifkan' : 'User berhasil dinonaktifkan'
         ]);
+    }
+
+    /**
+     * Khusus Admin mengganti kata sandi akunnya sendiri dari halaman Manajemen User.
+     */
+    public function updateAdminPassword(Request $request)
+    {
+        $admin = $request->user();
+        if (! $admin || ! $admin->hasRole(User::ROLE_ADMIN)) {
+            abort(403, 'Hanya Admin yang dapat mengakses fitur ini.');
+        }
+
+        $validated = $request->validate([
+            'current_password' => ['required', 'string', 'current_password'],
+            'password' => ['required', 'string', 'min:8', 'confirmed', 'different:current_password'],
+        ], [
+            'current_password.current_password' => 'Kata sandi lama tidak sesuai.',
+            'password.min' => 'Kata sandi baru minimal 8 karakter.',
+            'password.confirmed' => 'Konfirmasi kata sandi baru tidak cocok.',
+            'password.different' => 'Kata sandi baru harus berbeda dari kata sandi lama.',
+        ]);
+
+        $admin->update([
+            'password' => bcrypt($validated['password']),
+        ]);
+
+        return back()->with('success', 'Kata sandi Admin berhasil diperbarui!');
     }
 }

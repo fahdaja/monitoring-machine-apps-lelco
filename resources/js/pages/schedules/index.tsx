@@ -69,7 +69,9 @@ interface ConditionItem {
     id: number;
     condition_code: string;
     trigger_form?: { id: number; form_title: string; form_code: string } | null;
-    trigger_question?: { id: number; question_text: string } | null;
+    trigger_section?: { id: number; section_order: number; section_title: string } | null;
+    trigger_question?: { id: number; question_text: string; input_type?: string } | null;
+    trigger_operator?: string;
     trigger_option?: { id: number; option_text: string; is_normal?: boolean } | null;
     target_form?: { id: number; form_title: string; form_code: string } | null;
     due_window_days?: number;
@@ -80,6 +82,9 @@ interface QuestionItem {
     id: number;
     question_text: string;
     input_type: string;
+    section_id?: number;
+    section_order?: number;
+    section_title?: string;
     options: { id: number; option_text: string; is_normal?: boolean }[];
 }
 
@@ -122,6 +127,7 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
     const [isConditionModalOpen, setIsConditionModalOpen] = useState(false);
     const [editingCondition, setEditingCondition] = useState<ConditionItem | null>(null);
     const [conditionQuestions, setConditionQuestions] = useState<QuestionItem[]>([]);
+    const [selectedConditionSectionId, setSelectedConditionSectionId] = useState('');
 
     const {
         data: condData,
@@ -135,14 +141,35 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
     } = useForm({
         trigger_form_id: '',
         trigger_question_id: '',
+        trigger_operator: 'option_selected',
         trigger_option_id: '',
         target_form_id: '',
         due_window_days: '1',
     });
 
+    const conditionSections = Array.from(
+        new Map(
+            conditionQuestions
+                .filter((q) => q.section_id)
+                .map((q) => [
+                    q.section_id!,
+                    {
+                        id: q.section_id!,
+                        section_order: q.section_order ?? 0,
+                        section_title: q.section_title ?? '',
+                    },
+                ])
+        ).values()
+    ).sort((a, b) => a.section_order - b.section_order);
+
+    const filteredConditionQuestions = selectedConditionSectionId
+        ? conditionQuestions.filter((q) => q.section_id?.toString() === selectedConditionSectionId)
+        : [];
+
     const selectedConditionQuestion = conditionQuestions.find(
         (q) => q.id.toString() === condData.trigger_question_id
     );
+    const isFileTriggerQuestion = selectedConditionQuestion?.input_type?.toUpperCase() === 'FILE';
 
     const loadConditionQuestions = (formId: string) => {
         setConditionQuestions([]);
@@ -256,15 +283,18 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
         setEditingCondition(null);
         resetCond();
         setConditionQuestions([]);
+        setSelectedConditionSectionId('');
         clearCondErrors();
         setIsConditionModalOpen(true);
     };
 
     const openEditConditionModal = (cond: ConditionItem) => {
         setEditingCondition(cond);
+        setSelectedConditionSectionId(cond.trigger_section?.id?.toString() || '');
         setCondData({
             trigger_form_id: cond.trigger_form?.id.toString() || '',
             trigger_question_id: cond.trigger_question?.id.toString() || '',
+            trigger_operator: cond.trigger_operator || 'option_selected',
             trigger_option_id: cond.trigger_option?.id.toString() || '',
             target_form_id: cond.target_form?.id.toString() || '',
             due_window_days: cond.due_window_days?.toString() || '1',
@@ -279,6 +309,7 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
         setEditingCondition(null);
         resetCond();
         setConditionQuestions([]);
+        setSelectedConditionSectionId('');
         clearCondErrors();
     };
 
@@ -415,6 +446,66 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
         );
     });
 
+    const allScheduledFormIds = new Set(
+        schedules
+            .map((s) => s.form?.id)
+            .filter((id): id is number => typeof id === 'number')
+    );
+
+    const conditionTargetFormIds = new Set(
+        conditions
+            .map((c) => c.target_form?.id)
+            .filter((id): id is number => typeof id === 'number')
+    );
+
+    const otherConditionTargetFormIds = new Set(
+        conditions
+            .filter((c) => !editingCondition || c.id !== editingCondition.id)
+            .map((c) => c.target_form?.id)
+            .filter((id): id is number => typeof id === 'number')
+    );
+
+    const scheduledFormIds = new Set(
+        schedules
+            .filter((s) => !editingSchedule || s.id !== editingSchedule.id)
+            .map((s) => s.form?.id)
+            .filter((id): id is number => typeof id === 'number')
+    );
+
+    const hasAvailableScheduleForm = forms.some(
+        (f) => !scheduledFormIds.has(f.id) && !conditionTargetFormIds.has(f.id)
+    );
+
+    const isDuplicateConditionTarget = (targetFormId: number) => {
+        if (!condData.trigger_form_id || !condData.trigger_question_id) {
+            return false;
+        }
+        if (isFileTriggerQuestion) {
+            if (!condData.trigger_operator || condData.trigger_operator === 'option_selected') {
+                return false;
+            }
+            return conditions.some(
+                (c) =>
+                    (!editingCondition || c.id !== editingCondition.id) &&
+                    c.trigger_form?.id?.toString() === condData.trigger_form_id &&
+                    c.trigger_question?.id?.toString() === condData.trigger_question_id &&
+                    (c.trigger_operator || 'option_selected') === condData.trigger_operator &&
+                    c.target_form?.id === targetFormId
+            );
+        }
+        if (!condData.trigger_option_id) {
+            return false;
+        }
+        return conditions.some(
+            (c) =>
+                (!editingCondition || c.id !== editingCondition.id) &&
+                c.trigger_form?.id?.toString() === condData.trigger_form_id &&
+                c.trigger_question?.id?.toString() === condData.trigger_question_id &&
+                c.trigger_option?.id?.toString() === condData.trigger_option_id &&
+                c.target_form?.id === targetFormId
+        );
+    };
+
     return (
         <AppLayout>
             <Head title="Pengaturan Pola Jadwal" />
@@ -443,7 +534,7 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
                 </div>
 
                 {/* GRID DAFTAR JADWAL */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[720px] overflow-y-auto pr-1">
                     {schedules && schedules.length > 0 ? (
                         schedules.map((sch) => {
                             const machineList = sch.machines || [];
@@ -607,7 +698,7 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
                         )}
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[720px] overflow-y-auto pr-1">
                         {conditions && conditions.length > 0 ? (
                             conditions.map((cond) => (
                                 <div
@@ -647,6 +738,20 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
                                         </div>
 
                                         <div className="space-y-2 mt-4 text-xs">
+                                            {cond.trigger_section && (
+                                                <div className="flex justify-between items-center gap-2">
+                                                    <span className="text-slate-500 flex items-center gap-1 shrink-0">
+                                                        <Calendar className="w-3 h-3" /> Section:
+                                                    </span>
+                                                    <span
+                                                        className="font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md text-right truncate"
+                                                        title={`Section ${cond.trigger_section.section_order} — ${cond.trigger_section.section_title}`}
+                                                    >
+                                                        Section {cond.trigger_section.section_order}
+                                                        {cond.trigger_section.section_title ? ` — ${cond.trigger_section.section_title}` : ''}
+                                                    </span>
+                                                </div>
+                                            )}
                                             <div className="flex justify-between items-center gap-2">
                                                 <span className="text-slate-500 flex items-center gap-1 shrink-0">
                                                     <FileText className="w-3 h-3" /> Pertanyaan:
@@ -664,12 +769,20 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
                                                 </span>
                                                 <span
                                                     className={`font-semibold px-2 rounded-md shrink-0 ${
-                                                        cond.trigger_option?.is_normal === false
+                                                        cond.trigger_operator === 'file_uploaded'
+                                                            ? 'text-blue-700 bg-blue-50'
+                                                            : cond.trigger_operator === 'file_empty'
+                                                            ? 'text-amber-700 bg-amber-50'
+                                                            : cond.trigger_option?.is_normal === false
                                                             ? 'text-rose-700 bg-rose-50'
                                                             : 'text-emerald-700 bg-emerald-50'
                                                     }`}
                                                 >
-                                                    {cond.trigger_option?.option_text || '-'}
+                                                    {cond.trigger_operator === 'file_uploaded'
+                                                        ? 'File diupload'
+                                                        : cond.trigger_operator === 'file_empty'
+                                                        ? 'File kosong'
+                                                        : cond.trigger_option?.option_text || '-'}
                                                 </span>
                                             </div>
                                             <div className="flex justify-between items-center gap-2">
@@ -766,12 +879,27 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
                                         disabled={!!editingSchedule}
                                     >
                                         <option value="">-- Pilih Form Inspeksi --</option>
-                                        {forms.map((f) => (
-                                            <option key={f.id} value={f.id}>
-                                                {f.form_title} ({f.form_code})
-                                            </option>
-                                        ))}
+                                        {forms.map((f) => {
+                                            const isAlreadyScheduled = !editingSchedule && scheduledFormIds.has(f.id);
+                                            const isUsedAsTarget = !editingSchedule && conditionTargetFormIds.has(f.id);
+                                            const isDisabled = isAlreadyScheduled || isUsedAsTarget;
+                                            return (
+                                                <option key={f.id} value={f.id} disabled={isDisabled}>
+                                                    {f.form_title} ({f.form_code})
+                                                    {isAlreadyScheduled
+                                                        ? ' — Sudah dijadwalkan'
+                                                        : isUsedAsTarget
+                                                        ? ' — Sudah dipakai di Kondisi Trigger'
+                                                        : ''}
+                                                </option>
+                                            );
+                                        })}
                                     </select>
+                                    {!editingSchedule && forms.length > 0 && !hasAvailableScheduleForm && (
+                                        <span className="text-[10px] text-amber-600 font-semibold mt-1 block">
+                                            Semua form inspeksi sudah memiliki jadwal. Silakan edit jadwal yang ada di halaman ini.
+                                        </span>
+                                    )}
                                     {editingSchedule && (
                                         <span className="text-[10px] text-slate-400 font-semibold mt-1 block">
                                             Form tidak dapat diubah. Buat jadwal baru untuk form lain.
@@ -1153,6 +1281,7 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
                                     <select
                                         value={condData.trigger_form_id}
                                         onChange={(e) => {
+                                            setSelectedConditionSectionId('');
                                             setCondData((prev) => ({
                                                 ...prev,
                                                 trigger_form_id: e.target.value,
@@ -1179,32 +1308,62 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
 
                                 <div>
                                     <label className="block text-xs font-bold text-slate-700 mb-1">
-                                        Pertanyaan Trigger *
+                                        Section Trigger *
                                     </label>
                                     <select
-                                        value={condData.trigger_question_id}
-                                        onChange={(e) =>
+                                        value={selectedConditionSectionId}
+                                        onChange={(e) => {
+                                            setSelectedConditionSectionId(e.target.value);
                                             setCondData((prev) => ({
                                                 ...prev,
-                                                trigger_question_id: e.target.value,
+                                                trigger_question_id: '',
                                                 trigger_option_id: '',
-                                            }))
-                                        }
+                                            }));
+                                        }}
                                         className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-xs outline-none focus:ring-2 focus:ring-emerald-600 bg-white font-medium disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed"
-                                        disabled={!condData.trigger_form_id}
+                                        disabled={!condData.trigger_form_id || conditionSections.length === 0}
                                     >
-                                        <option value="">-- Pilih Pertanyaan --</option>
-                                        {conditionQuestions.map((q) => (
-                                            <option key={q.id} value={q.id}>
-                                                {q.question_text}
+                                        <option value="">-- Pilih Section --</option>
+                                        {conditionSections.map((s) => (
+                                            <option key={s.id} value={s.id}>
+                                                Section {s.section_order}
+                                                {s.section_title ? ` — ${s.section_title}` : ''}
                                             </option>
                                         ))}
                                     </select>
                                     {condData.trigger_form_id && conditionQuestions.length === 0 && (
                                         <span className="text-[10px] text-amber-600 font-semibold mt-1 block">
-                                            Form ini tidak punya pertanyaan berpilihan (SELECT/CHECKBOX/DROPDOWN).
+                                            Form ini tidak punya pertanyaan bertipe SELECT, CHECKBOX, DROPDOWN, atau FILE.
                                         </span>
                                     )}
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                                        Pertanyaan Trigger *
+                                    </label>
+                                    <select
+                                        value={condData.trigger_question_id}
+                                        onChange={(e) => {
+                                            const nextQ = conditionQuestions.find((q) => q.id.toString() === e.target.value);
+                                            const nextIsFile = nextQ?.input_type?.toUpperCase() === 'FILE';
+                                            setCondData((prev) => ({
+                                                ...prev,
+                                                trigger_question_id: e.target.value,
+                                                trigger_operator: nextIsFile ? 'file_uploaded' : 'option_selected',
+                                                trigger_option_id: '',
+                                            }));
+                                        }}
+                                        className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-xs outline-none focus:ring-2 focus:ring-emerald-600 bg-white font-medium disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed"
+                                        disabled={!selectedConditionSectionId}
+                                    >
+                                        <option value="">-- Pilih Pertanyaan --</option>
+                                        {filteredConditionQuestions.map((q) => (
+                                            <option key={q.id} value={q.id}>
+                                                {q.question_text} ({q.input_type})
+                                            </option>
+                                        ))}
+                                    </select>
                                     {condErrors.trigger_question_id && (
                                         <span className="text-[10px] text-rose-600 font-bold mt-1 block">
                                             {condErrors.trigger_question_id}
@@ -1214,26 +1373,46 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
 
                                 <div>
                                     <label className="block text-xs font-bold text-slate-700 mb-1">
-                                        Jawaban Trigger *
+                                        {isFileTriggerQuestion ? 'Kondisi File *' : 'Jawaban Trigger *'}
                                     </label>
-                                    <select
-                                        value={condData.trigger_option_id}
-                                        onChange={(e) => setCondData('trigger_option_id', e.target.value)}
-                                        className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-xs outline-none focus:ring-2 focus:ring-emerald-600 bg-white font-medium disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed"
-                                        disabled={!condData.trigger_question_id}
-                                    >
-                                        <option value="">-- Pilih Jawaban --</option>
-                                        {(selectedConditionQuestion?.options || []).map((o) => (
-                                            <option key={o.id} value={o.id}>
-                                                {o.option_text}
-                                                {o.is_normal === false ? ' (Abnormal)' : ''}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    {condErrors.trigger_option_id && (
-                                        <span className="text-[10px] text-rose-600 font-bold mt-1 block">
-                                            {condErrors.trigger_option_id}
-                                        </span>
+                                    {isFileTriggerQuestion ? (
+                                        <>
+                                            <select
+                                                value={condData.trigger_operator}
+                                                onChange={(e) => setCondData('trigger_operator', e.target.value)}
+                                                className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-xs outline-none focus:ring-2 focus:ring-emerald-600 bg-white font-medium"
+                                            >
+                                                <option value="file_uploaded">File diupload / terisi</option>
+                                                <option value="file_empty">File tidak diupload / kosong</option>
+                                            </select>
+                                            {condErrors.trigger_operator && (
+                                                <span className="text-[10px] text-rose-600 font-bold mt-1 block">
+                                                    {condErrors.trigger_operator}
+                                                </span>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <>
+                                            <select
+                                                value={condData.trigger_option_id}
+                                                onChange={(e) => setCondData('trigger_option_id', e.target.value)}
+                                                className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-xs outline-none focus:ring-2 focus:ring-emerald-600 bg-white font-medium disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed"
+                                                disabled={!condData.trigger_question_id}
+                                            >
+                                                <option value="">-- Pilih Jawaban --</option>
+                                                {(selectedConditionQuestion?.options || []).map((o) => (
+                                                    <option key={o.id} value={o.id}>
+                                                        {o.option_text}
+                                                        {o.is_normal === false ? ' (Abnormal)' : ''}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            {condErrors.trigger_option_id && (
+                                                <span className="text-[10px] text-rose-600 font-bold mt-1 block">
+                                                    {condErrors.trigger_option_id}
+                                                </span>
+                                            )}
+                                        </>
                                     )}
                                 </div>
 
@@ -1250,12 +1429,43 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
                                             <option value="">-- Pilih Form Inspeksi Lanjutan --</option>
                                             {forms
                                                 .filter((f) => f.id.toString() !== condData.trigger_form_id)
-                                                .map((f) => (
-                                                    <option key={f.id} value={f.id}>
-                                                        {f.form_title} ({f.form_code})
-                                                    </option>
-                                                ))}
+                                                .map((f) => {
+                                                    const isScheduledRoutine = allScheduledFormIds.has(f.id);
+                                                    const isUsedInOtherCondition = otherConditionTargetFormIds.has(f.id);
+                                                    const isDuplicate = isDuplicateConditionTarget(f.id);
+                                                    const isDisabled = isScheduledRoutine || isUsedInOtherCondition || isDuplicate;
+                                                    return (
+                                                        <option key={f.id} value={f.id} disabled={isDisabled}>
+                                                            {f.form_title} ({f.form_code})
+                                                            {isScheduledRoutine
+                                                                ? ' — Sudah dipakai di Jadwal Rutin'
+                                                                : isUsedInOtherCondition
+                                                                ? ' — Sudah dipakai di Kondisi lain'
+                                                                : isDuplicate
+                                                                ? ' — Kondisi sudah ada'
+                                                                : ''}
+                                                        </option>
+                                                    );
+                                                })}
                                         </select>
+                                        {condData.target_form_id &&
+                                            allScheduledFormIds.has(Number(condData.target_form_id)) && (
+                                                <span className="text-[10px] text-rose-600 font-bold mt-1 block">
+                                                    Form ini sudah digunakan di Pengaturan Pola Jadwal.
+                                                </span>
+                                            )}
+                                        {condData.target_form_id &&
+                                            otherConditionTargetFormIds.has(Number(condData.target_form_id)) && (
+                                                <span className="text-[10px] text-rose-600 font-bold mt-1 block">
+                                                    Form Lanjutan ini sudah digunakan pada kondisi trigger lain.
+                                                </span>
+                                            )}
+                                        {condData.target_form_id &&
+                                            isDuplicateConditionTarget(Number(condData.target_form_id)) && (
+                                                <span className="text-[10px] text-rose-600 font-bold mt-1 block">
+                                                    Kondisi trigger dengan kombinasi yang sama sudah ada.
+                                                </span>
+                                            )}
                                         {condErrors.target_form_id && (
                                             <span className="text-[10px] text-rose-600 font-bold mt-1 block">
                                                 {condErrors.target_form_id}

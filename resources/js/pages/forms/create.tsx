@@ -3,7 +3,8 @@ import { Head, Link, router, useForm } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import {
     PlusCircle, Copy, Trash2, Layers, Eye, Image as ImageIcon,
-    CornerDownRight, HelpCircle, ShieldCheck, CheckCircle2, AlertCircle
+    CornerDownRight, HelpCircle, ShieldCheck, CheckCircle2, AlertCircle,
+    GripVertical, ChevronDown, ChevronUp
 } from 'lucide-react';
 
 interface ValidationRules {
@@ -71,7 +72,6 @@ export default function FormCreate({ machines = [], defaultType = 'INSPECTION', 
             form_type: defaultType,
             form_title: 'Formulir Pemantauan Tanpa Judul',
             form_description: '',
-            form_level: null as number | null,
             machine_id: defaultMachineId ? Number(defaultMachineId) : '' as string | number,
         },
         sections: [
@@ -239,6 +239,42 @@ export default function FormCreate({ machines = [], defaultType = 'INSPECTION', 
         updated[sIndex].questions = updated[sIndex].questions.filter((_, i) => i !== qIndex);
         setData('sections', updated);
         setActiveFocus(Math.max(0, qIndex - 1));
+    };
+
+    const [collapsedSections, setCollapsedSections] = useState<Record<number, boolean>>({});
+    const toggleCollapseSection = (sIndex: number) => {
+        setCollapsedSections(prev => ({ ...prev, [sIndex]: !prev[sIndex] }));
+    };
+
+    const totalQuestions = data.sections.reduce((acc, sec) => acc + sec.questions.length, 0);
+
+    const formTypeLabelMap: Record<string, string> = {
+        INSPECTION: 'Inspeksi Preventive',
+        MANUAL_REPORT: 'Laporan Breakdown Manual',
+        START_REPAIR: 'Form Mulai Repair',
+        CLOSE_TICKET: 'Form Tutup Tiket',
+    };
+
+    const [draggingQuestion, setDraggingQuestion] = useState<{ sIndex: number; qIndex: number } | null>(null);
+    const [dragOverQuestion, setDragOverQuestion] = useState<{ sIndex: number; qIndex: number } | null>(null);
+    const dragArmedRef = React.useRef(false);
+
+    const reorderQuestion = (sIndex: number, fromIndex: number, toIndex: number) => {
+        if (fromIndex === toIndex) return;
+        const questions = data.sections[sIndex]?.questions || [];
+        if (fromIndex < 0 || toIndex < 0 || fromIndex >= questions.length || toIndex >= questions.length) return;
+
+        const updated = [...data.sections];
+        const nextQuestions = [...updated[sIndex].questions];
+        const [moved] = nextQuestions.splice(fromIndex, 1);
+        nextQuestions.splice(toIndex, 0, moved);
+        updated[sIndex] = {
+            ...updated[sIndex],
+            questions: nextQuestions.map((item, idx) => ({ ...item, question_order: idx + 1 })),
+        };
+        setData('sections', updated);
+        setActiveSectionIndex(sIndex);
+        setActiveFocus(toIndex);
     };
 
     const duplicateQuestion = (sIndex: number, qIndex: number) => {
@@ -458,6 +494,14 @@ export default function FormCreate({ machines = [], defaultType = 'INSPECTION', 
             <div className="max-w-3xl mx-auto space-y-4 pb-24">
                 {/* Metadata — padding responsive */}
                 <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-6 space-y-4 shadow-2xs border-t-4 border-t-emerald-600">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            {formTypeLabelMap[data.metadata.form_type] || data.metadata.form_type}
+                        </span>
+                        <span className="text-[11px] font-semibold text-slate-400">
+                            {data.sections.length} Bagian &bull; {totalQuestions} Pertanyaan
+                        </span>
+                    </div>
                     <input
                         type="text"
                         value={data.metadata.form_title}
@@ -481,14 +525,44 @@ export default function FormCreate({ machines = [], defaultType = 'INSPECTION', 
                             <>
                             {/* Header Section */}
                             <div className="flex justify-between items-center border-b border-slate-100 pb-2 gap-2">
-                                <span className="text-[11px] font-bold text-emerald-700 uppercase shrink-0">Bagian {sIndex + 1}</span>
-                                {data.sections.length > 1 && (
-                                    <button type="button" onClick={() => removeSection(sIndex)} className="text-slate-400 hover:text-rose-600 text-xs cursor-pointer shrink-0">
-                                        Hapus Bagian
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <span className="text-[11px] font-bold text-emerald-700 uppercase shrink-0">
+                                        Bagian {sIndex + 1}
+                                    </span>
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 shrink-0">
+                                        {section.questions.length} Pertanyaan
+                                    </span>
+                                    {collapsedSections[sIndex] && section.section_title && (
+                                        <span className="text-xs font-bold text-slate-700 truncate">
+                                            — {section.section_title}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => toggleCollapseSection(sIndex)}
+                                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-600 text-[11px] font-semibold border border-slate-200 cursor-pointer"
+                                    >
+                                        {collapsedSections[sIndex] ? (
+                                            <>
+                                                <ChevronDown className="w-3.5 h-3.5" /> Buka
+                                            </>
+                                        ) : (
+                                            <>
+                                                <ChevronUp className="w-3.5 h-3.5" /> Lipat
+                                            </>
+                                        )}
                                     </button>
-                                )}
+                                    {data.sections.length > 1 && (
+                                        <button type="button" onClick={() => removeSection(sIndex)} className="text-slate-400 hover:text-rose-600 text-xs cursor-pointer shrink-0">
+                                            Hapus Bagian
+                                        </button>
+                                    )}
+                                </div>
                             </div>
 
+                            {!collapsedSections[sIndex] && (
                             <div className="space-y-2">
                                 <input
                                     type="text"
@@ -505,26 +579,91 @@ export default function FormCreate({ machines = [], defaultType = 'INSPECTION', 
                                     className="w-full text-xs text-slate-500 border-b border-slate-100 pb-1.5 focus:border-emerald-600 outline-none bg-transparent"
                                 />
                             </div>
+                            )}
                             </>
                             )}
 
                             {/* Daftar Pertanyaan */}
+                            {!collapsedSections[sIndex] && (
                             <div className="space-y-3">
-                                {section.questions.map((q, qIndex) => (
+                                {section.questions.map((q, qIndex) => {
+                                    const isDragging = draggingQuestion?.sIndex === sIndex && draggingQuestion?.qIndex === qIndex;
+                                    const isDragOver =
+                                        dragOverQuestion?.sIndex === sIndex &&
+                                        dragOverQuestion?.qIndex === qIndex &&
+                                        draggingQuestion?.sIndex === sIndex &&
+                                        draggingQuestion?.qIndex !== qIndex;
+
+                                    return (
                                     <div
                                         key={qIndex}
+                                        draggable
+                                        onDragStart={e => {
+                                            if (!dragArmedRef.current) {
+                                                e.preventDefault();
+                                                return;
+                                            }
+                                            setDraggingQuestion({ sIndex, qIndex });
+                                            e.dataTransfer.effectAllowed = 'move';
+                                            e.dataTransfer.setData('text/plain', `${sIndex}:${qIndex}`);
+                                        }}
+                                        onDragOver={e => {
+                                            if (draggingQuestion && draggingQuestion.sIndex === sIndex) {
+                                                e.preventDefault();
+                                                e.dataTransfer.dropEffect = 'move';
+                                                if (dragOverQuestion?.sIndex !== sIndex || dragOverQuestion?.qIndex !== qIndex) {
+                                                    setDragOverQuestion({ sIndex, qIndex });
+                                                }
+                                            }
+                                        }}
+                                        onDrop={e => {
+                                            e.preventDefault();
+                                            if (draggingQuestion && draggingQuestion.sIndex === sIndex) {
+                                                reorderQuestion(sIndex, draggingQuestion.qIndex, qIndex);
+                                            }
+                                            setDraggingQuestion(null);
+                                            setDragOverQuestion(null);
+                                            dragArmedRef.current = false;
+                                        }}
+                                        onDragEnd={() => {
+                                            setDraggingQuestion(null);
+                                            setDragOverQuestion(null);
+                                            dragArmedRef.current = false;
+                                        }}
                                         onMouseDownCapture={() => { setActiveSectionIndex(sIndex); setActiveFocus(qIndex); }}
-                                        className="bg-white p-3 sm:p-5 rounded-xl border border-slate-200 shadow-2xs space-y-3 transition-all hover:border-slate-300"
+                                        className={`bg-white p-3 sm:p-5 rounded-xl border shadow-2xs space-y-3 transition-all ${
+                                            isDragging
+                                                ? 'opacity-50 border-dashed border-emerald-400'
+                                                : isDragOver
+                                                ? 'border-emerald-500 ring-2 ring-emerald-500/40 bg-emerald-50/20'
+                                                : activeSectionIndex === sIndex && activeFocus === qIndex
+                                                ? 'border-emerald-500 ring-1 ring-emerald-500/30'
+                                                : 'border-slate-200 hover:border-slate-300'
+                                        }`}
                                     >
                                         {/* Baris pertanyaan — responsive */}
                                         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                                            <input
-                                                type="text"
-                                                value={q.question_text}
-                                                onChange={e => handleQuestionChange(sIndex, qIndex, 'question_text', e.target.value)}
-                                                placeholder={`Pertanyaan ${qIndex + 1}`}
-                                                className="w-full sm:flex-1 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 bg-slate-50/50 outline-none focus:border-emerald-600"
-                                            />
+                                            <div className="flex items-center gap-2 w-full sm:flex-1 min-w-0">
+                                                <button
+                                                    type="button"
+                                                    onMouseDown={() => { dragArmedRef.current = true; }}
+                                                    onMouseUp={() => { dragArmedRef.current = false; }}
+                                                    className="p-1 text-slate-400 hover:text-emerald-600 cursor-grab active:cursor-grabbing shrink-0"
+                                                    title="Tarik untuk mengubah urutan pertanyaan"
+                                                >
+                                                    <GripVertical className="w-4 h-4" />
+                                                </button>
+                                                <span className="inline-flex items-center justify-center min-w-[28px] h-7 px-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-black shrink-0">
+                                                    #{qIndex + 1}
+                                                </span>
+                                                <input
+                                                    type="text"
+                                                    value={q.question_text}
+                                                    onChange={e => handleQuestionChange(sIndex, qIndex, 'question_text', e.target.value)}
+                                                    placeholder={`Tulis pertanyaan ${qIndex + 1}...`}
+                                                    className="w-full flex-1 min-w-0 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 bg-slate-50/50 outline-none focus:border-emerald-600"
+                                                />
+                                            </div>
 
                                             <div className="flex items-center gap-2 shrink-0">
                                                 <input
@@ -611,7 +750,7 @@ export default function FormCreate({ machines = [], defaultType = 'INSPECTION', 
                                                 <img
                                                     src={q.question_image_url}
                                                     alt="Preview Soal"
-                                                    className="w-full h-auto rounded-lg border border-slate-200 bg-slate-50 object-contain"
+                                                    className="w-full max-h-60 rounded-lg border border-slate-200 bg-slate-50 object-contain"
                                                 />
                                                 <button
                                                     type="button"
@@ -816,7 +955,8 @@ export default function FormCreate({ machines = [], defaultType = 'INSPECTION', 
                                             );
                                         })()}
                                     </div>
-                                ))}
+                                    );
+                                })}
 
                                 <div className="text-center pt-2">
                                     <button
@@ -828,27 +968,42 @@ export default function FormCreate({ machines = [], defaultType = 'INSPECTION', 
                                     </button>
                                 </div>
                             </div>
+                            )}
                         </div>
                     ))}
 
-                    {/* Footer — responsive */}
-                    <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-0 pt-4">
-                        {!isTicketing && (
-                        <button
-                            type="button"
-                            onClick={addSection}
-                            className="w-full sm:w-auto px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                            <Layers className="w-4 h-4" /> Tambah Bagian Baru
-                        </button>
-                        )}
-                        <button
-                            type="submit"
-                            disabled={processing}
-                            className="w-full sm:w-auto px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors shadow-sm cursor-pointer disabled:opacity-50"
-                        >
-                            Simpan Template Form
-                        </button>
+                    {/* Sticky Action Bar */}
+                    <div className="sticky bottom-3 z-30 bg-white/95 backdrop-blur-xs border border-slate-200 rounded-2xl p-3 shadow-lg flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+                        <div className="flex items-center justify-between sm:justify-start gap-2">
+                            {!isTicketing && (
+                                <button
+                                    type="button"
+                                    onClick={addSection}
+                                    className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                                >
+                                    <Layers className="w-4 h-4" /> Tambah Bagian
+                                </button>
+                            )}
+                            <span className="text-[11px] font-semibold text-slate-500">
+                                {data.sections.length} Bagian &bull; {totalQuestions} Pertanyaan
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => { setPreviewSectionId(0); setPreviewHistory([]); setPreviewAnswers({}); setIsPreviewOpen(true); }}
+                                className="flex-1 sm:flex-none px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                                <Eye className="w-3.5 h-3.5" /> Preview
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={processing}
+                                className="flex-1 sm:flex-none px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors shadow-sm cursor-pointer disabled:opacity-50"
+                            >
+                                {processing ? 'Menyimpan...' : 'Simpan Template Form'}
+                            </button>
+                        </div>
                     </div>
                 </form>
             </div>

@@ -10,6 +10,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\KanbanController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Middleware\CheckUserStatus;
 
 // Auth Routes
@@ -19,16 +20,12 @@ Route::get('/admin/login', [AuthController::class, 'adminCreate'])->name('admin.
 Route::post('/admin/login', [AuthController::class, 'adminStore']);
 Route::post('/logout', [AuthController::class, 'destroy']);
 Route::get('/scan/machine/{machineCode}', [TaskController::class, 'handleQrScanRedirect']);
-Route::get('/inspection-calender', [TaskController::class, 'index'])->name('tasks.index')->middleware(['auth', 'CheckUserStatus', 'role:ADMIN,OPERATOR,MAINTENANCE,MAINTENANCE_L2,SUPERVISOR,ENGINEERING']);
+Route::get('/inspection-calender', [TaskController::class, 'index'])->name('tasks.index')->middleware(['auth', 'CheckUserStatus', 'role:ADMIN,OPERATOR,MAINTENANCE,SUPERVISOR,ENGINEERING,VENDOR']);
 Route::get('/api/scan-task/{code}', [TaskController::class, 'apiFindTaskByMachine']);
 Route::get('/scan-task/{code}', [TaskController::class, 'handleQrScanRedirect'])
     ->name('scan-task');
 
-
-Route::patch('/schedules/{id}/toggle', [ScheduleController::class, 'toggleStatus'])->name('schedules.toggle');   
-Route::put('/schedules/{id}', [ScheduleController::class, 'update'])->name('schedules.update');
-Route::delete('/schedules/{id}', [ScheduleController::class, 'destroy'])->name('schedules.destroy');
-Route::middleware(['auth', 'CheckUserStatus', 'role:ADMIN,OPERATOR,MAINTENANCE,MAINTENANCE_L2,SUPERVISOR,ENGINEERING'])->group(function () {
+Route::middleware(['auth', 'CheckUserStatus', 'role:ADMIN,OPERATOR,MAINTENANCE,SUPERVISOR,ENGINEERING,VENDOR'])->group(function () {
     Route::get('/inspection-form/{id}',[TaskController::class, 'show'])->name('tasks.show');
     Route::post('/inspection-form/upload-temp', [TaskController::class, 'uploadTempFile']);
     Route::post('/inspection-form/remove-file', [TaskController::class, 'removeFile']);
@@ -36,25 +33,9 @@ Route::middleware(['auth', 'CheckUserStatus', 'role:ADMIN,OPERATOR,MAINTENANCE,M
     Route::post('/inspection-form/{id}/submit', [TaskController::class, 'submit']);
 });
 
-Route::get('/dashboard', function () {
-    return inertia('dashboard', [
-        'summary' => [
-            'totalMachines' => 12,
-            'running' => 9,
-            'breakdown' => 3,
-        ],
-        'myMachines' => [],
-        'myProblems' => [],
-        'breakdowns' => [],
-        'statusCounts' => [
-            'RUNNING' => 9,
-            'BREAKDOWN' => 3,
-            'STANDBY' => 0,
-            'MAINTENANCE' => 0,
-        ],
-        'syncedAt' => now()->format('H:i:s'),
-    ]);
-})->middleware(['auth','CheckUserStatus','role:ADMIN,OPERATOR,MAINTENANCE,MAINTENANCE_L2,SUPERVISOR,ENGINEERING']);
+Route::get('/dashboard', [DashboardController::class, 'index'])
+    ->name('dashboard')
+    ->middleware(['auth', 'CheckUserStatus', 'role:ADMIN,OPERATOR,MAINTENANCE,SUPERVISOR,ENGINEERING,VENDOR']);
 
 Route::get('/machines', [MachineController::class, 'index'])->name('machines.index');
 Route::middleware(['auth', 'CheckUserStatus','role:ADMIN'])->group(function () {
@@ -67,14 +48,16 @@ Route::middleware(['auth', 'CheckUserStatus','role:ADMIN'])->group(function () {
 Route::get('/machines/{machineId}', [MachineController::class, 'show'])->name('machines.show');
 
 
-Route::get('/breakdowns', [KanbanController::class, 'index'])->name('breakdowns.index');
-Route::post('/breakdowns/{ticketCode}/acknowledge', [KanbanController::class, 'acknowledge'])->name('breakdowns.acknowledge');
-Route::put('/breakdowns/{ticketCode}/status', [KanbanController::class, 'updateStatus'])->name('breakdowns.updateStatus');
-Route::post('/breakdowns/{ticketCode}/close', [KanbanController::class, 'close'])->name('breakdowns.close');
-Route::put('/breakdowns/{ticketCode}/verify-close', [KanbanController::class, 'verifyClose'])->name('breakdowns.verifyClose');
-
-// Form transisi kanban: repair & closing disimpan ke ticket_submissions
 Route::middleware(['auth', 'CheckUserStatus'])->group(function () {
+    Route::get('/breakdowns', [KanbanController::class, 'index'])->name('breakdowns.index');
+    Route::post('/breakdowns/{ticketCode}/acknowledge', [KanbanController::class, 'acknowledge'])->name('breakdowns.acknowledge');
+    Route::put('/breakdowns/{ticketCode}/status', [KanbanController::class, 'updateStatus'])->name('breakdowns.updateStatus');
+    Route::post('/breakdowns/{ticketCode}/close', [KanbanController::class, 'close'])->name('breakdowns.close');
+    Route::put('/breakdowns/{ticketCode}/verify-close', [KanbanController::class, 'verifyClose'])
+        ->middleware('role:ADMIN,SUPERVISOR')
+        ->name('breakdowns.verifyClose');
+
+    // Form transisi kanban: repair & closing disimpan ke ticket_submissions
     Route::post('/breakdowns', [KanbanController::class, 'storeReport'])->name('breakdowns.store');
     Route::get('/breakdowns/{ticketCode}/form/{context}/data', [KanbanController::class, 'ticketFormData'])->name('breakdowns.form.data');
     Route::get('/breakdowns/{ticketCode}/form/{context}', [KanbanController::class, 'showTicketForm'])->name('breakdowns.form');
@@ -98,8 +81,11 @@ Route::middleware(['auth', 'CheckUserStatus','role:ADMIN'])->group(function () {
 Route::middleware(['auth', 'CheckUserStatus','role:ADMIN'])->group(function () {
     Route::get('/schedules', [ScheduleController::class, 'index'])->name('schedules.index');
     Route::post('/schedules', [ScheduleController::class, 'store'])->name('schedules.store');
+    Route::put('/schedules/{id}', [ScheduleController::class, 'update'])->name('schedules.update');
+    Route::patch('/schedules/{id}/toggle', [ScheduleController::class, 'toggleStatus'])->name('schedules.toggle');
+    Route::delete('/schedules/{id}', [ScheduleController::class, 'destroy'])->name('schedules.destroy');
 
-    // Kondisi trigger antar level form inspeksi (lvl 1 -> lvl 2)
+    // Kondisi trigger antar form inspeksi
     Route::get('/schedules/condition-questions/{formId}', [ScheduleController::class, 'conditionQuestions'])->name('schedules.conditionQuestions');
     Route::post('/schedule-conditions', [ScheduleController::class, 'storeCondition'])->name('schedule-conditions.store');
     Route::put('/schedule-conditions/{id}', [ScheduleController::class, 'updateCondition'])->name('schedule-conditions.update');
@@ -116,6 +102,9 @@ Route::middleware(['auth', 'CheckUserStatus', 'role:ADMIN'])->group(function () 
     Route::get('/users', [UserController::class, 'index'])->name('users.index');
     Route::get('/users/create', [UserController::class, 'create'])->name('users.create');
     Route::post('/users/create', [UserController::class, 'store'])->name('users.store');
+    Route::put('/users/admin/password', [UserController::class, 'updateAdminPassword'])
+        ->middleware('throttle:5,1')
+        ->name('users.admin.password');
     Route::get('/users/{id}/edit', [UserController::class, 'edit'])->name('users.edit');
     Route::put('/users/{id}', [UserController::class, 'update'])->name('users.update');
     Route::delete('/users/{id}', [UserController::class, 'destroy'])->name('users.destroy');

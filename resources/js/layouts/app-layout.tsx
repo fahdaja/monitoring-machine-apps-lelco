@@ -105,7 +105,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
             </svg>
         )},
-        { label: 'Breakdown Pipeline', url: '/breakdowns', matchPrefix: '/breakdowns', inspectionOnly: true, icon: (
+        { label: 'Breakdown Pipeline', url: '/breakdowns', matchPrefix: '/breakdowns', icon: (
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
@@ -191,12 +191,14 @@ export default function AppLayout({ children }: AppLayoutProps) {
                         </svg>
                     </button>
 
-                    <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                        <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center font-black text-sm text-white shadow-inner shrink-0">
-                            MD
-                        </div>
-                        <div className="hidden sm:block min-w-0">
-                            <strong className="block text-sm font-extrabold leading-tight text-white truncate max-w-[160px] sm:max-w-none">
+                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                        <img
+                            src="/images/logo_lelco_white.png"
+                            alt="Lelco Manufacturing"
+                            className="h-8 sm:h-9 w-auto object-contain shrink-0"
+                        />
+                        <div className="hidden sm:block min-w-0 border-l border-slate-700/80 pl-3">
+                            <strong className="block text-sm font-extrabold leading-tight text-white truncate max-w-[180px] sm:max-w-none">
                                 PT. Lelco Trindo Nusantara
                             </strong>
                             <span className="block text-[11px] text-slate-400 truncate">Machine Digitalization</span>

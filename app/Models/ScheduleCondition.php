@@ -13,6 +13,8 @@ class ScheduleCondition extends Model
         'condition_code',
         'trigger_form_id',
         'trigger_question_id',
+        'trigger_operator',
+        'trigger_value',
         'trigger_option_id',
         'target_form_id',
         'due_window_days',

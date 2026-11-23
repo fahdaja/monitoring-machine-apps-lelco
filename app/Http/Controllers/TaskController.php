@@ -163,7 +163,6 @@
                 'machineName' => $machine?->machine_name,
                 'location' => $machine?->location,
                 'activity' => $task->form?->form_title,
-                'formLevel' => $task->form?->form_level,
                 'scheduledDate' => $task->due_date ? $task->due_date->format('Y-m-d') : null,
                 'endDate'  => $task->end_date ? $task->end_date->format('Y-m-d') : null,
                 'status' => $task->status,
@@ -470,7 +469,7 @@
 
                 // 7. Auto-trigger Breakdown Ticket (Terkonsolidasi & Anti-Spam)
                 if (!empty($abnormalItems)) {
-        $machineId = $form->machine_id;
+        $machineId = $task->machine_id ?? $form->machine_id;
 
         // Kumpulkan detail data abnormal dalam bentuk struktur array rapi
         $problemsList = [];
@@ -505,9 +504,12 @@
             'problems'         => $problemsList, // 💡 Simpan sebagai array JSON
             'status'           => 'OPEN',
             'reported_at'      => now(),
+            'reported_by'      => auth()->id(),
         ]);
 
-        Machine::where('id', $machineId)->update(['machine_status' => 'DOWN']);
+        if ($machineId) {
+            Machine::where('id', $machineId)->update(['machine_status' => 'DOWN']);
+        }
         $submission->update(['escalation_ticket_id' => $ticket->id]);
     }
 
@@ -598,9 +600,12 @@
                 continue;
             }
 
-            // Invariant 2: satu task per form target per tanggal due (cegah dobel di kalender
+            $targetMachineId = $task->machine_id ?? $targetForm->machine_id;
+
+            // Invariant 2: satu task per form target + mesin per tanggal due (cegah dobel di kalender
             // saat dua task lvl 1 dengan due date berbeda disubmit pada hari yang sama).
             $existingOnDate = Task::where('form_id', $condition->target_form_id)
+                ->when($targetMachineId, fn ($q) => $q->where('machine_id', $targetMachineId))
                 ->whereDate('due_date', $dueDate->format('Y-m-d'))
                 ->first();
 
@@ -618,7 +623,7 @@
 
             try {
                 $createdTask = Task::create([
-                    'machine_id'           => $targetForm->machine_id,
+                    'machine_id'           => $targetMachineId,
                     'form_id'              => $condition->target_form_id,
                     'task_code'            => 'TSK-' . strtoupper(uniqid()),
                     'idempotency_key'      => $idempotencyKey,
@@ -652,14 +657,27 @@
     }
 
     /**
-     * Cek apakah snapshot jawaban berisi opsi trigger dari sebuah kondisi.
+     * Cek apakah snapshot jawaban memenuhi aturan trigger dari sebuah kondisi
+     * (opsi terpilih atau status upload file).
      */
     private function snapshotMatchesTrigger(array $enterpriseSnapshot, ScheduleCondition $condition): bool
     {
+        $operator = $condition->trigger_operator ?: 'option_selected';
+
         foreach ($enterpriseSnapshot['sections'] ?? [] as $section) {
             foreach ($section['questions'] ?? [] as $question) {
                 if (($question['form_question_id'] ?? null) != $condition->trigger_question_id) {
                     continue;
+                }
+
+                if ($operator === 'file_uploaded' || $operator === 'file_empty') {
+                    $val = $question['answer_detail']['value'] ?? null;
+                    $photos = $question['answer_detail']['photos'] ?? [];
+                    $hasFile = (is_string($val) && trim($val) !== '')
+                        || (is_array($val) && count(array_filter($val)) > 0)
+                        || (is_array($photos) && count(array_filter($photos)) > 0);
+
+                    return $operator === 'file_uploaded' ? $hasFile : ! $hasFile;
                 }
 
                 foreach ($question['selected_options'] ?? [] as $selected) {

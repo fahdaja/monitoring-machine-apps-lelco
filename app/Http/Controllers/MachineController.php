@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Machine;
 use App\Models\BreakdownTicket;
 use App\Models\Form;
+use App\Models\Task;
 use App\Models\User;
 use App\Enums\FormType;
 use Illuminate\Http\Request;
@@ -52,7 +53,7 @@ class MachineController extends Controller
                 'user_code'            => $user->user_code,
                 'role'                 => (string) $user->role,
                 'department'           => $user->department,
-                'can_access_inspection' => $user->hasRole(['ADMIN', 'OPERATOR', 'MAINTENANCE', 'MAINTENANCE_L2', 'SUPERVISOR', 'ENGINEERING']),
+                'can_access_inspection' => $user->hasRole(['ADMIN', 'OPERATOR', 'MAINTENANCE', 'SUPERVISOR', 'ENGINEERING', 'VENDOR']),
             ])
             ->values()
             ->all();
@@ -173,21 +174,45 @@ class MachineController extends Controller
                 ];
             });
 
-            $inspections = $machine->tasks ?? []; 
-            $formattedInspections = collect($inspections)->map(function ($task) {
-        return [
-            'id'             => $task->id ?? 1,
-            'task_code'      => $task->task_code ?? 'TSK-001',
-            'title'          => $task->title ?? 'Pemeliharaan Berkala',
-            'inspectorName'  => $task->user->full_name ?? '-',
-            'status'         => $task->status ?? 'COMPLETED',
-            'resultStatus'   => $task->result_status ?? 'PASSED',
-            'started_at'     => $task->started_at ? date('Y-m-d H:i', strtotime($task->started_at)) : '-',
-            'next_schedule_at' => $task->next_schedule_at ?? '-',
-            'findings'       => $task->findings ?? null,
-            'notes'          => $task->notes ?? null,
-        ];
-    });
+            $tasks = Task::with(['form', 'user'])
+                ->where('machine_id', $machine->id)
+                ->orderByRaw("CASE
+                    WHEN status = 'OVERDUE' THEN 1
+                    WHEN status = 'IN_PROGRESS' THEN 2
+                    WHEN status = 'DUE' THEN 3
+                    WHEN status = 'COMPLETED' THEN 4
+                    ELSE 5
+                END")
+                ->orderByDesc('completed_at')
+                ->orderByDesc('due_date')
+                ->take(10)
+                ->get()
+                ->map(function (Task $task) {
+                    $status = strtoupper((string) $task->status);
+                    if ($status !== 'COMPLETED' && $status !== 'IN_PROGRESS' && $task->due_date) {
+                        if ($task->due_date->lt(today())) {
+                            $status = 'OVERDUE';
+                        } elseif ($task->due_date->isSameDay(today()) && $status === 'UPCOMING') {
+                            $status = 'DUE';
+                        }
+                    }
+
+                    return [
+                        'id'               => $task->id,
+                        'task_code'        => $task->task_code,
+                        'title'            => $task->form?->form_title ?? 'Pemeliharaan Berkala',
+                        'inspectorName'    => $task->user?->full_name ?? '-',
+                        'status'           => $status,
+                        'resultStatus'     => null,
+                        'started_at'       => $task->completed_at
+                            ? $task->completed_at->format('Y-m-d H:i')
+                            : ($task->due_date ? $task->due_date->format('Y-m-d') : '-'),
+                        'next_schedule_at' => $task->end_date ? $task->end_date->format('Y-m-d') : null,
+                        'findings'         => null,
+                        'notes'            => null,
+                    ];
+                })
+                ->values();
 
         return Inertia::render('machines/show', [
             'machine' => [
@@ -220,7 +245,7 @@ class MachineController extends Controller
                 'qrId'              => $machine->qr_value ?? $machine->qr_id ?? $machine->machine_code,
             ],
             'breakdowns'  => $breakdowns,
-            'inspections' => $formattedInspections,
+            'tasks'       => $tasks,
             'reportForm' => $this->reportFormPayload($machine->id),
         ]);
     }

@@ -128,7 +128,7 @@ export default function MachineIndex({ machines }: MachineIndexProps) {
             case 'WAITING_VENDOR':
                 return 'bg-purple-100 text-purple-800 border-purple-200';
             case 'WAITING_VERIFICATION':
-                return 'bg-teal-100 text-teal-800 border-teal-200';
+                return 'bg-sky-100 text-sky-800 border-sky-200';
             case 'PLANNED_MAINTENANCE':
                 return 'bg-blue-100 text-blue-800 border-blue-200';
             case 'INACTIVE':
@@ -142,8 +142,11 @@ export default function MachineIndex({ machines }: MachineIndexProps) {
             case 'RUNNING': return 'Running';
             case 'DOWN': return 'Down';
             case 'UNDER_REPAIR': return 'Under Repair';
+            case 'WAITING_SPAREPART': return 'Waiting Sparepart';
+            case 'WAITING_VENDOR': return 'Waiting Vendor';
+            case 'WAITING_VERIFICATION': return 'Waiting Verification';
             case 'INACTIVE': return 'Inactive';
-            default: return status;
+            default: return status.replace(/_/g, ' ');
         }
     };
 
@@ -154,10 +157,8 @@ export default function MachineIndex({ machines }: MachineIndexProps) {
         DOWN: allMachines.filter(m => m.status === 'DOWN').length,
         UNDER_REPAIR: allMachines.filter(m => m.status === 'UNDER_REPAIR').length,
         WAITING_SPAREPART: allMachines.filter(m => m.status === 'WAITING_SPAREPART').length,
-        WAITING_L3: allMachines.filter(m => m.status === 'WAITING_L3').length,
         WAITING_VENDOR: allMachines.filter(m => m.status === 'WAITING_VENDOR').length,
         WAITING_VERIFICATION: allMachines.filter(m => m.status === 'WAITING_VERIFICATION').length,
-        PLANNED_MAINTENANCE: allMachines.filter(m => m.status === 'PLANNED_MAINTENANCE').length,
         INACTIVE: allMachines.filter(m => m.status === 'INACTIVE').length,
     };
     
@@ -316,7 +317,7 @@ export default function MachineIndex({ machines }: MachineIndexProps) {
 
             {/* Machine Cards Grid */}
             {filteredMachines.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 max-h-[75vh] overflow-y-auto pr-1">
                     {filteredMachines.map((m) => (
                         <div
                             key={m.id}
