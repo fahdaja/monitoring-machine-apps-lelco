@@ -149,6 +149,39 @@ if [ ! -e public/storage ]; then
         log "storage:link dilewati (public/storage sudah ada atau tidak bisa dibuat)."
 fi
 
+# 4b. Sertifikat SSL lokal untuk HTTPS (port 443) -----------------------
+# Kalau user belum menaruh sertifikat sendiri (misal dari mkcert) di
+# ./docker/certs/server.crt & server.key, buat self-signed cert otomatis
+# dengan SAN sesuai IP/host dari APP_URL agar HTTPS langsung jalan.
+CERT_DIR="/etc/nginx/certs"
+CERT_FILE="${CERT_DIR}/server.crt"
+KEY_FILE="${CERT_DIR}/server.key"
+mkdir -p "${CERT_DIR}"
+
+if [ ! -f "${CERT_FILE}" ] || [ ! -f "${KEY_FILE}" ]; then
+    SAN="DNS:localhost,IP:127.0.0.1"
+    APP_HOST=$(php -r '$h = parse_url(getenv("APP_URL") ?: "", PHP_URL_HOST); if ($h) echo $h;' 2>/dev/null || true)
+    if [ -n "${APP_HOST}" ] && [ "${APP_HOST}" != "localhost" ] && [ "${APP_HOST}" != "127.0.0.1" ]; then
+        case "${APP_HOST}" in
+            *[!0-9.]*) SAN="${SAN},DNS:${APP_HOST}" ;;
+            *)         SAN="${SAN},IP:${APP_HOST}" ;;
+        esac
+    fi
+    if [ -n "${SSL_EXTRA_IP}" ]; then
+        SAN="${SAN},IP:${SSL_EXTRA_IP}"
+    fi
+
+    log "Membuat sertifikat SSL lokal (SAN: ${SAN})..."
+    openssl req -x509 -nodes -newkey rsa:2048 -days 825 \
+        -keyout "${KEY_FILE}" \
+        -out "${CERT_FILE}" \
+        -subj "/CN=${APP_HOST:-localhost}" \
+        -addext "subjectAltName=${SAN}" >/dev/null 2>&1
+    chmod 600 "${KEY_FILE}"
+    chmod 644 "${CERT_FILE}"
+    log "Sertifikat SSL tersimpan di ${CERT_DIR} (mount ./docker/certs agar persisten)."
+fi
+
 # 5. Cache --------------------------------------------------------------
 # route:cache SENGAJA tidak dipakai: /dashboard di routes/web.php masih closure
 # dan route:cache menolak closure. config:cache cukup, dan selalu di-refresh di

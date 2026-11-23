@@ -6,6 +6,9 @@
 /public/hot
 /public/storage
 /storage/*.key
+/docker/certs/*.crt
+/docker/certs/*.key
+/docker/certs/*.pem
 /storage/pail
 /resources/js/actions
 /resources/js/routes

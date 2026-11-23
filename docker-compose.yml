@@ -31,9 +31,11 @@ services:
     image: lelco-form:local
     restart: unless-stopped
     ports:
-      # Dalam container nginx listen 80; dari luar tetap 8000 supaya sama
-      # seperti kebiasaan dev (APP_URL=http://localhost:8000).
+      # Dalam container nginx listen 80 (HTTP) & 443 (HTTPS).
+      # Dari luar default 8000 (HTTP) dan 8443 (HTTPS) — bisa ubah APP_HTTPS_PORT=443
+      # kalau port 443 host kosong supaya URL cukup https://<IP> tanpa port.
       - "${APP_PORT:-8000}:80"
+      - "${APP_HTTPS_PORT:-8443}:443"
     env_file:
       - .env.docker
     volumes:
@@ -46,6 +48,9 @@ services:
       # menyeret cache lama ke deploy berikutnya (config.php / compiled view
       # lawas tetap terpakai walaupun image-nya sudah baru).
       - app-storage:/var/www/html/storage/app
+      # Sertifikat SSL lokal untuk HTTPS (auto-generated jika kosong, atau isi
+      # server.crt & server.key hasil mkcert agar tidak ada warning di browser).
+      - ./docker/certs:/etc/nginx/certs
     extra_hosts:
       # Membuat DB_HOST=host.docker.internal benar-benar resolve (di Docker
       # Desktop juga tidak merugikan).

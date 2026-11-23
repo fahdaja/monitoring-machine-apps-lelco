@@ -99,9 +99,10 @@ RUN rm -rf node_modules .env public/hot
 FROM php-base AS app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends nginx supervisor \
+    && apt-get install -y --no-install-recommends nginx supervisor openssl \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /etc/nginx/certs
 
 COPY docker/app.ini /usr/local/etc/php/conf.d/zz-app.ini
 COPY docker/php-fpm-pool.conf /usr/local/etc/php-fpm.d/zz-app.conf
@@ -133,7 +134,7 @@ RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh \
     && chown -R www-data:www-data storage bootstrap/cache public \
     && chmod -R 0775 storage bootstrap/cache
 
-EXPOSE 80
+EXPOSE 80 443
 
 # /up adalah health route bawaan (bootstrap/app.php -> health: '/up').
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \

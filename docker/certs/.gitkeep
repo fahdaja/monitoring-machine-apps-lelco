@@ -1,0 +1,3 @@
+# Folder sertifikat SSL lokal untuk Nginx Docker (server.crt & server.key).
+# Biarkan kosong agar container membuat self-signed cert otomatis saat start,
+# atau taruh server.crt & server.key hasil mkcert di sini.
