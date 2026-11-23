@@ -13,6 +13,9 @@ use App\Http\Controllers\KanbanController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Middleware\CheckUserStatus;
 
+// Root redirect langsung ke halaman login
+Route::redirect('/', '/login');
+
 // Auth Routes
 Route::get('/login', [AuthController::class, 'create'])->name('login');
 Route::post('/login', [AuthController::class, 'store']);
