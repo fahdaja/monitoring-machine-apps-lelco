@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Inertia\Inertia;
 use Illuminate\Http\Request;
+use App\Enums\ConditionOperator;
 use App\Models\Schedule;
 use App\Models\ScheduleCondition;
 use App\Models\ScheduleMachine;
@@ -98,6 +99,16 @@ class ScheduleController extends Controller
             'targetForm.machine',
         ])->latest()->get()->map(function ($condition) {
             $section = $condition->triggerQuestion?->section;
+            $rawOperator = $condition->trigger_operator ?: 'option_selected';
+            $normalizedOp = match ($rawOperator) {
+                'file_uploaded' => ConditionOperator::IS_FILLED->value,
+                'file_empty' => ConditionOperator::IS_EMPTY->value,
+                default => $rawOperator,
+            };
+            $opEnum = ConditionOperator::tryFrom($normalizedOp) ?? ConditionOperator::OPTION_SELECTED;
+            $displayVal = $opEnum->needsOption()
+                ? $condition->triggerOption?->option_text
+                : $condition->trigger_value;
 
             return [
                 'id' => $condition->id,
@@ -119,7 +130,9 @@ class ScheduleController extends Controller
                         ? $condition->triggerQuestion->input_type->value
                         : (string) $condition->triggerQuestion->input_type,
                 ] : null,
-                'trigger_operator' => $condition->trigger_operator ?: 'option_selected',
+                'trigger_operator' => $normalizedOp,
+                'trigger_value' => $condition->trigger_value,
+                'trigger_rule_label' => ucfirst($opEnum->describe($displayVal)),
                 'trigger_option' => $condition->triggerOption ? [
                     'id' => $condition->triggerOption->id,
                     'option_text' => $condition->triggerOption->option_text,
@@ -292,23 +305,33 @@ class ScheduleController extends Controller
         $form = Form::with([
             'sections' => fn ($s) => $s->orderBy('section_order', 'asc'),
             'sections.questions' => function ($q) {
-                $q->whereIn('input_type', ['SELECT', 'DROPDOWN', 'CHECKBOX', 'FILE'])
-                  ->orderBy('question_order', 'asc')
+                $q->orderBy('question_order', 'asc')
                   ->with('options');
             },
         ])->findOrFail($formId);
 
         $questions = $form->sections->flatMap(function ($section) {
             return $section->questions->map(function ($question) use ($section) {
+                $inputType = $question->input_type instanceof \BackedEnum
+                    ? strtoupper($question->input_type->value)
+                    : strtoupper((string) $question->input_type);
+
+                $operators = array_map(fn (ConditionOperator $op) => [
+                    'value' => $op->value,
+                    'label' => $op->label(),
+                    'needs_option' => $op->needsOption(),
+                    'needs_value' => $op->needsValue(),
+                    'value_kind' => $op->valueKind($inputType),
+                ], ConditionOperator::forInputType($inputType));
+
                 return [
                     'id' => $question->id,
                     'question_text' => $question->question_text,
-                    'input_type' => $question->input_type instanceof \BackedEnum
-                        ? $question->input_type->value
-                        : strtoupper((string) $question->input_type),
+                    'input_type' => $inputType,
                     'section_id' => $section->id,
                     'section_order' => $section->section_order,
                     'section_title' => $section->section_title,
+                    'operators' => $operators,
                     'options' => $question->options->map(function ($opt) {
                         return [
                             'id' => $opt->id,
@@ -320,7 +343,9 @@ class ScheduleController extends Controller
             });
         })->values()->all();
 
-        return response()->json($questions);
+        return response()
+            ->json($questions)
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
     }
 
     public function storeCondition(Request $request)
@@ -337,6 +362,7 @@ class ScheduleController extends Controller
             'trigger_question_id' => $validated['trigger_question_id'],
             'trigger_operator'    => $validated['trigger_operator'],
             'trigger_option_id'   => $validated['trigger_option_id'],
+            'trigger_value'       => $validated['trigger_value'],
             'target_form_id'      => $validated['target_form_id'],
             'due_window_days'     => $validated['due_window_days'],
             'is_active'           => true,
@@ -355,6 +381,7 @@ class ScheduleController extends Controller
             'trigger_question_id' => $validated['trigger_question_id'],
             'trigger_operator'    => $validated['trigger_operator'],
             'trigger_option_id'   => $validated['trigger_option_id'],
+            'trigger_value'       => $validated['trigger_value'],
             'target_form_id'      => $validated['target_form_id'],
             'due_window_days'     => $validated['due_window_days'],
         ]);
@@ -383,30 +410,49 @@ class ScheduleController extends Controller
         $question = FormQuestion::find($request->input('trigger_question_id'));
         $inputType = $question?->input_type instanceof \BackedEnum
             ? strtoupper($question->input_type->value)
-            : strtoupper((string) ($question?->input_type ?? ''));
-        $isFileQuestion = $inputType === 'FILE';
+            : strtoupper((string) ($question?->input_type ?? 'TEXT'));
+
+        $allowedOperators = array_map(
+            fn (ConditionOperator $op) => $op->value,
+            ConditionOperator::forInputType($inputType)
+        );
+
+        $rawOperator = (string) $request->input('trigger_operator', $allowedOperators[0] ?? 'option_selected');
+        $normalizedOp = match ($rawOperator) {
+            'file_uploaded' => ConditionOperator::IS_FILLED->value,
+            'file_empty' => ConditionOperator::IS_EMPTY->value,
+            default => $rawOperator,
+        };
+        $request->merge(['trigger_operator' => $normalizedOp]);
+
+        $operatorEnum = ConditionOperator::tryFrom($normalizedOp);
 
         $rules = [
             'trigger_form_id' => ['required', Rule::exists('forms', 'id')->where('form_type', 'INSPECTION')],
             'trigger_question_id' => ['required', Rule::exists('form_questions', 'id')->where('form_id', $request->input('trigger_form_id'))],
+            'trigger_operator' => ['required', Rule::in($allowedOperators)],
             'target_form_id' => ['required', 'different:trigger_form_id', Rule::exists('forms', 'id')->where('form_type', 'INSPECTION')],
             'due_window_days' => 'required|integer|min:1|max:30',
         ];
 
-        if ($isFileQuestion) {
-            $rules['trigger_operator'] = ['required', 'in:file_uploaded,file_empty'];
-        } else {
+        if ($operatorEnum?->needsOption()) {
             $rules['trigger_option_id'] = ['required', Rule::exists('form_options', 'id')->where('form_question_id', $request->input('trigger_question_id'))];
+        } elseif ($operatorEnum?->needsValue()) {
+            $valueKind = $operatorEnum->valueKind($inputType);
+            $rules['trigger_value'] = $valueKind === 'number'
+                ? ['required', 'numeric']
+                : ['required', 'string', 'max:255'];
         }
 
         $validated = $request->validate($rules);
 
-        $validated['trigger_operator'] = $isFileQuestion
-            ? $validated['trigger_operator']
-            : 'option_selected';
-        $validated['trigger_option_id'] = $isFileQuestion
-            ? null
-            : $validated['trigger_option_id'];
+        $operatorEnum = ConditionOperator::from($validated['trigger_operator']);
+        $validated['trigger_option_id'] = $operatorEnum->needsOption()
+            ? $validated['trigger_option_id']
+            : null;
+        $validated['trigger_value'] = $operatorEnum->needsValue()
+            ? trim((string) $validated['trigger_value'])
+            : null;
 
         if (Schedule::where('form_id', $validated['target_form_id'])->exists()) {
             throw ValidationException::withMessages([
@@ -430,15 +476,17 @@ class ScheduleController extends Controller
             ->where('target_form_id', $validated['target_form_id'])
             ->when($ignoreId, fn ($q) => $q->where('id', '!=', $ignoreId));
 
-        if ($isFileQuestion) {
-            $duplicateQuery->whereNull('trigger_option_id');
-        } else {
+        if ($operatorEnum->needsOption()) {
             $duplicateQuery->where('trigger_option_id', $validated['trigger_option_id']);
+        } elseif ($operatorEnum->needsValue()) {
+            $duplicateQuery->where('trigger_value', $validated['trigger_value']);
+        } else {
+            $duplicateQuery->whereNull('trigger_option_id')->whereNull('trigger_value');
         }
 
         if ($duplicateQuery->exists()) {
             throw ValidationException::withMessages([
-                'target_form_id' => 'Kondisi trigger dengan kombinasi form, pertanyaan, jawaban, dan form lanjutan yang sama sudah ada. Silakan edit kondisi yang sudah ada.',
+                'target_form_id' => 'Kondisi trigger dengan kombinasi form, pertanyaan, operator, nilai, dan form lanjutan yang sama sudah ada. Silakan edit kondisi yang sudah ada.',
             ]);
         }
 

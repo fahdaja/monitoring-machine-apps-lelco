@@ -662,7 +662,12 @@
      */
     private function snapshotMatchesTrigger(array $enterpriseSnapshot, ScheduleCondition $condition): bool
     {
-        $operator = $condition->trigger_operator ?: 'option_selected';
+        $rawOperator = $condition->trigger_operator ?: 'option_selected';
+        $operator = match ($rawOperator) {
+            'file_uploaded' => 'filled',
+            'file_empty' => 'empty',
+            default => $rawOperator,
+        };
 
         foreach ($enterpriseSnapshot['sections'] ?? [] as $section) {
             foreach ($section['questions'] ?? [] as $question) {
@@ -670,21 +675,60 @@
                     continue;
                 }
 
-                if ($operator === 'file_uploaded' || $operator === 'file_empty') {
-                    $val = $question['answer_detail']['value'] ?? null;
-                    $photos = $question['answer_detail']['photos'] ?? [];
-                    $hasFile = (is_string($val) && trim($val) !== '')
-                        || (is_array($val) && count(array_filter($val)) > 0)
-                        || (is_array($photos) && count(array_filter($photos)) > 0);
+                $val = $question['answer_detail']['value'] ?? null;
+                $photos = $question['answer_detail']['photos'] ?? [];
+                $selectedOptions = $question['selected_options'] ?? [];
 
-                    return $operator === 'file_uploaded' ? $hasFile : ! $hasFile;
+                $isFilled = (is_string($val) && trim($val) !== '')
+                    || (is_numeric($val))
+                    || (is_array($val) && count(array_filter($val)) > 0)
+                    || (is_array($photos) && count(array_filter($photos)) > 0)
+                    || (is_array($selectedOptions) && count($selectedOptions) > 0);
+
+                if ($operator === 'filled') {
+                    return $isFilled;
+                }
+                if ($operator === 'empty') {
+                    return ! $isFilled;
                 }
 
-                foreach ($question['selected_options'] ?? [] as $selected) {
-                    if ($selected['form_option_id'] == $condition->trigger_option_id) {
-                        return true;
+                if ($operator === 'option_selected') {
+                    foreach ($selectedOptions as $selected) {
+                        if (($selected['form_option_id'] ?? null) == $condition->trigger_option_id) {
+                            return true;
+                        }
                     }
+
+                    return false;
                 }
+
+                $answerStr = is_scalar($val) ? trim((string) $val) : '';
+                $expectedStr = trim((string) ($condition->trigger_value ?? ''));
+
+                if ($answerStr === '' || $expectedStr === '') {
+                    return false;
+                }
+
+                $answerNum = str_replace(',', '.', $answerStr);
+                $expectedNum = str_replace(',', '.', $expectedStr);
+
+                return match ($operator) {
+                    'equals' => (is_numeric($answerNum) && is_numeric($expectedNum))
+                        ? (float) $answerNum == (float) $expectedNum
+                        : mb_strtolower($answerStr) === mb_strtolower($expectedStr),
+                    'not_equals' => (is_numeric($answerNum) && is_numeric($expectedNum))
+                        ? (float) $answerNum != (float) $expectedNum
+                        : mb_strtolower($answerStr) !== mb_strtolower($expectedStr),
+                    'contains' => mb_stripos($answerStr, $expectedStr) !== false,
+                    'greater_than' => is_numeric($answerNum) && is_numeric($expectedNum) && (float) $answerNum > (float) $expectedNum,
+                    'greater_or_equal' => is_numeric($answerNum) && is_numeric($expectedNum) && (float) $answerNum >= (float) $expectedNum,
+                    'less_than' => is_numeric($answerNum) && is_numeric($expectedNum) && (float) $answerNum < (float) $expectedNum,
+                    'less_or_equal' => is_numeric($answerNum) && is_numeric($expectedNum) && (float) $answerNum <= (float) $expectedNum,
+                    'on' => $answerStr === $expectedStr,
+                    'before' => $answerStr < $expectedStr,
+                    'after' => $answerStr > $expectedStr,
+                    default => false,
+                };
             }
         }
 

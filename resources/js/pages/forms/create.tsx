@@ -32,6 +32,8 @@ interface QuestionItem {
     question_text: string;
     question_image?: File | null;
     question_image_url?: string;
+    question_images?: File[];
+    question_image_urls?: string[];
     question_file_url?: string;
     question_order: number;
     placeholder?: string;
@@ -299,29 +301,40 @@ export default function FormCreate({ machines = [], defaultType = 'INSPECTION', 
     };
 
     const handleQuestionImageUpload = (sIndex: number, qIndex: number, e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            if (!file.type.startsWith('image/')) {
-                alert('File harus berupa gambar!');
-                return;
-            }
-            const previewUrl = URL.createObjectURL(file);
-            const updated = [...data.sections];
-            updated[sIndex].questions[qIndex] = {
-                ...updated[sIndex].questions[qIndex],
-                question_image: file,
-                question_image_url: previewUrl,
-            };
-            setData('sections', updated);
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
+
+        const invalid = files.some((f) => !f.type.startsWith('image/'));
+        if (invalid) {
+            alert('Semua file yang dipilih harus berupa gambar!');
+            e.target.value = '';
+            return;
         }
+
+        const updated = [...data.sections];
+        const current = updated[sIndex].questions[qIndex];
+        const nextFiles = [...(current.question_images || []), ...files];
+        const nextUrls = [...(current.question_image_urls || []), ...files.map((f) => URL.createObjectURL(f))];
+
+        updated[sIndex].questions[qIndex] = {
+            ...current,
+            question_images: nextFiles,
+            question_image_urls: nextUrls,
+        };
+        setData('sections', updated);
+        e.target.value = '';
     };
 
-    const removeQuestionImage = (sIndex: number, qIndex: number) => {
+    const removeQuestionImage = (sIndex: number, qIndex: number, imgIndex: number) => {
         const updated = [...data.sections];
+        const current = updated[sIndex].questions[qIndex];
+        const nextFiles = (current.question_images || []).filter((_, i) => i !== imgIndex);
+        const nextUrls = (current.question_image_urls || []).filter((_, i) => i !== imgIndex);
+
         updated[sIndex].questions[qIndex] = {
-            ...updated[sIndex].questions[qIndex],
-            question_image: null,
-            question_image_url: '',
+            ...current,
+            question_images: nextFiles,
+            question_image_urls: nextUrls,
         };
         setData('sections', updated);
     };
@@ -670,6 +683,7 @@ export default function FormCreate({ machines = [], defaultType = 'INSPECTION', 
                                                     type="file"
                                                     id={`q-img-${sIndex}-${qIndex}`}
                                                     accept="image/*"
+                                                    multiple
                                                     className="hidden"
                                                     onChange={e => handleQuestionImageUpload(sIndex, qIndex, e)}
                                                 />
@@ -677,7 +691,7 @@ export default function FormCreate({ machines = [], defaultType = 'INSPECTION', 
                                                     type="button"
                                                     onClick={() => document.getElementById(`q-img-${sIndex}-${qIndex}`)?.click()}
                                                     className="p-2 border border-slate-200 hover:bg-slate-50 rounded-lg text-slate-600 transition-colors cursor-pointer shrink-0"
-                                                    title="Sisipkan Gambar"
+                                                    title="Sisipkan Gambar (bisa lebih dari 1)"
                                                 >
                                                     <ImageIcon className="w-4 h-4" />
                                                 </button>
@@ -745,21 +759,30 @@ export default function FormCreate({ machines = [], defaultType = 'INSPECTION', 
                                             </div>
                                         )}
 
-                                        {q.question_image_url && (
-                                            <div className="relative mt-2">
-                                                <img
-                                                    src={q.question_image_url}
-                                                    alt="Preview Soal"
-                                                    className="w-full max-h-60 rounded-lg border border-slate-200 bg-slate-50 object-contain"
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => removeQuestionImage(sIndex, qIndex)}
-                                                    className="absolute top-2 right-2 bg-slate-900/80 hover:bg-rose-600 text-white w-6 h-6 rounded-md text-xs font-bold flex items-center justify-center transition-colors shadow-sm cursor-pointer"
-                                                    title="Hapus Gambar"
-                                                >
-                                                    &times;
-                                                </button>
+                                        {(q.question_image_urls && q.question_image_urls.length > 0) && (
+                                            <div className={`mt-2 ${q.question_image_urls.length === 1 ? 'w-full' : 'flex gap-2.5 overflow-x-auto snap-x snap-mandatory pb-2'}`}>
+                                                {q.question_image_urls.map((imgUrl, imgIdx) => (
+                                                    <div key={imgIdx} className={`relative ${q.question_image_urls!.length === 1 ? 'w-full' : 'shrink-0 w-64 snap-start'}`}>
+                                                        <img
+                                                            src={imgUrl}
+                                                            alt={`Preview Soal ${imgIdx + 1}`}
+                                                            className="w-full h-48 rounded-lg border border-slate-200 bg-slate-50 object-contain"
+                                                        />
+                                                        {q.question_image_urls!.length > 1 && (
+                                                            <span className="absolute top-1.5 left-1.5 bg-slate-900/75 text-white px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                                                {imgIdx + 1}/{q.question_image_urls!.length}
+                                                            </span>
+                                                        )}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeQuestionImage(sIndex, qIndex, imgIdx)}
+                                                            className="absolute top-1.5 right-1.5 bg-slate-900/80 hover:bg-rose-600 text-white w-6 h-6 rounded-md text-xs font-bold flex items-center justify-center transition-colors shadow-sm cursor-pointer"
+                                                            title="Hapus Gambar"
+                                                        >
+                                                            &times;
+                                                        </button>
+                                                    </div>
+                                                ))}
                                             </div>
                                         )}
 
@@ -866,20 +889,24 @@ export default function FormCreate({ machines = [], defaultType = 'INSPECTION', 
                                         {(q.input_type === 'TEXT' || q.input_type === 'TEXTAREA') && (
                                             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 text-xs text-slate-500 pt-1">
                                                 <span className="font-semibold text-[11px] text-slate-600 shrink-0">Validasi:</span>
-                                                <input
-                                                    type="text"
+                                                <select
                                                     value={q.validation_rules?.[0]?.expected_answer || ''}
                                                     onChange={e => handleValidationRuleChange(sIndex, qIndex, 'expected_answer', e.target.value)}
-                                                    placeholder="Expected answer..."
-                                                    className="flex-1 border-b border-slate-200 py-1 bg-transparent text-xs outline-none focus:border-emerald-600"
-                                                />
-                                                <input
-                                                    type="text"
-                                                    value={q.validation_rules?.[0]?.validation_error_message || ''}
-                                                    onChange={e => handleValidationRuleChange(sIndex, qIndex, 'validation_error_message', e.target.value)}
-                                                    placeholder="Pesan error..."
-                                                    className="flex-1 border-b border-slate-200 py-1 bg-transparent text-xs outline-none focus:border-emerald-600"
-                                                />
+                                                    className="sm:w-48 border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-xs font-medium text-slate-700 outline-none focus:border-emerald-600"
+                                                >
+                                                    <option value="">Tanpa Validasi (Bebas)</option>
+                                                    <option value="angka">Harus Angka</option>
+                                                    <option value="huruf">Harus Huruf / Teks</option>
+                                                </select>
+                                                {q.validation_rules?.[0]?.expected_answer && (
+                                                    <input
+                                                        type="text"
+                                                        value={q.validation_rules?.[0]?.validation_error_message || ''}
+                                                        onChange={e => handleValidationRuleChange(sIndex, qIndex, 'validation_error_message', e.target.value)}
+                                                        placeholder="Pesan error kustom (opsional)..."
+                                                        className="flex-1 border-b border-slate-200 py-1 bg-transparent text-xs outline-none focus:border-emerald-600"
+                                                    />
+                                                )}
                                             </div>
                                         )}
 
@@ -1056,9 +1083,16 @@ export default function FormCreate({ machines = [], defaultType = 'INSPECTION', 
                                         </p>
                                     )}
 
-                                    {q.question_image_url && (
-                                        <div className="pt-1">
-                                            <img src={q.question_image_url} alt="Preview Soal" className="w-full h-auto rounded-lg border border-slate-200 bg-slate-50 object-contain" />
+                                    {(q.question_image_urls && q.question_image_urls.length > 0) && (
+                                        <div className={`pt-1 ${q.question_image_urls.length === 1 ? 'w-full' : 'flex gap-2.5 overflow-x-auto snap-x snap-mandatory pb-2'}`}>
+                                            {q.question_image_urls.map((imgUrl, imgIdx) => (
+                                                <img
+                                                    key={imgIdx}
+                                                    src={imgUrl}
+                                                    alt={`Preview Soal ${imgIdx + 1}`}
+                                                    className={`h-52 rounded-lg border border-slate-200 bg-slate-50 object-contain ${q.question_image_urls!.length === 1 ? 'w-full' : 'shrink-0 w-[85%] snap-center'}`}
+                                                />
+                                            ))}
                                         </div>
                                     )}
 

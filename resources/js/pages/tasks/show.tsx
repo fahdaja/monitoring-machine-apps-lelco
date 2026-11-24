@@ -243,6 +243,49 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
         return () => { document.body.style.overflow = ''; };
     }, [progressOpen]);
 
+    const validateTextQuestionRule = (question: any, rawValue: string): string | null => {
+        const val = rawValue.trim();
+        if (!val || !question?.validation_rules) return null;
+
+        let rule: any = {};
+        try {
+            const parsed =
+                typeof question.validation_rules === 'string'
+                    ? JSON.parse(question.validation_rules)
+                    : question.validation_rules;
+            rule = Array.isArray(parsed) ? parsed[0] || {} : parsed || {};
+        } catch {
+            return null;
+        }
+
+        const expected = String(rule.expected_answer || '').trim();
+        if (!expected) return null;
+
+        const customMsg = String(rule.validation_error_message || '').trim();
+        const expectedLower = expected.toLowerCase();
+
+        let isValid = true;
+        if (expectedLower === 'angka' || expectedLower === 'number') {
+            isValid = /^-?\d+([.,]\d+)?$/.test(val);
+        } else if (expectedLower === 'huruf' || expectedLower === 'text') {
+            isValid = /[a-zA-Z]/.test(val) && !/^-?\d+([.,]\d+)?$/.test(val);
+        } else if (expected.length > 2 && expected.startsWith('/') && expected.endsWith('/')) {
+            try {
+                isValid = new RegExp(expected.slice(1, -1)).test(val);
+            } catch {
+                isValid = val.toLowerCase() === expectedLower;
+            }
+        } else {
+            isValid = val.toLowerCase() === expectedLower;
+        }
+
+        if (!isValid) {
+            return customMsg || `Jawaban tidak sesuai aturan yang diharapkan (${expected}).`;
+        }
+
+        return null;
+    };
+
     // ====== SUBMIT FINAL ======
     const handleSubmitFinal = () => {
         const taskId = currentTask?.id;
@@ -297,6 +340,13 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                     clientErrors[q.id] = { ...(clientErrors[q.id] || {}), value: 'Pertanyaan ini wajib diisi' };
                     hasClientError = true;
                     sectionHasError = true;
+                } else if (!isSkipped && !isValueEmpty && (q.input_type === 'TEXT' || q.input_type === 'TEXTAREA')) {
+                    const textRuleErr = validateTextQuestionRule(q, String(ans.value || ''));
+                    if (textRuleErr) {
+                        clientErrors[q.id] = { ...(clientErrors[q.id] || {}), value: textRuleErr };
+                        hasClientError = true;
+                        sectionHasError = true;
+                    }
                 }
 
                 // Abaikan Validasi Abnormal jika section di-skip
@@ -870,22 +920,51 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                                             </div>
                                         )}
 
-                                        {question.question_image && (
-                                            <div className="relative bg-slate-50 rounded-xl border border-slate-200 overflow-hidden p-1.5">
-                                                <img
-                                                    src={`/storage/${question.question_image}`}
-                                                    alt={question.question_text}
-                                                    className="w-full max-h-[280px] object-contain rounded-lg cursor-zoom-in"
-                                                    onClick={() => {
-                                                        setZoomedImgSrc(`/storage/${question.question_image}`);
-                                                        setIsImageZoomed(true);
-                                                    }}
-                                                />
-                                                <span className="absolute top-3 right-3 text-[9px] font-bold text-white bg-slate-900/70 backdrop-blur px-1.5 py-0.5 rounded">
-                                                    Klik untuk zoom
-                                                </span>
-                                            </div>
-                                        )}
+                                        {(() => {
+                                            const rawImgs: string[] = Array.isArray((question as any).question_images) && (question as any).question_images.length > 0
+                                                ? (question as any).question_images
+                                                : question.question_image
+                                                ? [question.question_image]
+                                                : [];
+                                            if (rawImgs.length === 0) return null;
+                                            return (
+                                                <div className="space-y-1.5">
+                                                    <div className={rawImgs.length === 1 ? 'w-full' : 'flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2'}>
+                                                        {rawImgs.map((imgPath, imgIdx) => (
+                                                            <div
+                                                                key={imgIdx}
+                                                                className={`relative bg-slate-50 rounded-xl border border-slate-200 overflow-hidden p-1.5 ${
+                                                                    rawImgs.length === 1 ? 'w-full' : 'shrink-0 w-[85%] sm:w-[340px] snap-center'
+                                                                }`}
+                                                            >
+                                                                <img
+                                                                    src={`/storage/${imgPath}`}
+                                                                    alt={`${question.question_text} (${imgIdx + 1})`}
+                                                                    className="w-full h-[240px] sm:h-[260px] object-contain rounded-lg cursor-zoom-in"
+                                                                    onClick={() => {
+                                                                        setZoomedImgSrc(`/storage/${imgPath}`);
+                                                                        setIsImageZoomed(true);
+                                                                    }}
+                                                                />
+                                                                {rawImgs.length > 1 && (
+                                                                    <span className="absolute top-3 left-3 text-[10px] font-bold text-white bg-slate-900/75 backdrop-blur px-2 py-0.5 rounded-md">
+                                                                        {imgIdx + 1} / {rawImgs.length}
+                                                                    </span>
+                                                                )}
+                                                                <span className="absolute top-3 right-3 text-[9px] font-bold text-white bg-slate-900/70 backdrop-blur px-1.5 py-0.5 rounded">
+                                                                    Klik untuk zoom
+                                                                </span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    {rawImgs.length > 1 && (
+                                                        <p className="text-[10px] text-slate-400 font-medium text-right">
+                                                            Geser ke kiri / kanan untuk melihat {rawImgs.length} gambar →
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
 
                                         <div className="pt-1">
                                             {(() => {
@@ -895,7 +974,12 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                                                             <input
                                                                 type="text"
                                                                 value={String(ans.value || '')}
-                                                                onChange={(e) => handleValueChoice(question.id, e.target.value)}
+                                                                onChange={(e) => {
+                                                                    const nextVal = e.target.value;
+                                                                    handleValueChoice(question.id, nextVal);
+                                                                    const errMsg = validateTextQuestionRule(question, nextVal);
+                                                                    setQuestionError(question.id, 'value', errMsg || '');
+                                                                }}
                                                                 placeholder="Tulis jawaban singkat..."
                                                                 className="w-full px-4 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-800 transition-all"
                                                             />
@@ -905,7 +989,12 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                                                             <textarea
                                                                 rows={3}
                                                                 value={String(ans.value || '')}
-                                                                onChange={(e) => handleValueChoice(question.id, e.target.value)}
+                                                                onChange={(e) => {
+                                                                    const nextVal = e.target.value;
+                                                                    handleValueChoice(question.id, nextVal);
+                                                                    const errMsg = validateTextQuestionRule(question, nextVal);
+                                                                    setQuestionError(question.id, 'value', errMsg || '');
+                                                                }}
                                                                 placeholder="Tulis jawaban panjang..."
                                                                 className="w-full px-4 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-800 transition-all resize-y"
                                                             />

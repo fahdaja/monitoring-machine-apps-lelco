@@ -11,6 +11,7 @@ use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\KanbanController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\AuditExportController;
 use App\Http\Middleware\CheckUserStatus;
 
 // Root redirect langsung ke halaman login
@@ -39,6 +40,10 @@ Route::middleware(['auth', 'CheckUserStatus', 'role:ADMIN,OPERATOR,MAINTENANCE,S
 Route::get('/dashboard', [DashboardController::class, 'index'])
     ->name('dashboard')
     ->middleware(['auth', 'CheckUserStatus', 'role:ADMIN,OPERATOR,MAINTENANCE,SUPERVISOR,ENGINEERING,VENDOR']);
+
+Route::get('/audit/export-excel', [AuditExportController::class, 'export'])
+    ->name('audit.export-excel')
+    ->middleware(['auth', 'CheckUserStatus', 'role:ADMIN,SUPERVISOR']);
 
 Route::get('/machines', [MachineController::class, 'index'])->name('machines.index');
 Route::middleware(['auth', 'CheckUserStatus','role:ADMIN'])->group(function () {

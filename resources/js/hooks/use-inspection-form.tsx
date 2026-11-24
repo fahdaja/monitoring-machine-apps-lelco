@@ -36,6 +36,23 @@
             return mapped;
         };
 
+        const serverInitialAnswers = parseAnswersData(initialAnswers);
+        const hasServerDraft = Object.keys(serverInitialAnswers).length > 0;
+
+        // Jika di database belum ada draft (task baru / habis reset DB),
+        // bersihkan cache localStorage basi agar jawaban lama tidak ikut terisi.
+        if (!hasServerDraft) {
+            try {
+                localStorage.removeItem(storageKey);
+                if (taskId) {
+                    localStorage.removeItem(`inspection_section_${taskId}`);
+                    localStorage.removeItem(`inspection_max_completed_${taskId}`);
+                }
+            } catch {
+                // ignore storage error
+            }
+        }
+
         const [targetJumpSectionId, setTargetJumpSectionId] = useState<number | null>(null);
         
         // Cari index aktif
@@ -131,20 +148,24 @@
         });
 
         const [answers, setAnswers] = useState<Record<number, any>>(() => {
+            if (!hasServerDraft) {
+                return {};
+            }
+
             try {
                 const savedLocal = localStorage.getItem(storageKey);
                 if (savedLocal) {
                     const parsedLocal = JSON.parse(savedLocal);
                     const converted = parseAnswersData(parsedLocal);
                     if (Object.keys(converted).length > 0) {
-                        return converted;
+                        return { ...serverInitialAnswers, ...converted };
                     }
                 }
             } catch (e) {
                 console.error("Gagal membaca LocalStorage:", e);
             }
 
-            return parseAnswersData(initialAnswers);
+            return serverInitialAnswers;
         });
 
         // Sinkronkan ke LocalStorage setiap kali answers berubah

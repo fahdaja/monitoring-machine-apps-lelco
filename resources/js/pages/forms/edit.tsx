@@ -32,8 +32,12 @@ interface OptionItem {
 interface QuestionItem {
     id?: number;
     question_text: string;
-    question_image?: File | null;
+    question_image?: File | string | null;
     question_image_url?: string;
+    question_images?: string[];
+    existing_question_images?: string[];
+    new_question_images?: File[];
+    new_question_image_urls?: string[];
     question_file_url?: string;
     question_order: number;
     placeholder?: string;
@@ -105,6 +109,11 @@ export default function FormEdit({ form, machines = [], conditionRefs = [] }: Pr
                 question_image_url: (typeof q.question_image === 'string' && q.question_image)
                     ? `/storage/${q.question_image}`
                     : '',
+                existing_question_images: (Array.isArray((q as any).question_images) && (q as any).question_images.length > 0
+                    ? (q as any).question_images
+                    : (typeof q.question_image === 'string' && q.question_image ? [q.question_image] : [])) as string[],
+                new_question_images: [] as File[],
+                new_question_image_urls: [] as string[],
                 question_file_url: q.question_file_url || '',
                 question_order: q.question_order || qIdx + 1,
                 input_type: q.input_type || 'SELECT',
@@ -398,49 +407,46 @@ export default function FormEdit({ form, machines = [], conditionRefs = [] }: Pr
     };
 
     const handleQuestionImageUpload = (sIndex: number, qIndex: number, e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            if (!file.type.startsWith('image/')) {
-                alert('File harus berupa gambar!');
-                return;
-            }
-            const previewUrl = URL.createObjectURL(file);
-            const updated = [...data.sections];
-            updated[sIndex].questions[qIndex] = {
-                ...updated[sIndex].questions[qIndex],
-                question_image: file,
-                question_image_url: previewUrl,
-            };
-            setData('sections', updated);
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
+
+        const invalid = files.some((f) => !f.type.startsWith('image/'));
+        if (invalid) {
+            alert('Semua file yang dipilih harus berupa gambar!');
+            e.target.value = '';
+            return;
         }
+
+        const updated = [...data.sections];
+        const current = updated[sIndex].questions[qIndex];
+        updated[sIndex].questions[qIndex] = {
+            ...current,
+            new_question_images: [...(current.new_question_images || []), ...files],
+            new_question_image_urls: [...(current.new_question_image_urls || []), ...files.map((f) => URL.createObjectURL(f))],
+        };
+        setData('sections', updated);
+        e.target.value = '';
     };
 
-    const removeQuestionImage = (sIndex: number, qIndex: number) => {
-        const question = data.sections[sIndex].questions[qIndex];
+    const removeExistingQuestionImage = (sIndex: number, qIndex: number, imgIndex: number) => {
+        const updated = [...data.sections];
+        const current = updated[sIndex].questions[qIndex];
+        updated[sIndex].questions[qIndex] = {
+            ...current,
+            existing_question_images: (current.existing_question_images || []).filter((_, i) => i !== imgIndex),
+        };
+        setData('sections', updated);
+    };
 
-        if (question.id) {
-            router.delete(`/form-questions/${question.id}/image`, {
-                preserveScroll: true,
-                preserveState: true,
-                onSuccess: () => {
-                    const updated = [...data.sections];
-                    updated[sIndex].questions[qIndex] = {
-                        ...updated[sIndex].questions[qIndex],
-                        question_image: null,
-                        question_image_url: '',
-                    };
-                    setData('sections', updated);
-                }
-            });
-        } else {
-            const updated = [...data.sections];
-            updated[sIndex].questions[qIndex] = {
-                ...updated[sIndex].questions[qIndex],
-                question_image: null,
-                question_image_url: '',
-            };
-            setData('sections', updated);
-        }
+    const removeNewQuestionImage = (sIndex: number, qIndex: number, imgIndex: number) => {
+        const updated = [...data.sections];
+        const current = updated[sIndex].questions[qIndex];
+        updated[sIndex].questions[qIndex] = {
+            ...current,
+            new_question_images: (current.new_question_images || []).filter((_, i) => i !== imgIndex),
+            new_question_image_urls: (current.new_question_image_urls || []).filter((_, i) => i !== imgIndex),
+        };
+        setData('sections', updated);
     };
 
     const toggleHelpText = (sIndex: number, qIndex: number) => {
@@ -794,6 +800,7 @@ export default function FormEdit({ form, machines = [], conditionRefs = [] }: Pr
                                                     type="file"
                                                     id={`q-img-${sIndex}-${qIndex}`}
                                                     accept="image/*"
+                                                    multiple
                                                     className="hidden"
                                                     onChange={e => handleQuestionImageUpload(sIndex, qIndex, e)}
                                                 />
@@ -801,7 +808,7 @@ export default function FormEdit({ form, machines = [], conditionRefs = [] }: Pr
                                                     type="button"
                                                     onClick={() => document.getElementById(`q-img-${sIndex}-${qIndex}`)?.click()}
                                                     className="p-2 border border-slate-200 hover:bg-slate-50 rounded-lg text-slate-600 transition-colors cursor-pointer shrink-0"
-                                                    title="Sisipkan Gambar"
+                                                    title="Sisipkan Gambar (bisa lebih dari 1)"
                                                 >
                                                     <ImageIcon className="w-4 h-4" />
                                                 </button>
@@ -869,23 +876,60 @@ export default function FormEdit({ form, machines = [], conditionRefs = [] }: Pr
                                             </div>
                                         )}
 
-                                        {q.question_image_url && (
-                                            <div className="relative mt-2">
-                                                <img
-                                                    src={q.question_image_url}
-                                                    alt="Preview Soal"
-                                                    className="w-full max-h-60 rounded-lg border border-slate-200 bg-slate-50 object-contain"
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => removeQuestionImage(sIndex, qIndex)}
-                                                    className="absolute top-2 right-2 bg-slate-900/80 hover:bg-rose-600 text-white w-6 h-6 rounded-md text-xs font-bold flex items-center justify-center transition-colors shadow-sm cursor-pointer"
-                                                    title="Hapus Gambar"
-                                                >
-                                                    &times;
-                                                </button>
-                                            </div>
-                                        )}
+                                        {(() => {
+                                            const existingImgs = q.existing_question_images || [];
+                                            const newUrls = q.new_question_image_urls || [];
+                                            const totalImgs = existingImgs.length + newUrls.length;
+                                            if (totalImgs === 0) return null;
+                                            return (
+                                                <div className={`mt-2 ${totalImgs === 1 ? 'w-full' : 'flex gap-2.5 overflow-x-auto snap-x snap-mandatory pb-2'}`}>
+                                                    {existingImgs.map((imgPath, imgIdx) => (
+                                                        <div key={`ex-${imgIdx}`} className={`relative ${totalImgs === 1 ? 'w-full' : 'shrink-0 w-64 snap-start'}`}>
+                                                            <img
+                                                                src={`/storage/${imgPath}`}
+                                                                alt={`Preview Soal ${imgIdx + 1}`}
+                                                                className="w-full h-48 rounded-lg border border-slate-200 bg-slate-50 object-contain"
+                                                            />
+                                                            {totalImgs > 1 && (
+                                                                <span className="absolute top-1.5 left-1.5 bg-slate-900/75 text-white px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                                                    {imgIdx + 1}/{totalImgs}
+                                                                </span>
+                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeExistingQuestionImage(sIndex, qIndex, imgIdx)}
+                                                                className="absolute top-1.5 right-1.5 bg-slate-900/80 hover:bg-rose-600 text-white w-6 h-6 rounded-md text-xs font-bold flex items-center justify-center transition-colors shadow-sm cursor-pointer"
+                                                                title="Hapus Gambar"
+                                                            >
+                                                                &times;
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                    {newUrls.map((imgUrl, imgIdx) => (
+                                                        <div key={`new-${imgIdx}`} className={`relative ${totalImgs === 1 ? 'w-full' : 'shrink-0 w-64 snap-start'}`}>
+                                                            <img
+                                                                src={imgUrl}
+                                                                alt={`Preview Baru ${imgIdx + 1}`}
+                                                                className="w-full h-48 rounded-lg border border-emerald-200 bg-slate-50 object-contain"
+                                                            />
+                                                            {totalImgs > 1 && (
+                                                                <span className="absolute top-1.5 left-1.5 bg-emerald-700/85 text-white px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                                                    {existingImgs.length + imgIdx + 1}/{totalImgs}
+                                                                </span>
+                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeNewQuestionImage(sIndex, qIndex, imgIdx)}
+                                                                className="absolute top-1.5 right-1.5 bg-slate-900/80 hover:bg-rose-600 text-white w-6 h-6 rounded-md text-xs font-bold flex items-center justify-center transition-colors shadow-sm cursor-pointer"
+                                                                title="Hapus Gambar"
+                                                            >
+                                                                &times;
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            );
+                                        })()}
 
                                         {q.input_type === 'TEXT' && (
                                             <input type="text" disabled placeholder="Jawaban singkat..." className="w-full border border-slate-200 bg-slate-50 rounded-lg px-3 py-1.5 text-xs text-slate-400" />
@@ -992,25 +1036,36 @@ export default function FormEdit({ form, machines = [], conditionRefs = [] }: Pr
                                             </div>
                                         )}
 
-                                        {(q.input_type === 'TEXT' || q.input_type === 'TEXTAREA') && (
-                                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 text-xs text-slate-500 pt-1">
-                                                <span className="font-semibold text-[11px] text-slate-600 shrink-0">Validasi:</span>
-                                                <input
-                                                    type="text"
-                                                    value={q.validation_rules?.[0]?.expected_answer || ''}
-                                                    onChange={e => handleValidationRuleChange(sIndex, qIndex, 'expected_answer', e.target.value)}
-                                                    placeholder="Expected answer..."
-                                                    className="flex-1 border-b border-slate-200 py-1 bg-transparent text-xs outline-none focus:border-emerald-600"
-                                                />
-                                                <input
-                                                    type="text"
-                                                    value={q.validation_rules?.[0]?.validation_error_message || ''}
-                                                    onChange={e => handleValidationRuleChange(sIndex, qIndex, 'validation_error_message', e.target.value)}
-                                                    placeholder="Pesan error..."
-                                                    className="flex-1 border-b border-slate-200 py-1 bg-transparent text-xs outline-none focus:border-emerald-600"
-                                                />
-                                            </div>
-                                        )}
+                                        {(q.input_type === 'TEXT' || q.input_type === 'TEXTAREA') && (() => {
+                                            const currentRule = q.validation_rules?.[0]?.expected_answer || '';
+                                            const isLegacyCustom = currentRule !== '' && currentRule !== 'angka' && currentRule !== 'huruf';
+                                            return (
+                                                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 text-xs text-slate-500 pt-1">
+                                                    <span className="font-semibold text-[11px] text-slate-600 shrink-0">Validasi:</span>
+                                                    <select
+                                                        value={currentRule}
+                                                        onChange={e => handleValidationRuleChange(sIndex, qIndex, 'expected_answer', e.target.value)}
+                                                        className="sm:w-48 border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-xs font-medium text-slate-700 outline-none focus:border-emerald-600"
+                                                    >
+                                                        <option value="">Tanpa Validasi (Bebas)</option>
+                                                        <option value="angka">Harus Angka</option>
+                                                        <option value="huruf">Harus Huruf / Teks</option>
+                                                        {isLegacyCustom && (
+                                                            <option value={currentRule}>Kustom: {currentRule}</option>
+                                                        )}
+                                                    </select>
+                                                    {currentRule && (
+                                                        <input
+                                                            type="text"
+                                                            value={q.validation_rules?.[0]?.validation_error_message || ''}
+                                                            onChange={e => handleValidationRuleChange(sIndex, qIndex, 'validation_error_message', e.target.value)}
+                                                            placeholder="Pesan error kustom (opsional)..."
+                                                            className="flex-1 border-b border-slate-200 py-1 bg-transparent text-xs outline-none focus:border-emerald-600"
+                                                        />
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
 
                                         {q.input_type === 'FILE' && (
                                             <div className="space-y-2 bg-slate-50 p-2.5 sm:p-3 rounded-lg border border-slate-200 text-xs">
@@ -1171,15 +1226,25 @@ export default function FormEdit({ form, machines = [], conditionRefs = [] }: Pr
                                         </p>
                                     )}
 
-                                    {q.question_image_url && (
-                                        <div className="pt-1">
-                                            <img
-                                                src={q.question_image_url}
-                                                alt="Preview Soal"
-                                                className="w-full h-auto rounded-lg border border-slate-200 bg-slate-50 object-contain"
-                                            />
-                                        </div>
-                                    )}
+                                    {(() => {
+                                        const previewImgs = [
+                                            ...(q.existing_question_images || []).map((p) => `/storage/${p}`),
+                                            ...(q.new_question_image_urls || []),
+                                        ];
+                                        if (previewImgs.length === 0) return null;
+                                        return (
+                                            <div className={`pt-1 ${previewImgs.length === 1 ? 'w-full' : 'flex gap-2.5 overflow-x-auto snap-x snap-mandatory pb-2'}`}>
+                                                {previewImgs.map((src, idx) => (
+                                                    <img
+                                                        key={idx}
+                                                        src={src}
+                                                        alt={`Preview Soal ${idx + 1}`}
+                                                        className={`h-52 rounded-lg border border-slate-200 bg-slate-50 object-contain ${previewImgs.length === 1 ? 'w-full' : 'shrink-0 w-[85%] snap-center'}`}
+                                                    />
+                                                ))}
+                                            </div>
+                                        );
+                                    })()}
 
                                     {q.input_type === 'TEXT' && (
                                         <input

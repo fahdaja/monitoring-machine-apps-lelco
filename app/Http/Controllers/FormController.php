@@ -80,6 +80,8 @@ class FormController extends Controller
             'sections.*.questions'               => 'required|array|min:1',
             'sections.*.questions.*.question_text' => 'required|string',
             'sections.*.questions.*.question_image' => 'nullable',
+            'sections.*.questions.*.question_images' => 'nullable|array',
+            'sections.*.questions.*.question_images.*' => 'nullable',
             'sections.*.questions.*.question_file' => 'nullable|string',
             'sections.*.questions.*.question_date' => 'nullable|string',
             'sections.*.questions.*.question_time' => 'nullable|string',
@@ -139,12 +141,25 @@ class FormController extends Controller
                 ->first();
 
             foreach ($sectionData['questions'] as $qIndex => $questionData) {
-                $imagePath = null;
-                if (isset($questionData['question_image']) && $questionData['question_image'] instanceof \Illuminate\Http\UploadedFile) {
-                    $imagePath = $questionData['question_image']->store('question-images', 'public');
-                } else {
-                    $imagePath = $questionData['question_image'] ?? null;
+                $storedImages = [];
+                $incomingImages = $questionData['question_images'] ?? [];
+                if (is_array($incomingImages)) {
+                    foreach ($incomingImages as $img) {
+                        if ($img instanceof \Illuminate\Http\UploadedFile) {
+                            $storedImages[] = $img->store('question-images', 'public');
+                        } elseif (is_string($img) && trim($img) !== '' && trim($img) !== 'null') {
+                            $storedImages[] = trim($img);
+                        }
+                    }
                 }
+                if (empty($storedImages) && isset($questionData['question_image'])) {
+                    if ($questionData['question_image'] instanceof \Illuminate\Http\UploadedFile) {
+                        $storedImages[] = $questionData['question_image']->store('question-images', 'public');
+                    } elseif (is_string($questionData['question_image']) && trim($questionData['question_image']) !== '') {
+                        $storedImages[] = trim($questionData['question_image']);
+                    }
+                }
+                $imagePath = ! empty($storedImages) ? json_encode(array_values($storedImages)) : null;
 
                 $question = FormQuestion::create([
                     'form_id'          => $form->id,
@@ -251,6 +266,12 @@ class FormController extends Controller
                 'sections.*.questions.*.id'          => 'nullable|exists:form_questions,id',
                 'sections.*.questions.*.question_text' => 'required|string',
                 'sections.*.questions.*.question_image' => 'nullable',
+                'sections.*.questions.*.existing_question_images' => 'nullable|array',
+                'sections.*.questions.*.existing_question_images.*' => 'nullable|string',
+                'sections.*.questions.*.new_question_images' => 'nullable|array',
+                'sections.*.questions.*.new_question_images.*' => 'nullable',
+            'sections.*.questions.*.question_images' => 'nullable|array',
+            'sections.*.questions.*.question_images.*' => 'nullable',
                 'sections.*.questions.*.question_file' => 'nullable|string',
                 'sections.*.questions.*.question_date' => 'nullable|string',
                 'sections.*.questions.*.question_time' => 'nullable|string',
@@ -369,22 +390,47 @@ class FormController extends Controller
                     $questionId = $questionData['id'] ?? null;
                     $oldQuestion = $questionId ? FormQuestion::find($questionId) : null;
                     
-                    $imagePath = null;
-                    $incomingImage = $questionData['question_image'] ?? null;
+                    $oldImages = $oldQuestion ? $oldQuestion->question_images : [];
+                    $hasMultiPayload = array_key_exists('existing_question_images', $questionData)
+                        || array_key_exists('new_question_images', $questionData);
 
-                    // Logika Gambar (Upload baru, Hapus, atau Pertahankan)
-                    if ($incomingImage instanceof \Illuminate\Http\UploadedFile) {
-                        if ($oldQuestion && $oldQuestion->question_image) {
-                            Storage::disk('public')->delete($oldQuestion->question_image);
+                    if ($hasMultiPayload) {
+                        $keptImages = array_values(array_filter(
+                            is_array($questionData['existing_question_images'] ?? null) ? $questionData['existing_question_images'] : [],
+                            fn ($p) => is_string($p) && trim($p) !== '' && trim($p) !== 'null'
+                        ));
+
+                        foreach ($oldImages as $oldImg) {
+                            if (! in_array($oldImg, $keptImages, true)) {
+                                Storage::disk('public')->delete($oldImg);
+                            }
                         }
-                        $imagePath = $incomingImage->store('question-images', 'public');
-                    } elseif (is_null($incomingImage) || $incomingImage === '' || $incomingImage === 'null') {
-                        if ($oldQuestion && $oldQuestion->question_image) {
-                            Storage::disk('public')->delete($oldQuestion->question_image);
+
+                        $newFiles = is_array($questionData['new_question_images'] ?? null) ? $questionData['new_question_images'] : [];
+                        foreach ($newFiles as $file) {
+                            if ($file instanceof \Illuminate\Http\UploadedFile) {
+                                $keptImages[] = $file->store('question-images', 'public');
+                            }
                         }
-                        $imagePath = null;
+
+                        $imagePath = ! empty($keptImages) ? json_encode(array_values($keptImages)) : null;
                     } else {
-                        $imagePath = $oldQuestion ? $oldQuestion->question_image : null;
+                        $imagePath = null;
+                        $incomingImage = $questionData['question_image'] ?? null;
+
+                        if ($incomingImage instanceof \Illuminate\Http\UploadedFile) {
+                            foreach ($oldImages as $oldImg) {
+                                Storage::disk('public')->delete($oldImg);
+                            }
+                            $imagePath = json_encode([$incomingImage->store('question-images', 'public')]);
+                        } elseif (is_null($incomingImage) || $incomingImage === '' || $incomingImage === 'null') {
+                            foreach ($oldImages as $oldImg) {
+                                Storage::disk('public')->delete($oldImg);
+                            }
+                            $imagePath = null;
+                        } else {
+                            $imagePath = $oldQuestion ? $oldQuestion->question_image : null;
+                        }
                     }
 
                     $question = FormQuestion::updateOrCreate(
@@ -458,8 +504,8 @@ class FormController extends Controller
                 FormQuestion::where('form_section_id', $section->id)
                     ->whereNotIn('id', $existingQuestionIds)
                     ->each(function ($q) {
-                        if ($q->question_image) {
-                            Storage::disk('public')->delete($q->question_image);
+                        foreach ($q->question_images as $imgPath) {
+                            Storage::disk('public')->delete($imgPath);
                         }
                         $q->delete();
                     });
@@ -497,8 +543,8 @@ class FormController extends Controller
 
             foreach ($form->sections as $section) {
                 foreach ($section->questions as $question) {
-                    if ($question->question_image) {
-                        Storage::disk('public')->delete($question->question_image);
+                    foreach ($question->question_images as $imgPath) {
+                        Storage::disk('public')->delete($imgPath);
                     }
                 }
             }
@@ -524,8 +570,10 @@ class FormController extends Controller
     {
         $question = FormQuestion::findOrFail($questionId);
 
-        if ($question->question_image) {
-            Storage::disk('public')->delete($question->question_image);
+        if (! empty($question->question_images)) {
+            foreach ($question->question_images as $imgPath) {
+                Storage::disk('public')->delete($imgPath);
+            }
             $question->question_image = null;
             $question->save();
         }

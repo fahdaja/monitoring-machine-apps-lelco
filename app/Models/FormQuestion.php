@@ -39,6 +39,33 @@ class FormQuestion extends Model
         'input_type' => InputType::class,
     ];
 
+    protected $appends = [
+        'question_images',
+    ];
+
+    /**
+     * Mengembalikan daftar path gambar soal sebagai array (mendukung format lama string tunggal & JSON array).
+     *
+     * @return array<int, string>
+     */
+    public function getQuestionImagesAttribute(): array
+    {
+        $raw = $this->attributes['question_image'] ?? null;
+        if (! is_string($raw) || trim($raw) === '') {
+            return [];
+        }
+
+        $trimmed = trim($raw);
+        if (str_starts_with($trimmed, '[')) {
+            $decoded = json_decode($trimmed, true);
+            if (is_array($decoded)) {
+                return array_values(array_filter($decoded, fn ($item) => is_string($item) && trim($item) !== ''));
+            }
+        }
+
+        return [$trimmed];
+    }
+
     public function form()
     {
         return $this->belongsTo(Form::class, 'form_id', 'id');

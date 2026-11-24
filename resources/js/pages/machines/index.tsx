@@ -48,8 +48,15 @@ export default function MachineIndex({ machines }: MachineIndexProps) {
     const [search, setSearch] = useState('');
     const [filterStatus, setFilterStatus] = useState<string>('ALL');
     const [filterMachineType, setFilterMachineType] = useState<string>('ALL');
+    const [currentPage, setCurrentPage] = useState(1);
     const [deleteTarget, setDeleteTarget] = useState<MachineItem | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
+
+    const ITEMS_PER_PAGE = 15;
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [search, filterStatus, filterMachineType]);
 
     const [toast, setToast] = useState<ToastPayload | null>(null);
 
@@ -103,7 +110,7 @@ export default function MachineIndex({ machines }: MachineIndexProps) {
             search === '' ||
             m.machineName.toLowerCase().includes(search.toLowerCase()) ||
             (m.machineCode && m.machineCode.toLowerCase().includes(search.toLowerCase())) ||
-            m.location.toLowerCase().includes(search.toLowerCase()) ||
+            (m.location && m.location.toLowerCase().includes(search.toLowerCase())) ||
             (m.department && m.department.toLowerCase().includes(search.toLowerCase()));
 
         const matchStatus = filterStatus === 'ALL' || m.status === filterStatus;
@@ -111,6 +118,21 @@ export default function MachineIndex({ machines }: MachineIndexProps) {
 
         return matchSearch && matchStatus && matchMachineType;
     });
+
+    const machineTypeOptions = Array.from(
+        new Set(allMachines.map((m) => m.machineType).filter(Boolean))
+    ).sort();
+
+    const totalPages = Math.max(1, Math.ceil(filteredMachines.length / ITEMS_PER_PAGE));
+    const safePage = Math.min(currentPage, totalPages);
+    const startIndex = (safePage - 1) * ITEMS_PER_PAGE;
+    const paginatedMachines = filteredMachines.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+    const goToPage = (page: number) => {
+        const clamped = Math.min(Math.max(1, page), totalPages);
+        setCurrentPage(clamped);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
 
     // Badge helpers
     const getStatusBadge = (status: MachineItem['status']) => {
@@ -307,18 +329,19 @@ export default function MachineIndex({ machines }: MachineIndexProps) {
                     className="px-3 py-2.5 border border-slate-200 rounded-xl text-xs outline-none focus:border-slate-900 bg-white min-w-[160px]"
                 >
                     <option value="ALL">Semua Tipe Mesin</option>
-                    <option value="HYDRAULIC PRESS">Hydraulic Press</option>
-                    <option value="CNC LATHE">CNC Lathe</option>
-                    <option value="BAND SAW">Band Saw</option>
-                    <option value="CHAIN HOIST">Chain Hoist</option>
-                    <option value="AIR COMPRESSOR">Air Compressor</option>
+                    {machineTypeOptions.map((type) => (
+                        <option key={type} value={type}>
+                            {type}
+                        </option>
+                    ))}
                 </select>
             </div>
 
             {/* Machine Cards Grid */}
             {filteredMachines.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 max-h-[75vh] overflow-y-auto pr-1">
-                    {filteredMachines.map((m) => (
+                <>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {paginatedMachines.map((m) => (
                         <div
                             key={m.id}
                             className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-slate-300 transition-all group"
@@ -414,6 +437,52 @@ export default function MachineIndex({ machines }: MachineIndexProps) {
                         </div>
                     ))}
                 </div>
+
+                {/* Pagination Bar */}
+                {totalPages > 1 && (
+                    <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-3 bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-xs">
+                        <p className="text-xs text-slate-500 font-medium">
+                            Menampilkan <span className="font-bold text-slate-800">{startIndex + 1}</span>–
+                            <span className="font-bold text-slate-800">
+                                {Math.min(startIndex + ITEMS_PER_PAGE, filteredMachines.length)}
+                            </span>{' '}
+                            dari <span className="font-bold text-slate-800">{filteredMachines.length}</span> mesin
+                        </p>
+                        <div className="flex items-center gap-1.5 flex-wrap justify-center">
+                            <button
+                                type="button"
+                                disabled={safePage <= 1}
+                                onClick={() => goToPage(safePage - 1)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                            >
+                                ← Prev
+                            </button>
+                            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                                <button
+                                    key={page}
+                                    type="button"
+                                    onClick={() => goToPage(page)}
+                                    className={`min-w-[32px] h-8 px-2 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
+                                        page === safePage
+                                            ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                    }`}
+                                >
+                                    {page}
+                                </button>
+                            ))}
+                            <button
+                                type="button"
+                                disabled={safePage >= totalPages}
+                                onClick={() => goToPage(safePage + 1)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                            >
+                                Next →
+                            </button>
+                        </div>
+                    </div>
+                )}
+                </>
             ) : (
                 <div className="text-center py-16 border border-dashed border-slate-200 rounded-2xl bg-white text-slate-500">
                     <svg className="w-12 h-12 mx-auto mb-3 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">

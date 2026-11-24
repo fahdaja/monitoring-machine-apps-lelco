@@ -72,10 +72,20 @@ interface ConditionItem {
     trigger_section?: { id: number; section_order: number; section_title: string } | null;
     trigger_question?: { id: number; question_text: string; input_type?: string } | null;
     trigger_operator?: string;
+    trigger_value?: string | null;
+    trigger_rule_label?: string;
     trigger_option?: { id: number; option_text: string; is_normal?: boolean } | null;
     target_form?: { id: number; form_title: string; form_code: string } | null;
     due_window_days?: number;
     is_active: boolean;
+}
+
+interface ConditionOperatorOption {
+    value: string;
+    label: string;
+    needs_option: boolean;
+    needs_value: boolean;
+    value_kind: 'option' | 'text' | 'number' | 'date' | 'time' | 'none';
 }
 
 interface QuestionItem {
@@ -85,6 +95,7 @@ interface QuestionItem {
     section_id?: number;
     section_order?: number;
     section_title?: string;
+    operators?: ConditionOperatorOption[];
     options: { id: number; option_text: string; is_normal?: boolean }[];
 }
 
@@ -143,6 +154,7 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
         trigger_question_id: '',
         trigger_operator: 'option_selected',
         trigger_option_id: '',
+        trigger_value: '',
         target_form_id: '',
         due_window_days: '1',
     });
@@ -169,14 +181,22 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
     const selectedConditionQuestion = conditionQuestions.find(
         (q) => q.id.toString() === condData.trigger_question_id
     );
-    const isFileTriggerQuestion = selectedConditionQuestion?.input_type?.toUpperCase() === 'FILE';
+    const availableOperators = selectedConditionQuestion?.operators || [];
+    const selectedOperatorObj =
+        availableOperators.find((op) => op.value === condData.trigger_operator) || availableOperators[0] || null;
 
     const loadConditionQuestions = (formId: string) => {
         setConditionQuestions([]);
         if (!formId) return;
-        fetch(`/schedules/condition-questions/${formId}`)
-            .then((res) => res.json())
-            .then((data) => setConditionQuestions(data))
+        fetch(`/schedules/condition-questions/${formId}?_t=${Date.now()}`, {
+            cache: 'no-store',
+            headers: {
+                'Cache-Control': 'no-cache',
+                Accept: 'application/json',
+            },
+        })
+            .then((res) => (res.ok ? res.json() : []))
+            .then((data) => setConditionQuestions(Array.isArray(data) ? data : []))
             .catch(() => setConditionQuestions([]));
     };
 
@@ -291,11 +311,18 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
     const openEditConditionModal = (cond: ConditionItem) => {
         setEditingCondition(cond);
         setSelectedConditionSectionId(cond.trigger_section?.id?.toString() || '');
+        const normalizedOp =
+            cond.trigger_operator === 'file_uploaded'
+                ? 'filled'
+                : cond.trigger_operator === 'file_empty'
+                ? 'empty'
+                : cond.trigger_operator || 'option_selected';
         setCondData({
             trigger_form_id: cond.trigger_form?.id.toString() || '',
             trigger_question_id: cond.trigger_question?.id.toString() || '',
-            trigger_operator: cond.trigger_operator || 'option_selected',
+            trigger_operator: normalizedOp,
             trigger_option_id: cond.trigger_option?.id.toString() || '',
+            trigger_value: cond.trigger_value || '',
             target_form_id: cond.target_form?.id.toString() || '',
             due_window_days: cond.due_window_days?.toString() || '1',
         });
@@ -477,31 +504,39 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
     );
 
     const isDuplicateConditionTarget = (targetFormId: number) => {
-        if (!condData.trigger_form_id || !condData.trigger_question_id) {
+        if (!condData.trigger_form_id || !condData.trigger_question_id || !condData.trigger_operator) {
             return false;
         }
-        if (isFileTriggerQuestion) {
-            if (!condData.trigger_operator || condData.trigger_operator === 'option_selected') {
-                return false;
-            }
+        if (selectedOperatorObj?.needs_option) {
+            if (!condData.trigger_option_id) return false;
             return conditions.some(
                 (c) =>
                     (!editingCondition || c.id !== editingCondition.id) &&
                     c.trigger_form?.id?.toString() === condData.trigger_form_id &&
                     c.trigger_question?.id?.toString() === condData.trigger_question_id &&
                     (c.trigger_operator || 'option_selected') === condData.trigger_operator &&
+                    c.trigger_option?.id?.toString() === condData.trigger_option_id &&
                     c.target_form?.id === targetFormId
             );
         }
-        if (!condData.trigger_option_id) {
-            return false;
+        if (selectedOperatorObj?.needs_value) {
+            if (!condData.trigger_value.trim()) return false;
+            return conditions.some(
+                (c) =>
+                    (!editingCondition || c.id !== editingCondition.id) &&
+                    c.trigger_form?.id?.toString() === condData.trigger_form_id &&
+                    c.trigger_question?.id?.toString() === condData.trigger_question_id &&
+                    (c.trigger_operator || 'option_selected') === condData.trigger_operator &&
+                    (c.trigger_value || '').trim() === condData.trigger_value.trim() &&
+                    c.target_form?.id === targetFormId
+            );
         }
         return conditions.some(
             (c) =>
                 (!editingCondition || c.id !== editingCondition.id) &&
                 c.trigger_form?.id?.toString() === condData.trigger_form_id &&
                 c.trigger_question?.id?.toString() === condData.trigger_question_id &&
-                c.trigger_option?.id?.toString() === condData.trigger_option_id &&
+                (c.trigger_operator || 'option_selected') === condData.trigger_operator &&
                 c.target_form?.id === targetFormId
         );
     };
@@ -765,24 +800,19 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
                                             </div>
                                             <div className="flex justify-between items-center gap-2">
                                                 <span className="text-slate-500 flex items-center gap-1 shrink-0">
-                                                    <Zap className="w-3 h-3" /> Jawaban trigger:
+                                                    <Zap className="w-3 h-3" /> Kondisi trigger:
                                                 </span>
                                                 <span
-                                                    className={`font-semibold px-2 rounded-md shrink-0 ${
-                                                        cond.trigger_operator === 'file_uploaded'
-                                                            ? 'text-blue-700 bg-blue-50'
-                                                            : cond.trigger_operator === 'file_empty'
+                                                    className={`font-semibold px-2 py-0.5 rounded-md text-right truncate ${
+                                                        cond.trigger_operator === 'empty' || cond.trigger_operator === 'file_empty'
                                                             ? 'text-amber-700 bg-amber-50'
                                                             : cond.trigger_option?.is_normal === false
                                                             ? 'text-rose-700 bg-rose-50'
                                                             : 'text-emerald-700 bg-emerald-50'
                                                     }`}
+                                                    title={cond.trigger_rule_label || cond.trigger_option?.option_text || '-'}
                                                 >
-                                                    {cond.trigger_operator === 'file_uploaded'
-                                                        ? 'File diupload'
-                                                        : cond.trigger_operator === 'file_empty'
-                                                        ? 'File kosong'
-                                                        : cond.trigger_option?.option_text || '-'}
+                                                    {cond.trigger_rule_label || cond.trigger_option?.option_text || '-'}
                                                 </span>
                                             </div>
                                             <div className="flex justify-between items-center gap-2">
@@ -1286,6 +1316,7 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
                                                 ...prev,
                                                 trigger_form_id: e.target.value,
                                                 trigger_question_id: '',
+                                                trigger_operator: 'option_selected',
                                                 trigger_option_id: '',
                                             }));
                                             loadConditionQuestions(e.target.value);
@@ -1333,7 +1364,7 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
                                     </select>
                                     {condData.trigger_form_id && conditionQuestions.length === 0 && (
                                         <span className="text-[10px] text-amber-600 font-semibold mt-1 block">
-                                            Form ini tidak punya pertanyaan bertipe SELECT, CHECKBOX, DROPDOWN, atau FILE.
+                                            Form ini belum memiliki pertanyaan.
                                         </span>
                                     )}
                                 </div>
@@ -1346,12 +1377,13 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
                                         value={condData.trigger_question_id}
                                         onChange={(e) => {
                                             const nextQ = conditionQuestions.find((q) => q.id.toString() === e.target.value);
-                                            const nextIsFile = nextQ?.input_type?.toUpperCase() === 'FILE';
+                                            const defaultOp = nextQ?.operators?.[0]?.value || 'option_selected';
                                             setCondData((prev) => ({
                                                 ...prev,
                                                 trigger_question_id: e.target.value,
-                                                trigger_operator: nextIsFile ? 'file_uploaded' : 'option_selected',
+                                                trigger_operator: defaultOp,
                                                 trigger_option_id: '',
+                                                trigger_value: '',
                                             }));
                                         }}
                                         className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-xs outline-none focus:ring-2 focus:ring-emerald-600 bg-white font-medium disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed"
@@ -1373,48 +1405,97 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
 
                                 <div>
                                     <label className="block text-xs font-bold text-slate-700 mb-1">
-                                        {isFileTriggerQuestion ? 'Kondisi File *' : 'Jawaban Trigger *'}
+                                        Operator Kondisi *
                                     </label>
-                                    {isFileTriggerQuestion ? (
-                                        <>
-                                            <select
-                                                value={condData.trigger_operator}
-                                                onChange={(e) => setCondData('trigger_operator', e.target.value)}
-                                                className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-xs outline-none focus:ring-2 focus:ring-emerald-600 bg-white font-medium"
-                                            >
-                                                <option value="file_uploaded">File diupload / terisi</option>
-                                                <option value="file_empty">File tidak diupload / kosong</option>
-                                            </select>
-                                            {condErrors.trigger_operator && (
-                                                <span className="text-[10px] text-rose-600 font-bold mt-1 block">
-                                                    {condErrors.trigger_operator}
-                                                </span>
-                                            )}
-                                        </>
-                                    ) : (
-                                        <>
-                                            <select
-                                                value={condData.trigger_option_id}
-                                                onChange={(e) => setCondData('trigger_option_id', e.target.value)}
-                                                className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-xs outline-none focus:ring-2 focus:ring-emerald-600 bg-white font-medium disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed"
-                                                disabled={!condData.trigger_question_id}
-                                            >
-                                                <option value="">-- Pilih Jawaban --</option>
-                                                {(selectedConditionQuestion?.options || []).map((o) => (
-                                                    <option key={o.id} value={o.id}>
-                                                        {o.option_text}
-                                                        {o.is_normal === false ? ' (Abnormal)' : ''}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                            {condErrors.trigger_option_id && (
-                                                <span className="text-[10px] text-rose-600 font-bold mt-1 block">
-                                                    {condErrors.trigger_option_id}
-                                                </span>
-                                            )}
-                                        </>
+                                    <select
+                                        value={condData.trigger_operator}
+                                        onChange={(e) =>
+                                            setCondData((prev) => ({
+                                                ...prev,
+                                                trigger_operator: e.target.value,
+                                                trigger_option_id: '',
+                                                trigger_value: '',
+                                            }))
+                                        }
+                                        className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-xs outline-none focus:ring-2 focus:ring-emerald-600 bg-white font-medium disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed"
+                                        disabled={!condData.trigger_question_id || availableOperators.length === 0}
+                                    >
+                                        {availableOperators.length === 0 ? (
+                                            <option value="">-- Pilih Pertanyaan Terlebih Dahulu --</option>
+                                        ) : (
+                                            availableOperators.map((op) => (
+                                                <option key={op.value} value={op.value}>
+                                                    {op.label}
+                                                </option>
+                                            ))
+                                        )}
+                                    </select>
+                                    {condErrors.trigger_operator && (
+                                        <span className="text-[10px] text-rose-600 font-bold mt-1 block">
+                                            {condErrors.trigger_operator}
+                                        </span>
                                     )}
                                 </div>
+
+                                {selectedOperatorObj?.value_kind === 'option' && (
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                                            Jawaban Trigger *
+                                        </label>
+                                        <select
+                                            value={condData.trigger_option_id}
+                                            onChange={(e) => setCondData('trigger_option_id', e.target.value)}
+                                            className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-xs outline-none focus:ring-2 focus:ring-emerald-600 bg-white font-medium disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed"
+                                            disabled={!condData.trigger_question_id}
+                                        >
+                                            <option value="">-- Pilih Jawaban --</option>
+                                            {(selectedConditionQuestion?.options || []).map((o) => (
+                                                <option key={o.id} value={o.id}>
+                                                    {o.option_text}
+                                                    {o.is_normal === false ? ' (Abnormal)' : ''}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {condErrors.trigger_option_id && (
+                                            <span className="text-[10px] text-rose-600 font-bold mt-1 block">
+                                                {condErrors.trigger_option_id}
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
+
+                                {selectedOperatorObj?.needs_value && (
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                                            Nilai Pembanding *
+                                        </label>
+                                        <input
+                                            type={
+                                                selectedOperatorObj.value_kind === 'number'
+                                                    ? 'number'
+                                                    : selectedOperatorObj.value_kind === 'date'
+                                                    ? 'date'
+                                                    : selectedOperatorObj.value_kind === 'time'
+                                                    ? 'time'
+                                                    : 'text'
+                                            }
+                                            step={selectedOperatorObj.value_kind === 'number' ? 'any' : undefined}
+                                            value={condData.trigger_value}
+                                            onChange={(e) => setCondData('trigger_value', e.target.value)}
+                                            placeholder={
+                                                selectedOperatorObj.value_kind === 'number'
+                                                    ? 'Contoh: 80'
+                                                    : 'Ketik teks/kata kunci pemicu...'
+                                            }
+                                            className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-xs outline-none focus:ring-2 focus:ring-emerald-600 bg-white font-medium"
+                                        />
+                                        {condErrors.trigger_value && (
+                                            <span className="text-[10px] text-rose-600 font-bold mt-1 block">
+                                                {condErrors.trigger_value}
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div>
