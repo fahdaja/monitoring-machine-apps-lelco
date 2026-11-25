@@ -60,20 +60,34 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
         hasMoved: false,
     });
 
+    const buttonRef = useRef<HTMLButtonElement | null>(null);
     const scannerInstanceRef = useRef<any>(null);
     const videoStreamRef = useRef<MediaStream | null>(null);
     const rafIdRef = useRef<number | null>(null);
     const hasHandledResultRef = useRef<boolean>(false);
 
-    const BUTTON_WIDTH = 110;
-    const BUTTON_HEIGHT = 60;
     const PADDING = 16;
+
+    const getButtonMetrics = () => {
+        if (buttonRef.current) {
+            return {
+                width: buttonRef.current.offsetWidth || 60,
+                height: buttonRef.current.offsetHeight || 60,
+            };
+        }
+        const isSmall = typeof window !== 'undefined' && window.innerWidth < 640;
+        return {
+            width: isSmall ? 60 : 128,
+            height: 60,
+        };
+    };
 
     const clampPosition = (x: number, y: number) => {
         if (typeof window === 'undefined') return { x, y };
 
-        const maxX = window.innerWidth - BUTTON_WIDTH - PADDING;
-        const maxY = window.innerHeight - BUTTON_HEIGHT - PADDING;
+        const { width, height } = getButtonMetrics();
+        const maxX = window.innerWidth - width - PADDING;
+        const maxY = window.innerHeight - height - PADDING;
 
         return {
             x: Math.min(Math.max(PADDING, x), Math.max(PADDING, maxX)),
@@ -87,16 +101,17 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
 
         setIsInsecureHttp(!window.isSecureContext);
 
+        const { width: initW, height: initH } = getButtonMetrics();
         const saved = localStorage.getItem('md_qr_btn_pos_v2');
         if (saved) {
             try {
                 const parsed = JSON.parse(saved);
                 setPosition(clampPosition(parsed.x, parsed.y));
             } catch {
-                setPosition(clampPosition(window.innerWidth - BUTTON_WIDTH - 20, window.innerHeight - BUTTON_HEIGHT - 40));
+                setPosition(clampPosition(window.innerWidth - initW - PADDING, window.innerHeight - initH - 40));
             }
         } else {
-            setPosition(clampPosition(window.innerWidth - BUTTON_WIDTH - 20, window.innerHeight - BUTTON_HEIGHT - 40));
+            setPosition(clampPosition(window.innerWidth - initW - PADDING, window.innerHeight - initH - 40));
         }
 
         const handleResize = () => {
@@ -368,6 +383,7 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
         <>
             {/* Tombol Floating */}
             <button
+                ref={buttonRef}
                 type="button"
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
