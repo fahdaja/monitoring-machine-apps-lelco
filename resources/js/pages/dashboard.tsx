@@ -75,9 +75,9 @@ export default function Dashboard({
                 return 'bg-rose-100 text-rose-800 border-rose-200';
             case 'UNDER_REPAIR':
             case 'IN_REPAIR':
-            case 'IN_PROGRESS':
             case 'DUE':
                 return 'bg-amber-100 text-amber-800 border-amber-200';
+            case 'IN_PROGRESS':
             case 'WAITING_SPAREPART':
                 return 'bg-indigo-100 text-indigo-800 border-indigo-200';
             case 'WAITING_VENDOR':
@@ -688,6 +688,7 @@ export default function Dashboard({
                                             className={`p-3.5 border border-slate-200 rounded-xl bg-white hover:bg-slate-50/80 transition-colors border-l-4 ${
                                                 t.status === 'OVERDUE' ? 'border-l-rose-500' :
                                                 t.status === 'DUE' ? 'border-l-amber-500' :
+                                                t.status === 'IN_PROGRESS' ? 'border-l-indigo-500' :
                                                 t.status === 'COMPLETED' ? 'border-l-emerald-500' : 'border-l-blue-500'
                                             }`}
                                         >
