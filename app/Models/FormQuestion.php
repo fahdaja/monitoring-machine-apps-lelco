@@ -78,6 +78,7 @@ class FormQuestion extends Model
 
     public function options()
     {
-        return $this->hasMany(FormOption::class, 'form_question_id', 'id');
+        return $this->hasMany(FormOption::class, 'form_question_id', 'id')
+            ->orderBy('option_order', 'asc');
     }
 }

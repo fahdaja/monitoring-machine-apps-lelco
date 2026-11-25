@@ -30,6 +30,7 @@ class FormSection extends Model
 
     public function questions()
     {
-        return $this->hasMany(FormQuestion::class, 'form_section_id', 'id');
+        return $this->hasMany(FormQuestion::class, 'form_section_id', 'id')
+            ->orderBy('question_order', 'asc');
     }
 }

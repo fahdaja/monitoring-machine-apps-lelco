@@ -17,43 +17,47 @@ use App\Http\Middleware\CheckUserStatus;
 // Root redirect langsung ke halaman login
 Route::redirect('/', '/login');
 
-// Auth Routes
-Route::get('/login', [AuthController::class, 'create'])->name('login');
-Route::post('/login', [AuthController::class, 'store']);
-Route::get('/admin/login', [AuthController::class, 'adminCreate'])->name('admin.login');
-Route::post('/admin/login', [AuthController::class, 'adminStore']);
-Route::post('/logout', [AuthController::class, 'destroy']);
-Route::get('/scan/machine/{machineCode}', [TaskController::class, 'handleQrScanRedirect']);
-Route::get('/inspection-calender', [TaskController::class, 'index'])->name('tasks.index')->middleware(['auth', 'CheckUserStatus', 'role:ADMIN,OPERATOR,MAINTENANCE,SUPERVISOR,ENGINEERING,VENDOR']);
-Route::get('/api/scan-task/{code}', [TaskController::class, 'apiFindTaskByMachine']);
-Route::get('/scan-task/{code}', [TaskController::class, 'handleQrScanRedirect'])
-    ->name('scan-task');
+// Auth Routes (hanya untuk guest; login dilindungi rate-limit anti brute-force)
+Route::middleware('guest')->group(function () {
+    Route::get('/login', [AuthController::class, 'create'])->name('login');
+    Route::post('/login', [AuthController::class, 'store'])->middleware('throttle:10,1');
+    Route::get('/admin/login', [AuthController::class, 'adminCreate'])->name('admin.login');
+    Route::post('/admin/login', [AuthController::class, 'adminStore'])->middleware('throttle:10,1');
+});
+
+Route::post('/logout', [AuthController::class, 'destroy'])->middleware('auth');
 
 Route::middleware(['auth', 'CheckUserStatus', 'role:ADMIN,OPERATOR,MAINTENANCE,SUPERVISOR,ENGINEERING,VENDOR'])->group(function () {
-    Route::get('/inspection-form/{id}',[TaskController::class, 'show'])->name('tasks.show');
+    Route::get('/scan/machine/{machineCode}', [TaskController::class, 'handleQrScanRedirect']);
+    Route::get('/inspection-calender', [TaskController::class, 'index'])->name('tasks.index');
+    Route::get('/api/scan-task/{code}', [TaskController::class, 'apiFindTaskByMachine']);
+    Route::get('/scan-task/{code}', [TaskController::class, 'handleQrScanRedirect'])->name('scan-task');
+
+    Route::get('/inspection-form/{id}', [TaskController::class, 'show'])->name('tasks.show');
     Route::post('/inspection-form/upload-temp', [TaskController::class, 'uploadTempFile']);
     Route::post('/inspection-form/remove-file', [TaskController::class, 'removeFile']);
     Route::post('/inspection-form/{id}/draft', [TaskController::class, 'saveDraft']);
     Route::post('/inspection-form/{id}/submit', [TaskController::class, 'submit']);
-});
 
-Route::get('/dashboard', [DashboardController::class, 'index'])
-    ->name('dashboard')
-    ->middleware(['auth', 'CheckUserStatus', 'role:ADMIN,OPERATOR,MAINTENANCE,SUPERVISOR,ENGINEERING,VENDOR']);
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/machines', [MachineController::class, 'index'])->name('machines.index');
+});
 
 Route::get('/audit/export-excel', [AuditExportController::class, 'export'])
     ->name('audit.export-excel')
     ->middleware(['auth', 'CheckUserStatus', 'role:ADMIN,SUPERVISOR']);
 
-Route::get('/machines', [MachineController::class, 'index'])->name('machines.index');
-Route::middleware(['auth', 'CheckUserStatus','role:ADMIN'])->group(function () {
+Route::middleware(['auth', 'CheckUserStatus', 'role:ADMIN'])->group(function () {
     Route::get('/machines/create', [MachineController::class, 'create'])->name('machines.create');
     Route::post('/machines', [MachineController::class, 'store'])->name('machines.store');
     Route::get('/machines/{machineId}/edit', [MachineController::class, 'edit'])->name('machines.edit');
     Route::put('/machines/{machineId}', [MachineController::class, 'update'])->name('machines.update');
     Route::delete('/machines/{machineId}', [MachineController::class, 'destroy'])->name('machines.destroy');
 });
-Route::get('/machines/{machineId}', [MachineController::class, 'show'])->name('machines.show');
+
+Route::get('/machines/{machineId}', [MachineController::class, 'show'])
+    ->name('machines.show')
+    ->middleware(['auth', 'CheckUserStatus', 'role:ADMIN,OPERATOR,MAINTENANCE,SUPERVISOR,ENGINEERING,VENDOR']);
 
 
 Route::middleware(['auth', 'CheckUserStatus'])->group(function () {

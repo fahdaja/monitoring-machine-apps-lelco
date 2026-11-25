@@ -46,7 +46,8 @@ class Form extends Model
 
     public function sections(): HasMany
     {
-        return $this->hasMany(FormSection::class, 'form_id', 'id');
+        return $this->hasMany(FormSection::class, 'form_id', 'id')
+            ->orderBy('section_order', 'asc');
     }
 
     public function questions(): HasMany

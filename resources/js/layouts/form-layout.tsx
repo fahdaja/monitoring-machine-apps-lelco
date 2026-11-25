@@ -12,6 +12,8 @@ interface FormLayoutProps {
     handleNext: () => void;
     onSubmitFinal?: () => void;
     isSubmitting?: boolean;
+    titleOverride?: string;
+    onCloseOverride?: () => void;
 }
 
 export default function FormLayout({
@@ -25,6 +27,8 @@ export default function FormLayout({
     handleNext,
     onSubmitFinal,
     isSubmitting = false,
+    titleOverride,
+    onCloseOverride,
 }: FormLayoutProps) {
     const { task, form, mode, ticket } = usePage<any>().props;
 
@@ -33,6 +37,7 @@ export default function FormLayout({
     const contextLabel: string = ticket?.context_label || 'Form Tiket';
 
     const formTitle =
+        titleOverride ||
         task?.form?.form_title ||
         form?.form_title ||
         (ticketMode ? contextLabel : 'Formulir Inspeksi');
@@ -77,12 +82,22 @@ export default function FormLayout({
                     </div>
                 </div>
 
-                <Link
-                    href={closeHref}
-                    className="text-[11px] sm:text-xs font-bold border border-slate-700 hover:bg-slate-800 text-slate-300 px-2.5 sm:px-3 py-2 rounded-xl transition-colors whitespace-nowrap shrink-0"
-                >
-                    Tutup
-                </Link>
+                {onCloseOverride ? (
+                    <button
+                        type="button"
+                        onClick={onCloseOverride}
+                        className="text-[11px] sm:text-xs font-bold border border-slate-700 hover:bg-slate-800 text-slate-300 px-2.5 sm:px-3 py-2 rounded-xl transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                    >
+                        Tutup Preview
+                    </button>
+                ) : (
+                    <Link
+                        href={closeHref}
+                        className="text-[11px] sm:text-xs font-bold border border-slate-700 hover:bg-slate-800 text-slate-300 px-2.5 sm:px-3 py-2 rounded-xl transition-colors whitespace-nowrap shrink-0"
+                    >
+                        Tutup
+                    </Link>
+                )}
             </header>
 
             {/* ============ KONTEN ============ */}

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Head, Link, router, useForm } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import { compressQuestionImage } from '@/lib/compress-image';
+import FormTaskPreviewModal from '@/components/forms/FormTaskPreviewModal';
 import {
     PlusCircle, Copy, Trash2, Layers, Eye, Image as ImageIcon,
     CornerDownRight, HelpCircle, ShieldCheck, CheckCircle2, AlertCircle,
@@ -368,6 +369,23 @@ export default function FormEdit({ form, machines = [], conditionRefs = [] }: Pr
     const [dragOverQuestion, setDragOverQuestion] = useState<{ sIndex: number; qIndex: number } | null>(null);
     const dragArmedRef = React.useRef(false);
 
+    const [draggingSection, setDraggingSection] = useState<number | null>(null);
+    const [dragOverSection, setDragOverSection] = useState<number | null>(null);
+    const sectionDragArmedRef = React.useRef(false);
+
+    const reorderSection = (fromIndex: number, toIndex: number) => {
+        if (fromIndex === toIndex) return;
+        if (fromIndex < 0 || toIndex < 0 || fromIndex >= data.sections.length || toIndex >= data.sections.length) return;
+        const nextSections = [...data.sections];
+        const [moved] = nextSections.splice(fromIndex, 1);
+        nextSections.splice(toIndex, 0, moved);
+        setData(
+            'sections',
+            nextSections.map((sec, idx) => ({ ...sec, section_order: idx + 1 }))
+        );
+        setActiveSectionIndex(toIndex);
+    };
+
     const reorderQuestion = (sIndex: number, fromIndex: number, toIndex: number) => {
         if (fromIndex === toIndex) return;
         const questions = data.sections[sIndex]?.questions || [];
@@ -647,11 +665,62 @@ export default function FormEdit({ form, machines = [], conditionRefs = [] }: Pr
 
                 <form onSubmit={submit} className="space-y-4">
                     {data.sections.map((section, sIndex) => (
-                        <div key={sIndex} className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-4 shadow-2xs border-l-4 border-l-emerald-600">
+                        <div
+                            key={sIndex}
+                            draggable={!isTicketing}
+                            onDragStart={e => {
+                                if (!sectionDragArmedRef.current) {
+                                    if (!dragArmedRef.current) e.preventDefault();
+                                    return;
+                                }
+                                e.stopPropagation();
+                                setDraggingSection(sIndex);
+                                e.dataTransfer.effectAllowed = 'move';
+                                e.dataTransfer.setData('text/plain', `section:${sIndex}`);
+                            }}
+                            onDragOver={e => {
+                                if (draggingSection !== null && draggingSection !== sIndex) {
+                                    e.preventDefault();
+                                    e.dataTransfer.dropEffect = 'move';
+                                    if (dragOverSection !== sIndex) setDragOverSection(sIndex);
+                                }
+                            }}
+                            onDrop={e => {
+                                if (draggingSection !== null) {
+                                    e.preventDefault();
+                                    reorderSection(draggingSection, sIndex);
+                                    setDraggingSection(null);
+                                    setDragOverSection(null);
+                                    sectionDragArmedRef.current = false;
+                                }
+                            }}
+                            onDragEnd={() => {
+                                setDraggingSection(null);
+                                setDragOverSection(null);
+                                sectionDragArmedRef.current = false;
+                            }}
+                            className={`bg-white rounded-xl border p-4 sm:p-5 space-y-4 shadow-2xs border-l-4 border-l-emerald-600 transition-all ${
+                                draggingSection === sIndex
+                                    ? 'opacity-50 border-dashed border-emerald-400'
+                                    : dragOverSection === sIndex
+                                    ? 'border-emerald-500 ring-2 ring-emerald-500/40 bg-emerald-50/10'
+                                    : 'border-slate-200'
+                            }`}
+                        >
                             {!isTicketing && (
                             <>
-                            <div className="flex justify-between items-center border-b border-slate-100 pb-2 gap-2">
+                            <div className="flex flex-wrap justify-between items-center border-b border-slate-100 pb-2 gap-2">
                                 <div className="flex items-center gap-2 min-w-0">
+                                    {data.sections.length > 1 && (
+                                        <span
+                                            onMouseDown={() => { sectionDragArmedRef.current = true; }}
+                                            onMouseUp={() => { sectionDragArmedRef.current = false; }}
+                                            className="p-1 -ml-1 text-slate-400 hover:text-emerald-600 cursor-grab active:cursor-grabbing shrink-0 select-none inline-flex items-center"
+                                            title="Tarik untuk mengubah urutan bagian"
+                                        >
+                                            <GripVertical className="w-4 h-4 pointer-events-none" />
+                                        </span>
+                                    )}
                                     <span className="text-[11px] font-bold text-emerald-700 uppercase shrink-0">
                                         Bagian {sIndex + 1}
                                     </span>
@@ -889,7 +958,7 @@ export default function FormEdit({ form, machines = [], conditionRefs = [] }: Pr
                                             return (
                                                 <div className={`mt-2 ${totalImgs === 1 ? 'w-full' : 'flex gap-2.5 overflow-x-auto snap-x snap-mandatory pb-2'}`}>
                                                     {existingImgs.map((imgPath, imgIdx) => (
-                                                        <div key={`ex-${imgIdx}`} className={`relative ${totalImgs === 1 ? 'w-full' : 'shrink-0 w-64 snap-start'}`}>
+                                                        <div key={`ex-${imgIdx}`} className={`relative ${totalImgs === 1 ? 'w-full' : 'shrink-0 w-[82%] sm:w-64 snap-start'}`}>
                                                             <img
                                                                 src={`/storage/${imgPath}`}
                                                                 alt={`Preview Soal ${imgIdx + 1}`}
@@ -911,7 +980,7 @@ export default function FormEdit({ form, machines = [], conditionRefs = [] }: Pr
                                                         </div>
                                                     ))}
                                                     {newUrls.map((imgUrl, imgIdx) => (
-                                                        <div key={`new-${imgIdx}`} className={`relative ${totalImgs === 1 ? 'w-full' : 'shrink-0 w-64 snap-start'}`}>
+                                                        <div key={`new-${imgIdx}`} className={`relative ${totalImgs === 1 ? 'w-full' : 'shrink-0 w-[82%] sm:w-64 snap-start'}`}>
                                                             <img
                                                                 src={imgUrl}
                                                                 alt={`Preview Baru ${imgIdx + 1}`}
@@ -993,7 +1062,7 @@ export default function FormEdit({ form, machines = [], conditionRefs = [] }: Pr
                                                         </div>
 
                                                         {!isTicketing && q.input_type === 'SELECT' && (
-                                                            <div className="flex items-center gap-1.5">
+                                                            <div className="flex items-center gap-1.5 min-w-0 w-full sm:w-auto sm:max-w-[240px]">
                                                                 <CornerDownRight className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                                                                 <select
                                                                     value={opt.goto_form_section_id ?? ''}
@@ -1002,7 +1071,7 @@ export default function FormEdit({ form, machines = [], conditionRefs = [] }: Pr
                                                                         opts[oIndex].goto_form_section_id = e.target.value ? Number(e.target.value) : null;
                                                                         handleQuestionChange(sIndex, qIndex, 'options', opts);
                                                                     }}
-                                                                    className="flex-1 border border-emerald-200 bg-emerald-50/40 rounded px-2 py-1 text-[11px] font-semibold text-emerald-900 outline-none"
+                                                                    className="flex-1 min-w-0 w-full max-w-full truncate border border-emerald-200 bg-emerald-50/40 rounded px-2 py-1 text-[11px] font-semibold text-emerald-900 outline-none"
                                                                 >
                                                                     <option value="">Lanjut Default</option>
                                                                     {data.sections.map((sec, targetIdx) => {
@@ -1183,203 +1252,28 @@ export default function FormEdit({ form, machines = [], conditionRefs = [] }: Pr
                 </form>
             </div>
 
-            {/* MODAL PREVIEW — responsive */}
-            {isPreviewOpen && (
-                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-2xs flex items-center justify-center z-50 p-3 sm:p-4">
-                    <div className="bg-white w-full max-w-xl rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90dvh]">
-                        <div className="bg-slate-900 text-white px-4 sm:px-5 py-3 flex items-center justify-between shrink-0 gap-2">
-                            <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-emerald-400 truncate">
-                                Preview Mode (Bagian {previewSectionId + 1})
-                            </span>
-                            <button onClick={() => setIsPreviewOpen(false)} className="text-slate-400 hover:text-white font-bold cursor-pointer shrink-0">&times;</button>
-                        </div>
-                        <div className="p-3 sm:p-6 overflow-y-auto space-y-3 sm:space-y-4 flex-1 bg-slate-50">
-                            {previewSectionId === 0 && (
-                                <div className="bg-slate-900 text-white p-4 sm:p-5 rounded-xl space-y-1">
-                                    <h2 className="text-base sm:text-lg font-bold break-words">{data.metadata.form_title || 'Formulir Pemantauan'}</h2>
-                                    {data.metadata.form_description && <p className="text-xs text-slate-300 break-words">{data.metadata.form_description}</p>}
-                                    <div className="pt-2 text-[11px] text-emerald-400 font-semibold">
-                                        Tipe: {data.metadata.form_type}
-                                    </div>
-                                </div>
-                            )}
-
-                            {previewSectionId > 0 && data.sections[previewSectionId]?.section_title && (
-                                <div className="bg-emerald-900 text-white p-3 sm:p-4 rounded-xl space-y-1">
-                                    <h3 className="text-sm sm:text-base font-bold break-words">{data.sections[previewSectionId].section_title}</h3>
-                                    {data.sections[previewSectionId].section_description && (
-                                        <p className="text-xs text-emerald-200 break-words">{data.sections[previewSectionId].section_description}</p>
-                                    )}
-                                </div>
-                            )}
-
-                            {data.sections[previewSectionId]?.questions.map((q, qIndex) => (
-                                <div key={qIndex} className="bg-white p-3 sm:p-4 rounded-xl border border-slate-200 space-y-2.5 shadow-xs">
-                                    <label className="text-xs font-bold text-slate-800 block break-words">
-                                        {qIndex + 1}. {q.question_text || 'Pertanyaan Tanpa Judul'} {q.is_required && <span className="text-rose-500">*</span>}
-                                    </label>
-
-                                    {q.help_text && q.help_text.trim() !== '' && (
-                                        <p className="text-[11px] text-sky-800 bg-sky-50 border border-sky-100 p-2 rounded-lg break-words">
-                                            💡 <strong>Panduan:</strong> {q.help_text}
-                                        </p>
-                                    )}
-
-                                    {q.standard_text && q.standard_text.trim() !== '' && (
-                                        <p className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-100 p-2 rounded-lg break-words">
-                                            🛡️ <strong>Standar Acuan:</strong> {q.standard_text}
-                                        </p>
-                                    )}
-
-                                    {(() => {
-                                        const previewImgs = [
-                                            ...(q.existing_question_images || []).map((p) => `/storage/${p}`),
-                                            ...(q.new_question_image_urls || []),
-                                        ];
-                                        if (previewImgs.length === 0) return null;
-                                        return (
-                                            <div className={`pt-1 ${previewImgs.length === 1 ? 'w-full' : 'flex gap-2.5 overflow-x-auto snap-x snap-mandatory pb-2'}`}>
-                                                {previewImgs.map((src, idx) => (
-                                                    <img
-                                                        key={idx}
-                                                        src={src}
-                                                        alt={`Preview Soal ${idx + 1}`}
-                                                        className={`h-52 rounded-lg border border-slate-200 bg-slate-50 object-contain ${previewImgs.length === 1 ? 'w-full' : 'shrink-0 w-[85%] snap-center'}`}
-                                                    />
-                                                ))}
-                                            </div>
-                                        );
-                                    })()}
-
-                                    {q.input_type === 'TEXT' && (
-                                        <input
-                                            type="text"
-                                            placeholder="Ketik jawaban singkat di sini..."
-                                            value={previewAnswers[`q_${previewSectionId}_${qIndex}`] || ''}
-                                            onChange={e => setPreviewAnswers(prev => ({ ...prev, [`q_${previewSectionId}_${qIndex}`]: e.target.value }))}
-                                            className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white text-slate-800 outline-none focus:border-emerald-600"
-                                        />
-                                    )}
-                                    {q.input_type === 'TEXTAREA' && (
-                                        <textarea
-                                            rows={2}
-                                            placeholder="Ketik jawaban paragraf di sini..."
-                                            value={previewAnswers[`q_${previewSectionId}_${qIndex}`] || ''}
-                                            onChange={e => setPreviewAnswers(prev => ({ ...prev, [`q_${previewSectionId}_${qIndex}`]: e.target.value }))}
-                                            className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white text-slate-800 outline-none focus:border-emerald-600 resize-none"
-                                        />
-                                    )}
-                                    {q.input_type === 'FILE' && (
-                                        <div className="space-y-1">
-                                            <input type="file" className="w-full border border-dashed border-slate-300 rounded-lg p-2 text-xs bg-white text-slate-600 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer" />
-                                            <span className="text-[10px] text-slate-400 block">Maksimal ukuran file: {q.validation_rules?.[0]?.max_file_size || '10MB'}</span>
-                                        </div>
-                                    )}
-                                    {q.input_type === 'DATE' && (
-                                        <input
-                                            type="date"
-                                            value={previewAnswers[`q_${previewSectionId}_${qIndex}`] || ''}
-                                            onChange={e => setPreviewAnswers(prev => ({ ...prev, [`q_${previewSectionId}_${qIndex}`]: e.target.value }))}
-                                            className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white text-slate-800 outline-none focus:border-emerald-600"
-                                        />
-                                    )}
-                                    {q.input_type === 'TIME' && (
-                                        <input
-                                            type="time"
-                                            value={previewAnswers[`q_${previewSectionId}_${qIndex}`] || ''}
-                                            onChange={e => setPreviewAnswers(prev => ({ ...prev, [`q_${previewSectionId}_${qIndex}`]: e.target.value }))}
-                                            className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white text-slate-800 outline-none focus:border-emerald-600"
-                                        />
-                                    )}
-
-                                    {(['SELECT', 'CHECKBOX', 'DROPDOWN'] as string[]).includes(q.input_type) && (
-                                        <div className="space-y-1.5 pt-1">
-                                            {q.input_type === 'DROPDOWN' ? (
-                                                <select
-                                                    value={previewAnswers[`q_${previewSectionId}_${qIndex}`] || ''}
-                                                    onChange={e => setPreviewAnswers(prev => ({ ...prev, [`q_${previewSectionId}_${qIndex}`]: e.target.value }))}
-                                                    className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white text-slate-800 outline-none focus:border-emerald-600 font-medium"
-                                                >
-                                                    <option value="">Pilih opsi...</option>
-                                                    {q.options.map((opt, oIdx) => (
-                                                        <option key={oIdx} value={opt.option_text}>
-                                                            {opt.option_text}{!isTicketing ? ` (${opt.is_normal ? 'Normal' : 'Abnormal'})` : ''}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            ) : (
-                                                q.options.map((opt, oIdx) => (
-                                                    <div key={oIdx} className="flex items-center justify-between text-xs text-slate-700 p-2 bg-white rounded-lg border border-slate-200 hover:border-slate-300 gap-2">
-                                                        <label className="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
-                                                            <input
-                                                                type={q.input_type === 'CHECKBOX' ? 'checkbox' : 'radio'}
-                                                                name={`prev_${previewSectionId}_${qIndex}`}
-                                                                checked={previewAnswers[`q_${previewSectionId}_${qIndex}`] === opt.option_text}
-                                                                onChange={() => {
-                                                                    setPreviewAnswers(prev => ({
-                                                                        ...prev,
-                                                                        [`q_${previewSectionId}_${qIndex}`]: opt.option_text,
-                                                                        [`goto_${previewSectionId}_${qIndex}`]: opt.goto_form_section_id
-                                                                    }));
-                                                                }}
-                                                                className="text-emerald-600 rounded cursor-pointer shrink-0"
-                                                            />
-                                                            <span className="font-medium text-slate-800 break-words">{opt.option_text}</span>
-                                                        </label>
-                                                        {!isTicketing && (
-                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase shrink-0 ${opt.is_normal ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
-                                                                {opt.is_normal ? 'Normal' : 'Abnormal'}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                ))
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                        <div className="bg-white px-4 sm:px-5 py-3 border-t border-slate-200 flex justify-between gap-2 shrink-0">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    if (previewHistory.length > 0) {
-                                        setPreviewSectionId(previewHistory[previewHistory.length - 1]);
-                                        setPreviewHistory(prev => prev.slice(0, -1));
-                                    }
-                                }}
-                                disabled={previewHistory.length === 0}
-                                className="px-3 sm:px-3.5 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold disabled:opacity-40 hover:bg-slate-50 transition-colors cursor-pointer"
-                            >
-                                Sebelumnya
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    let nextTarget = previewSectionId + 1;
-                                    const currentSecQuestions = data.sections[previewSectionId]?.questions || [];
-                                    for (let i = 0; i < currentSecQuestions.length; i++) {
-                                        const gotoVal = previewAnswers[`goto_${previewSectionId}_${i}`];
-                                        if (gotoVal !== undefined && gotoVal !== '') {
-                                            nextTarget = Number(gotoVal);
-                                            break;
-                                        }
-                                    }
-                                    if (nextTarget < data.sections.length) {
-                                        setPreviewHistory(prev => [...prev, previewSectionId]);
-                                        setPreviewSectionId(nextTarget);
-                                    } else {
-                                        alert("Uji coba preview Selesai!");
-                                    }
-                                }}
-                                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs cursor-pointer"
-                            >
-                                {previewSectionId + 1 < data.sections.length ? 'Selanjutnya' : 'Selesai'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* MODAL PREVIEW — identik dengan tasks/show */}
+            <FormTaskPreviewModal
+                isOpen={isPreviewOpen}
+                onClose={() => setIsPreviewOpen(false)}
+                formTitle={data.metadata.form_title}
+                formDescription={data.metadata.form_description}
+                formType={data.metadata.form_type}
+                sections={data.sections.map((sec) => ({
+                    section_title: sec.section_title,
+                    section_description: sec.section_description,
+                    questions: sec.questions.map((q) => ({
+                        question_text: q.question_text,
+                        input_type: q.input_type,
+                        help_text: q.help_text,
+                        standard_text: q.standard_text,
+                        is_required: q.is_required,
+                        validation_rules: q.validation_rules,
+                        options: q.options,
+                        previewImages: [...(q.existing_question_images || []).map((p) => `/storage/${p}`), ...(q.new_question_image_urls || [])],
+                    })),
+                }))}
+            />
         </AppLayout>
     );
 }
