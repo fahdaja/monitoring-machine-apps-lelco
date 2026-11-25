@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Head, Link, router, useForm } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
+import { compressQuestionImage } from '@/lib/compress-image';
 import {
     PlusCircle, Copy, Trash2, Layers, Eye, Image as ImageIcon,
     CornerDownRight, HelpCircle, ShieldCheck, CheckCircle2, AlertCircle,
@@ -300,21 +301,25 @@ export default function FormCreate({ machines = [], defaultType = 'INSPECTION', 
         setData('sections', updated);
     };
 
-    const handleQuestionImageUpload = (sIndex: number, qIndex: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleQuestionImageUpload = async (sIndex: number, qIndex: number, e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files || []);
+        e.target.value = '';
         if (files.length === 0) return;
 
         const invalid = files.some((f) => !f.type.startsWith('image/'));
         if (invalid) {
             alert('Semua file yang dipilih harus berupa gambar!');
-            e.target.value = '';
             return;
         }
 
+        const compressedFiles = await Promise.all(
+            files.map((f) => compressQuestionImage(f, 4.5, 1920).catch(() => f))
+        );
+
         const updated = [...data.sections];
         const current = updated[sIndex].questions[qIndex];
-        const nextFiles = [...(current.question_images || []), ...files];
-        const nextUrls = [...(current.question_image_urls || []), ...files.map((f) => URL.createObjectURL(f))];
+        const nextFiles = [...(current.question_images || []), ...compressedFiles];
+        const nextUrls = [...(current.question_image_urls || []), ...compressedFiles.map((f) => URL.createObjectURL(f))];
 
         updated[sIndex].questions[qIndex] = {
             ...current,
@@ -322,7 +327,6 @@ export default function FormCreate({ machines = [], defaultType = 'INSPECTION', 
             question_image_urls: nextUrls,
         };
         setData('sections', updated);
-        e.target.value = '';
     };
 
     const removeQuestionImage = (sIndex: number, qIndex: number, imgIndex: number) => {
