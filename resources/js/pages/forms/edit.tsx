@@ -526,6 +526,19 @@ export default function FormEdit({ form, machines = [], conditionRefs = [] }: Pr
                     return;
                 }
 
+                if (q.input_type === 'FILE') {
+                    const fileRule = q.validation_rules?.[0] || {};
+                    const allowedTypes = Array.isArray(fileRule.allowed_file_type) ? fileRule.allowed_file_type : [];
+                    const maxSize = String(fileRule.max_file_size || '').trim();
+                    if (allowedTypes.length === 0 || !maxSize) {
+                        const msg = `Pertanyaan File ke-${qIndex + 1} (Bagian ${sIndex + 1}) wajib memilih minimal 1 format file yang diizinkan dan ukuran maksimal file!`;
+                        setErrorMessage(msg);
+                        setToast({ type: 'error', title: 'Pengaturan File Belum Lengkap', description: msg });
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                        return;
+                    }
+                }
+
                 if (['SELECT', 'CHECKBOX', 'DROPDOWN'].includes(q.input_type)) {
                     if (!q.options || q.options.length === 0) {
                         setErrorMessage(`Pertanyaan "${q.question_text}" harus memiliki minimal 1 opsi jawaban!`);
@@ -1147,7 +1160,7 @@ export default function FormEdit({ form, machines = [], conditionRefs = [] }: Pr
                                                     <div>
                                                         <span className="font-semibold text-slate-700 block mb-1">Tipe File yang Diperbolehkan:</span>
                                                         <div className="flex flex-wrap gap-2">
-                                                            {['jpg', 'jpeg', 'png', 'pdf'].map(type => {
+                                                            {['jpg', 'jpeg', 'png', 'webp'].map(type => {
                                                                 const currentAllowed = q.validation_rules?.[0]?.allowed_file_type || [];
                                                                 const isChecked = currentAllowed.includes(type);
                                                                 return (
@@ -1172,10 +1185,11 @@ export default function FormEdit({ form, machines = [], conditionRefs = [] }: Pr
                                                     <div>
                                                         <span className="font-semibold text-slate-700 block mb-1">Maksimal Ukuran:</span>
                                                         <select
-                                                            value={q.validation_rules?.[0]?.max_file_size || '10MB'}
+                                                            value={q.validation_rules?.[0]?.max_file_size || ''}
                                                             onChange={e => handleValidationRuleChange(sIndex, qIndex, 'max_file_size', e.target.value)}
                                                             className="border border-slate-200 rounded px-2 py-1 bg-white text-xs font-semibold outline-none"
                                                         >
+                                                            <option value="">-- Pilih Ukuran --</option>
                                                             {FILE_SIZE_OPTIONS.map(sz => <option key={sz} value={sz}>{sz}</option>)}
                                                         </select>
                                                     </div>

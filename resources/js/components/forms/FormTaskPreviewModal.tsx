@@ -335,7 +335,7 @@ export default function FormTaskPreviewModal({
                             : q.validation_rules || {};
                         const allowedTypes = Array.isArray(fileRule.allowed_file_type) && fileRule.allowed_file_type.length > 0
                             ? fileRule.allowed_file_type.join(', ').toUpperCase()
-                            : 'JPG, JPEG, PNG';
+                            : 'JPG, JPEG, PNG, WEBP';
                         const maxFileSize = fileRule.max_file_size || '10MB';
 
                         return (

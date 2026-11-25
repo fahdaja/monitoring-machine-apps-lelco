@@ -847,8 +847,8 @@
             }
             if (!$allowedMimes) {
                 // Biarkan kosong / izinkan format dokumen & gambar umum jika admin tidak set apa-apa
-                $allowedMimes = 'jpg.jpeg,png,pdf'; 
-                $allowedTypesLabel = 'JPG, JPEG, PNG, PDF';
+                $allowedMimes = 'jpg,jpeg,png,webp';
+                $allowedTypesLabel = 'JPG, JPEG, PNG, WEBP';
             }
         }
 

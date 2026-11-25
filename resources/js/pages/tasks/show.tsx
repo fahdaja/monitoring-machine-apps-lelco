@@ -1129,7 +1129,7 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                                                             ? (Array.isArray(fileRules.allowed_file_type)
                                                                 ? fileRules.allowed_file_type.join(', ').toUpperCase()
                                                                 : fileRules.allowed_file_type)
-                                                            : 'JPG, JPEG, PNG';
+                                                            : 'JPG, JPEG, PNG, WEBP';
                                                         const maxFileSize = fileRules.max_file_size || '10MB';
                                                         const fileValue = ans.value;
                                                         const fileName =
