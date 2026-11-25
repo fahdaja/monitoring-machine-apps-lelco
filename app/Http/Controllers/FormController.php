@@ -516,10 +516,20 @@ class FormController extends Controller
                     });
             }
 
-            // Hapus section yang sudah dibuang
-            FormSection::where('form_id', $form->id)
+            // Hapus section yang sudah dibuang beserta pertanyaan, opsi, dan gambarnya
+            FormSection::with('questions.options')
+                ->where('form_id', $form->id)
                 ->whereNotIn('id', $existingSectionIds)
-                ->delete();
+                ->each(function ($removedSection) {
+                    foreach ($removedSection->questions as $q) {
+                        foreach ($q->question_images as $imgPath) {
+                            Storage::disk('public')->delete($imgPath);
+                        }
+                        $q->options()->delete();
+                        $q->delete();
+                    }
+                    $removedSection->delete();
+                });
 
             return redirect()->route('forms.index')
                 ->with('success', 'Template form berhasil diperbarui!');
