@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import BreakdownReportForm, { ReportForm } from '@/components/breakdown-report-form';
+import { triggerQrScanner } from '@/components/qr/FloatingQrButton';
 import { QRCodeCanvas } from 'qrcode.react';
 import { QrCode, Printer, Download, Copy, Check, Eye, X, Edit3, Trash2, AlertTriangle } from 'lucide-react';
 
@@ -67,6 +68,8 @@ export interface PreventiveInspectionItem {
     next_schedule_at?: string;
     findings?: string;
     notes?: string;
+    canWork?: boolean;
+    isAssignedToOther?: boolean;
 }
 
 interface MachineShowProps {
@@ -123,9 +126,11 @@ export default function MachineShow({
         isActive: true,
     };
 
-   // Gunakan kode mesin murni (11 karakter) agar grid QR berukuran besar (21x21)
-   // dan sangat cepat terbaca kamera HP dari layar monitor tanpa efek moiré.
-   const qrValue = currentMachine.machineCode || "";
+    // Format URL sistem dengan path /exec?machine=<code> khusus untuk dibaca oleh scanner aplikasi
+    const appOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+    const qrValue = currentMachine.machineCode
+        ? `${appOrigin}/exec?machine=${encodeURIComponent(currentMachine.machineCode)}`
+        : '';
 
     const handleCopyCode = () => {
         navigator.clipboard.writeText(qrValue);
@@ -668,18 +673,50 @@ export default function MachineShow({
                                             </div>
                                         </div>
 
-                                        <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-500">
-                                            {item.started_at && (
-                                                <span>
-                                                    {item.status === 'COMPLETED' ? 'Selesai:' : 'Jadwal:'}{' '}
-                                                    <strong className="text-slate-700">{item.started_at}</strong>
-                                                </span>
-                                            )}
-                                            {item.inspectorName && item.inspectorName !== '-' && (
-                                                <span>Inspector: <strong className="text-slate-700">{item.inspectorName}</strong></span>
-                                            )}
-                                            {item.next_schedule_at && (
-                                                <span>Batas Akhir: <strong className="text-blue-600 font-semibold">{item.next_schedule_at}</strong></span>
+                                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 mt-1">
+                                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500 min-w-0">
+                                                {item.started_at && (
+                                                    <span>
+                                                        {item.status === 'COMPLETED' ? 'Selesai:' : 'Jadwal:'}{' '}
+                                                        <strong className="text-slate-700">{item.started_at}</strong>
+                                                    </span>
+                                                )}
+                                                {item.inspectorName && item.inspectorName !== '-' && (
+                                                    <span>Inspector: <strong className="text-slate-700">{item.inspectorName}</strong></span>
+                                                )}
+                                                {item.next_schedule_at && (
+                                                    <span>Batas Akhir: <strong className="text-blue-600 font-semibold">{item.next_schedule_at}</strong></span>
+                                                )}
+                                            </div>
+
+                                            {['DUE', 'OVERDUE', 'IN_PROGRESS'].includes(item.status) && (
+                                                <div className="shrink-0">
+                                                    {item.isAssignedToOther ? (
+                                                        <span className="inline-flex w-full sm:w-auto items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200">
+                                                            Sedang dikerjakan oleh {item.inspectorName && item.inspectorName !== '-' ? item.inspectorName : 'Teknisi Lain'}
+                                                        </span>
+                                                    ) : item.canWork ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                triggerQrScanner({
+                                                                    expectedMachineCode: currentMachine.machineCode || '',
+                                                                    targetTaskId: item.id,
+                                                                    machineName: currentMachine.machineName,
+                                                                    activity: item.title,
+                                                                })
+                                                            }
+                                                            className={`inline-flex w-full sm:w-auto items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-colors cursor-pointer shadow-sm whitespace-nowrap ${
+                                                                item.status === 'OVERDUE'
+                                                                    ? 'bg-rose-600 hover:bg-rose-700'
+                                                                    : 'bg-slate-900 hover:bg-slate-800'
+                                                            }`}
+                                                        >
+                                                            <QrCode className="w-3.5 h-3.5 shrink-0" />
+                                                            {item.status === 'IN_PROGRESS' ? 'Scan QR & Lanjutkan' : 'Scan QR & Kerjakan'}
+                                                        </button>
+                                                    ) : null}
+                                                </div>
                                             )}
                                         </div>
 

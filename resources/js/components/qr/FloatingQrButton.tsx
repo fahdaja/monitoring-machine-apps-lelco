@@ -21,10 +21,25 @@ export function extractMachineCodeFromQr(raw: string): string {
     if (scannedValue.includes('http://') || scannedValue.includes('https://')) {
         try {
             const urlObj = new URL(scannedValue);
-            const segments = urlObj.pathname.split('/').filter(Boolean);
-            scannedValue = segments[segments.length - 1] || scannedValue;
+            const queryMachine =
+                urlObj.searchParams.get('machine') ||
+                urlObj.searchParams.get('machine_code') ||
+                urlObj.searchParams.get('code') ||
+                urlObj.searchParams.get('id');
+
+            if (queryMachine && queryMachine.trim() !== '') {
+                scannedValue = queryMachine;
+            } else {
+                const segments = urlObj.pathname.split('/').filter(Boolean);
+                scannedValue = segments[segments.length - 1] || scannedValue;
+            }
         } catch {
-            scannedValue = scannedValue.split('/').pop() || scannedValue;
+            const match = scannedValue.match(/[?&](?:machine|machine_code|code|id)=([^&#]+)/i);
+            if (match && match[1]) {
+                scannedValue = decodeURIComponent(match[1]);
+            } else {
+                scannedValue = scannedValue.split('/').pop() || scannedValue;
+            }
         }
     } else if (scannedValue.includes('/')) {
         scannedValue = scannedValue.split('/').pop() || scannedValue;

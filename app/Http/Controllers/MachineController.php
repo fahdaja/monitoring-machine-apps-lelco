@@ -174,7 +174,9 @@ class MachineController extends Controller
                 ];
             });
 
-            $tasks = Task::with(['form', 'user'])
+            $currentUser = $request->user();
+
+            $tasks = Task::with(['form', 'user', 'assignedUsers'])
                 ->where('machine_id', $machine->id)
                 ->orderByRaw("CASE
                     WHEN status = 'OVERDUE' THEN 1
@@ -187,7 +189,7 @@ class MachineController extends Controller
                 ->orderByDesc('due_date')
                 ->take(10)
                 ->get()
-                ->map(function (Task $task) {
+                ->map(function (Task $task) use ($machine, $currentUser) {
                     $status = strtoupper((string) $task->status);
                     if ($status !== 'COMPLETED' && $status !== 'IN_PROGRESS' && $task->due_date) {
                         if ($task->due_date->lt(today())) {
@@ -197,19 +199,43 @@ class MachineController extends Controller
                         }
                     }
 
+                    $isAssignedToOther = $status === 'IN_PROGRESS'
+                        && ! is_null($task->assigned_user_id)
+                        && $currentUser
+                        && (int) $task->assigned_user_id !== (int) $currentUser->id;
+
+                    $canWork = in_array($status, ['DUE', 'OVERDUE', 'IN_PROGRESS'], true);
+                    if ($canWork && $currentUser) {
+                        if ($currentUser->hasRole(User::ROLE_ADMIN)) {
+                            $canWork = ! $isAssignedToOther;
+                        } else {
+                            if (! $machine->isPic($currentUser)) {
+                                $canWork = false;
+                            } elseif ($task->assignedUsers->isNotEmpty() && ! $task->assignedUsers->contains('id', $currentUser->id)) {
+                                $canWork = false;
+                            } elseif ($isAssignedToOther) {
+                                $canWork = false;
+                            }
+                        }
+                    } else {
+                        $canWork = false;
+                    }
+
                     return [
-                        'id'               => $task->id,
-                        'task_code'        => $task->task_code,
-                        'title'            => $task->form?->form_title ?? 'Pemeliharaan Berkala',
-                        'inspectorName'    => $task->user?->full_name ?? '-',
-                        'status'           => $status,
-                        'resultStatus'     => null,
-                        'started_at'       => $task->completed_at
+                        'id'                => $task->id,
+                        'task_code'         => $task->task_code,
+                        'title'             => $task->form?->form_title ?? 'Pemeliharaan Berkala',
+                        'inspectorName'     => $task->user?->full_name ?? '-',
+                        'status'            => $status,
+                        'resultStatus'      => null,
+                        'started_at'        => $task->completed_at
                             ? $task->completed_at->format('Y-m-d H:i')
                             : ($task->due_date ? $task->due_date->format('Y-m-d') : '-'),
-                        'next_schedule_at' => $task->end_date ? $task->end_date->format('Y-m-d') : null,
-                        'findings'         => null,
-                        'notes'            => null,
+                        'next_schedule_at'  => $task->end_date ? $task->end_date->format('Y-m-d') : null,
+                        'findings'          => null,
+                        'notes'             => null,
+                        'canWork'           => $canWork,
+                        'isAssignedToOther' => $isAssignedToOther,
                     ];
                 })
                 ->values();

@@ -723,13 +723,6 @@ export default function Dashboard({
                                                         >
                                                             Sedang Dikerjakan
                                                         </span>
-                                                    ) : t.status === 'IN_PROGRESS' ? (
-                                                        <Link
-                                                            href={`/inspection-form/${t.taskId}`}
-                                                            className="shrink-0 px-3 py-1.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors whitespace-nowrap self-center"
-                                                        >
-                                                            Lanjutkan
-                                                        </Link>
                                                     ) : (
                                                         <button
                                                             type="button"
@@ -743,7 +736,7 @@ export default function Dashboard({
                                                             }
                                                             className="shrink-0 px-3 py-1.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors whitespace-nowrap self-center cursor-pointer"
                                                         >
-                                                            Scan &amp; Mulai
+                                                            {t.status === 'IN_PROGRESS' ? 'Scan & Lanjutkan' : 'Scan & Mulai'}
                                                         </button>
                                                     )
                                                 )}

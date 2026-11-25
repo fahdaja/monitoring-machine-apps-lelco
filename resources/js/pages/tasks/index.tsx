@@ -516,25 +516,21 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                                                 );
                                             }
 
-                                            // Jika sudah IN_PROGRESS milik user ini, langsung lanjutkan tanpa scan ulang
+                                            // Wajib scan QR fisik mesin saat mulai maupun melanjutkan task IN_PROGRESS
                                             return (
                                                 <button
                                                     type="button"
-                                                    onClick={() => {
-                                                        if (t.status === 'IN_PROGRESS') {
-                                                            router.visit(`/inspection-form/${t.taskId}`);
-                                                        } else {
-                                                            triggerQrScanner({
-                                                                expectedMachineCode: t.machineCode,
-                                                                targetTaskId: t.taskId,
-                                                                machineName: t.machineName,
-                                                                activity: t.activity,
-                                                            });
-                                                        }
-                                                    }}
+                                                    onClick={() =>
+                                                        triggerQrScanner({
+                                                            expectedMachineCode: t.machineCode,
+                                                            targetTaskId: t.taskId,
+                                                            machineName: t.machineName,
+                                                            activity: t.activity,
+                                                        })
+                                                    }
                                                     className="w-full py-2 px-3 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg text-center transition-colors cursor-pointer shadow-sm"
                                                 >
-                                                    {t.status === 'IN_PROGRESS' ? 'Lanjutkan Inspeksi' : 'Scan QR & Mulai Inspeksi'}
+                                                    {t.status === 'IN_PROGRESS' ? 'Scan QR & Lanjutkan Inspeksi' : 'Scan QR & Mulai Inspeksi'}
                                                 </button>
                                             );
                                         })()}
