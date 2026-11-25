@@ -364,10 +364,11 @@ class FormController extends Controller
 
             // 1. Simpan / Update Sections Terlebih Dahulu
             foreach ($validate['sections'] as $sIndex => $sectionData) {
+                $existingSection = ! empty($sectionData['id']) ? FormSection::find($sectionData['id']) : null;
                 $section = FormSection::updateOrCreate(
                     ['id' => $sectionData['id'] ?? null, 'form_id' => $form->id],
                     [
-                        'section_code'        => $sectionData['section_code'] ?? "SEC-" . strtoupper(uniqid()),
+                        'section_code'        => $existingSection?->section_code ?? ($sectionData['section_code'] ?? 'SEC-' . Str::upper(Str::random(13))),
                         'section_title'       => $sectionData['section_title'],
                         'section_description' => $sectionData['section_description'] ?? '-',
                         'section_order'       => $sIndex + 1,
@@ -441,7 +442,7 @@ class FormController extends Controller
                         [
                             'form_id'         => $form->id,
                             'form_section_id'  => $section->id,
-                            'question_code'    => $questionData['question_code'] ?? "QST-" . strtoupper(uniqid()),
+                            'question_code'    => $oldQuestion?->question_code ?? ($questionData['question_code'] ?? 'QST-' . Str::upper(Str::random(13))),
                             'question_text'    => $questionData['question_text'],
                             'input_type'       => $questionData['input_type'],
                             'question_image'   => $imagePath,
@@ -478,13 +479,14 @@ class FormController extends Controller
                                 }
                             }
 
+                            $existingOption = ! empty($optionData['id']) ? FormOption::find($optionData['id']) : null;
                             $option = FormOption::updateOrCreate(
                                 ['id'               => $optionData['id'] ?? null,
                                 'form_question_id' => $question->id
                                  ], 
                                 [
                                     'form_question_id'     => $question->id,
-                                    'option_code'          => $optionData['option_code'] ?? "OPT-" . strtoupper(uniqid()),
+                                    'option_code'          => $existingOption?->option_code ?? ($optionData['option_code'] ?? 'OPT-' . Str::upper(Str::random(13))),
                                     'option_text'          => $optionData['option_text'],
                                     'option_order'         => $oIndex + 1,
                                     'is_normal'            => $optionData['is_normal'] ?? false,
