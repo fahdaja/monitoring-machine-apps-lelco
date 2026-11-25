@@ -382,10 +382,10 @@ class FormController extends Controller
 
             // 2. Simpan / Update Questions & Options
             foreach ($validate['sections'] as $sIndex => $sectionData) {
-                // Ambil section berdasarkan form_id dan urutannya yang valid
-                $section = FormSection::where('form_id', $form->id)
-                    ->where('section_order', $sIndex + 1)
-                    ->first();
+                // Gunakan ID section persis dari hasil Step 1 (bukan where section_order,
+                // karena section yang akan dihapus bisa masih punya section_order yang sama)
+                $sectionId = $createdSectionIds[$sIndex];
+                $section = FormSection::findOrFail($sectionId);
 
                 $existingQuestionIds = [];
 
@@ -438,7 +438,7 @@ class FormController extends Controller
                     }
 
                     $question = FormQuestion::updateOrCreate(
-                       ['id' => $questionData['id'] ?? null, 'form_section_id' => $section->id, 'form_id' => $form->id ],
+                       ['id' => $questionData['id'] ?? null, 'form_id' => $form->id],
                         [
                             'form_id'         => $form->id,
                             'form_section_id'  => $section->id,
