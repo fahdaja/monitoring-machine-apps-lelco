@@ -526,6 +526,8 @@ export default function FormEdit({ form, machines = [], conditionRefs = [] }: Pr
             ...section,
             questions: section.questions.map(q => ({
                 ...q,
+                sync_question_images: true,
+                question_image: null,
                 validation_rules: q.validation_rules,
                 options: q.options.map(opt => ({
                     id: opt.id ?? null,

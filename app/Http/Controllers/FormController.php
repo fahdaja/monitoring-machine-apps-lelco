@@ -6,6 +6,7 @@ use Inertia\Inertia;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use App\Enums\FormType;
 use App\Models\Form;
@@ -146,7 +147,7 @@ class FormController extends Controller
                 if (is_array($incomingImages)) {
                     foreach ($incomingImages as $img) {
                         if ($img instanceof \Illuminate\Http\UploadedFile) {
-                            $storedImages[] = $img->store('question-images', 'public');
+                            $storedImages[] = $this->storeQuestionImage($img);
                         } elseif (is_string($img) && trim($img) !== '' && trim($img) !== 'null') {
                             $storedImages[] = trim($img);
                         }
@@ -154,7 +155,7 @@ class FormController extends Controller
                 }
                 if (empty($storedImages) && isset($questionData['question_image'])) {
                     if ($questionData['question_image'] instanceof \Illuminate\Http\UploadedFile) {
-                        $storedImages[] = $questionData['question_image']->store('question-images', 'public');
+                        $storedImages[] = $this->storeQuestionImage($questionData['question_image']);
                     } elseif (is_string($questionData['question_image']) && trim($questionData['question_image']) !== '') {
                         $storedImages[] = trim($questionData['question_image']);
                     }
@@ -266,6 +267,7 @@ class FormController extends Controller
                 'sections.*.questions.*.id'          => 'nullable|exists:form_questions,id',
                 'sections.*.questions.*.question_text' => 'required|string',
                 'sections.*.questions.*.question_image' => 'nullable',
+                'sections.*.questions.*.sync_question_images' => 'nullable|boolean',
                 'sections.*.questions.*.existing_question_images' => 'nullable|array',
                 'sections.*.questions.*.existing_question_images.*' => 'nullable|string',
                 'sections.*.questions.*.new_question_images' => 'nullable|array',
@@ -391,7 +393,8 @@ class FormController extends Controller
                     $oldQuestion = $questionId ? FormQuestion::find($questionId) : null;
                     
                     $oldImages = $oldQuestion ? $oldQuestion->question_images : [];
-                    $hasMultiPayload = array_key_exists('existing_question_images', $questionData)
+                    $hasMultiPayload = ! empty($questionData['sync_question_images'])
+                        || array_key_exists('existing_question_images', $questionData)
                         || array_key_exists('new_question_images', $questionData);
 
                     if ($hasMultiPayload) {
@@ -409,7 +412,7 @@ class FormController extends Controller
                         $newFiles = is_array($questionData['new_question_images'] ?? null) ? $questionData['new_question_images'] : [];
                         foreach ($newFiles as $file) {
                             if ($file instanceof \Illuminate\Http\UploadedFile) {
-                                $keptImages[] = $file->store('question-images', 'public');
+                                $keptImages[] = $this->storeQuestionImage($file);
                             }
                         }
 
@@ -422,7 +425,7 @@ class FormController extends Controller
                             foreach ($oldImages as $oldImg) {
                                 Storage::disk('public')->delete($oldImg);
                             }
-                            $imagePath = json_encode([$incomingImage->store('question-images', 'public')]);
+                            $imagePath = json_encode([$this->storeQuestionImage($incomingImage)]);
                         } elseif (is_null($incomingImage) || $incomingImage === '' || $incomingImage === 'null') {
                             foreach ($oldImages as $oldImg) {
                                 Storage::disk('public')->delete($oldImg);
@@ -564,6 +567,16 @@ class FormController extends Controller
             return redirect()->route('forms.index')
                 ->with('success', 'Formulir, Task terkait, beserta seluruh pertanyaannya berhasil dihapus!');
         });
+    }
+
+    private function storeQuestionImage(\Illuminate\Http\UploadedFile $file): string
+    {
+        $baseName = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+        $slug = Str::slug($baseName) ?: 'image';
+        $ext = strtolower($file->getClientOriginalExtension() ?: $file->guessExtension() ?: 'jpg');
+        $fileName = time() . '_' . Str::lower(Str::random(4)) . '_' . Str::limit($slug, 80, '') . '.' . $ext;
+
+        return $file->storeAs('question-images', $fileName, 'public');
     }
 
     public function destroyImage($questionId)
