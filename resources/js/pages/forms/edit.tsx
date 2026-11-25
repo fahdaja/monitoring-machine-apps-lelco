@@ -780,15 +780,14 @@ export default function FormEdit({ form, machines = [], conditionRefs = [] }: Pr
                                         {/* Baris pertanyaan — responsive */}
                                         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                                             <div className="flex items-center gap-2 w-full sm:flex-1 min-w-0">
-                                                <button
-                                                    type="button"
+                                                <span
                                                     onMouseDown={() => { dragArmedRef.current = true; }}
                                                     onMouseUp={() => { dragArmedRef.current = false; }}
-                                                    className="p-1 text-slate-400 hover:text-emerald-600 cursor-grab active:cursor-grabbing shrink-0"
+                                                    className="p-1 text-slate-400 hover:text-emerald-600 cursor-grab active:cursor-grabbing shrink-0 select-none inline-flex items-center"
                                                     title="Tarik untuk mengubah urutan pertanyaan"
                                                 >
-                                                    <GripVertical className="w-4 h-4" />
-                                                </button>
+                                                    <GripVertical className="w-4 h-4 pointer-events-none" />
+                                                </span>
                                                 <span className="inline-flex items-center justify-center min-w-[28px] h-7 px-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-black shrink-0">
                                                     #{qIndex + 1}
                                                 </span>
