@@ -41,14 +41,32 @@ interface InspectionCalendarData {
     tasks: InspectionTask[];
 }
 
-interface TasksIndexProps {
-    calendarData?: InspectionCalendarData;
+interface TodayCreateMachineOption {
+    id: number;
+    machine_code: string;
+    machine_name: string;
+    location: string | null;
+    pics: { id: number; full_name: string; department: string | null }[];
 }
 
+interface TodayCreateFormOption {
+    id: number;
+    form_code: string;
+    form_title: string;
+}
 
+interface TasksIndexProps {
+    calendarData?: InspectionCalendarData;
+    todayCreateOptions?: {
+        machines: TodayCreateMachineOption[];
+        forms: TodayCreateFormOption[];
+    } | null;
+}
 
-export default function TasksIndex({ calendarData }: TasksIndexProps) {
-    const currentUserId = (usePage().props.auth as any)?.user?.id;
+export default function TasksIndex({ calendarData, todayCreateOptions }: TasksIndexProps) {
+    const authUser = (usePage().props.auth as any)?.user;
+    const currentUserId = authUser?.id;
+    const isAdmin = String(authUser?.role || '').toUpperCase() === 'ADMIN';
     const todayStr = new Date().toISOString().split('T')[0];
 
     const currentCalendarData: InspectionCalendarData = calendarData || {
@@ -67,6 +85,41 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
     const [selectedDate, setSelectedDate] = useState<string>(currentCalendarData.today);
     const [selectedTaskForModal, setSelectedTaskForModal] = useState<InspectionTask | null>(null);
     const [originFilter, setOriginFilter] = useState<OriginFilter>('ALL');
+
+    // State modal "Buat Task Hari Ini" khusus Admin
+    const [showCreateTodayModal, setShowCreateTodayModal] = useState(false);
+    const [todayMachineId, setTodayMachineId] = useState<string>('');
+    const [todayFormId, setTodayFormId] = useState<string>('');
+    const [todayAssignedIds, setTodayAssignedIds] = useState<number[]>([]);
+    const [isCreatingToday, setIsCreatingToday] = useState(false);
+
+    const selectedTodayMachine = todayCreateOptions?.machines.find((m) => String(m.id) === todayMachineId);
+
+    const handleCreateTodaySubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!todayMachineId || !todayFormId) return;
+
+        setIsCreatingToday(true);
+        router.post(
+            '/tasks/create-today',
+            {
+                machine_id: Number(todayMachineId),
+                form_id: Number(todayFormId),
+                assigned_user_ids: todayAssignedIds,
+            },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setShowCreateTodayModal(false);
+                    setTodayMachineId('');
+                    setTodayFormId('');
+                    setTodayAssignedIds([]);
+                    setSelectedDate(currentCalendarData.today);
+                },
+                onFinish: () => setIsCreatingToday(false),
+            }
+        );
+    };
 
     const isFollowUp = (task: InspectionTask) => task.originType === 'CONDITION';
 
@@ -268,8 +321,17 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
         </p>
     </div>
 
-                {/* Filter asal task: berlaku untuk kalender sekaligus panel detail */}
-                <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+                {/* Filter asal task & tombol Buat Task Hari Ini (Admin) */}
+                <div className="flex items-center gap-2 flex-wrap shrink-0">
+                    {isAdmin && todayCreateOptions && (
+                        <button
+                            type="button"
+                            onClick={() => setShowCreateTodayModal(true)}
+                            className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-colors cursor-pointer"
+                        >
+                            + Buat Task Hari Ini
+                        </button>
+                    )}
                     <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Tampilkan</span>
                     {([
                         ['ALL', 'Semua'],
@@ -546,6 +608,133 @@ export default function TasksIndex({ calendarData }: TasksIndexProps) {
                 </div>
 
             </div>
+
+            {/* Modal Buat Task Hari Ini (Khusus Admin — Tanggal Terkunci Hari Ini) */}
+            {showCreateTodayModal && isAdmin && todayCreateOptions && (
+                <div
+                    role="dialog"
+                    aria-modal="true"
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4"
+                >
+                    <div className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-200">
+                        <div className="flex items-start justify-between gap-3 mb-4">
+                            <div>
+                                <span className="inline-block text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 mb-1.5">
+                                    Khusus Hari Ini ({currentCalendarData.today})
+                                </span>
+                                <h3 className="text-base font-extrabold text-slate-900">Buat Task Inspeksi Hari Ini</h3>
+                                <p className="text-xs text-slate-500 mt-0.5">
+                                    Task langsung berstatus <strong>DUE</strong> dan hanya berlaku pada tanggal hari ini.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowCreateTodayModal(false)}
+                                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center text-sm font-bold cursor-pointer shrink-0"
+                            >
+                                &times;
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleCreateTodaySubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1">
+                                    Mesin <span className="text-rose-500">*</span>
+                                </label>
+                                <select
+                                    required
+                                    value={todayMachineId}
+                                    onChange={(e) => {
+                                        setTodayMachineId(e.target.value);
+                                        setTodayAssignedIds([]);
+                                    }}
+                                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs text-slate-900 focus:border-slate-900 focus:outline-none"
+                                >
+                                    <option value="">-- Pilih Mesin --</option>
+                                    {todayCreateOptions.machines.map((m) => (
+                                        <option key={m.id} value={m.id}>
+                                            {m.machine_code} — {m.machine_name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1">
+                                    Formulir Inspeksi <span className="text-rose-500">*</span>
+                                </label>
+                                <select
+                                    required
+                                    value={todayFormId}
+                                    onChange={(e) => setTodayFormId(e.target.value)}
+                                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs text-slate-900 focus:border-slate-900 focus:outline-none"
+                                >
+                                    <option value="">-- Pilih Formulir --</option>
+                                    {todayCreateOptions.forms.map((f) => (
+                                        <option key={f.id} value={f.id}>
+                                            {f.form_title} ({f.form_code})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {selectedTodayMachine && selectedTodayMachine.pics.length > 0 && (
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                                        Target PIC (Opsional)
+                                    </label>
+                                    <p className="text-[11px] text-slate-400 mb-2">
+                                        Kosongkan jika boleh dikerjakan oleh semua PIC mesin ini.
+                                    </p>
+                                    <div className="space-y-1.5 max-h-32 overflow-y-auto border border-slate-200 rounded-xl p-2.5 bg-slate-50">
+                                        {selectedTodayMachine.pics.map((pic) => {
+                                            const checked = todayAssignedIds.includes(pic.id);
+                                            return (
+                                                <label key={pic.id} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={checked}
+                                                        onChange={(e) => {
+                                                            if (e.target.checked) {
+                                                                setTodayAssignedIds([...todayAssignedIds, pic.id]);
+                                                            } else {
+                                                                setTodayAssignedIds(todayAssignedIds.filter((id) => id !== pic.id));
+                                                            }
+                                                        }}
+                                                        className="rounded border-slate-300"
+                                                    />
+                                                    <span className="font-semibold">{pic.full_name}</span>
+                                                    {pic.department && (
+                                                        <span className="text-[10px] text-slate-400">({pic.department})</span>
+                                                    )}
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-2 gap-2.5 pt-2">
+                                <button
+                                    type="button"
+                                    disabled={isCreatingToday}
+                                    onClick={() => setShowCreateTodayModal(false)}
+                                    className="py-2 px-3 rounded-xl text-xs font-bold border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer disabled:opacity-50"
+                                >
+                                    Batal
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isCreatingToday || !todayMachineId || !todayFormId}
+                                    className="py-2 px-3 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white transition-colors cursor-pointer disabled:opacity-50"
+                                >
+                                    {isCreatingToday ? 'Menyimpan...' : 'Buat Task Hari Ini'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </AppLayout>
     );
 }

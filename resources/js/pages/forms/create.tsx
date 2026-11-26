@@ -1046,19 +1046,54 @@ export default function FormCreate({ machines = [], defaultType = 'INSPECTION', 
 
                                             return (
                                                 <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs gap-2">
-                                                    {!shouldHideRequired ? (
-                                                        <label className="flex items-center gap-1.5 font-semibold text-slate-700 cursor-pointer">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={q.is_required}
-                                                                onChange={e => handleQuestionChange(sIndex, qIndex, 'is_required', e.target.checked)}
-                                                                className="rounded border-slate-300 text-emerald-600 w-3.5 h-3.5"
-                                                            />
-                                                            Wajib Diisi
-                                                        </label>
-                                                    ) : (
-                                                        <div></div>
-                                                    )}
+                                                    <div className="flex items-center gap-4 flex-wrap">
+                                                        {!shouldHideRequired && (
+                                                            <label className="flex items-center gap-1.5 font-semibold text-slate-700 cursor-pointer">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={q.is_required}
+                                                                    onChange={e => handleQuestionChange(sIndex, qIndex, 'is_required', e.target.checked)}
+                                                                    className="rounded border-slate-300 text-emerald-600 w-3.5 h-3.5"
+                                                                />
+                                                                Wajib Diisi
+                                                            </label>
+                                                        )}
+                                                        {qIndex > 0 && (
+                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                <label className="flex items-center gap-1.5 font-semibold text-rose-700 cursor-pointer" title="Pertanyaan ini hanya tampil jika pertanyaan pemicu dijawab Abnormal (is_normal = false)">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={Boolean((q.validation_rules?.[0] as any)?.show_on_abnormal)}
+                                                                        onChange={e => {
+                                                                            const currentRule = (q.validation_rules?.[0] || {}) as any;
+                                                                            handleQuestionChange(sIndex, qIndex, 'validation_rules', [{ ...currentRule, show_on_abnormal: e.target.checked }]);
+                                                                        }}
+                                                                        className="rounded border-rose-300 text-rose-600 w-3.5 h-3.5"
+                                                                    />
+                                                                    Hanya Muncul Jika Abnormal
+                                                                </label>
+                                                                {Boolean((q.validation_rules?.[0] as any)?.show_on_abnormal) && (
+                                                                    <select
+                                                                        value={(q.validation_rules?.[0] as any)?.trigger_question_code || ''}
+                                                                        onChange={e => {
+                                                                            const currentRule = (q.validation_rules?.[0] || {}) as any;
+                                                                            handleQuestionChange(sIndex, qIndex, 'validation_rules', [{ ...currentRule, trigger_question_code: e.target.value || null }]);
+                                                                        }}
+                                                                        className="rounded-lg border border-rose-200 bg-rose-50/70 px-2 py-1 text-[11px] font-semibold text-rose-800 max-w-[220px] truncate focus:outline-none focus:border-rose-400"
+                                                                    >
+                                                                        <option value="">Pemicu: Otomatis (terdekat di atas)</option>
+                                                                        {sec.questions.slice(0, qIndex).map((prevQ, prevIdx) =>
+                                                                            ['SELECT', 'DROPDOWN', 'CHECKBOX'].includes(prevQ.input_type) ? (
+                                                                                <option key={prevQ.question_code || prevIdx} value={prevQ.question_code || ''}>
+                                                                                    Pemicu: #{prevIdx + 1} {prevQ.question_text || 'Pertanyaan'}
+                                                                                </option>
+                                                                            ) : null
+                                                                        )}
+                                                                    </select>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
 
                                                     <div className="flex items-center gap-1 shrink-0">
                                                         <button type="button" onClick={() => duplicateQuestion(sIndex, qIndex)} className="p-1.5 text-slate-400 hover:text-emerald-600 cursor-pointer" title="Duplikat"><Copy className="w-3.5 h-3.5" /></button>

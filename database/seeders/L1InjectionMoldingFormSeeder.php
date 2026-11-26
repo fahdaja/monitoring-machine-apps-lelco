@@ -36,12 +36,14 @@ class L1InjectionMoldingFormSeeder extends Seeder
                 'expected_answer' => null,
                 'allowed_file_type' => ['jpg', 'jpeg', 'png', 'webp'],
                 'validation_error_message' => null,
+                'show_on_abnormal' => true,
             ]];
 
             $emptyRule = [[
                 'max_file_size' => null,
                 'expected_answer' => null,
                 'validation_error_message' => null,
+                'show_on_abnormal' => true,
             ]];
 
             $numberRule = [[

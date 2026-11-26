@@ -308,25 +308,57 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
             // Cek apakah section ini masuk dalam daftar skipped
             const isSkipped = skippedSectionIds.includes(String(sec.id));
             
-            sec.questions?.forEach((q: any) => {
-                const ans = getAnswer(q.id);
-                let isAbnormal = false;
+            const isShowOnAbnormal = (q: any): boolean => {
+                const rules = Array.isArray(q?.validation_rules) ? q.validation_rules[0] : q?.validation_rules;
+                return Boolean(rules?.show_on_abnormal);
+            };
 
+            const isQuestionAbnormal = (q: any): boolean => {
+                const qAns = getAnswer(q.id);
                 if (q.input_type === 'SELECT') {
-                    const selectedOpt = q.options?.find((o: any) => String(o.id) === String(ans.value));
-                    isAbnormal = !!(selectedOpt && isOptionNormalFalse(selectedOpt));
-                } else if (q.input_type === 'DROPDOWN') {
-                    const selectedOpt = q.options?.find((o: any) => 
-                        normalizeText(o.option_text) === normalizeText(ans.value)
+                    const selectedOpt = q.options?.find((o: any) => String(o.id) === String(qAns.value));
+                    return !!(selectedOpt && isOptionNormalFalse(selectedOpt));
+                }
+                if (q.input_type === 'DROPDOWN') {
+                    const selectedOpt = q.options?.find((o: any) =>
+                        normalizeText(o.option_text) === normalizeText(qAns.value)
                     );
-                    isAbnormal = !!(selectedOpt && isOptionNormalFalse(selectedOpt));
-                } else if (q.input_type === 'CHECKBOX') {
-                    const currentVals = Array.isArray(ans.value) ? ans.value : [];
-                    isAbnormal = !!q.options?.some((o: any) =>
-                        currentVals.some((v: any) => normalizeText(v) === normalizeText(o.option_text)) && 
+                    return !!(selectedOpt && isOptionNormalFalse(selectedOpt));
+                }
+                if (q.input_type === 'CHECKBOX') {
+                    const currentVals = Array.isArray(qAns.value) ? qAns.value : [];
+                    return !!q.options?.some((o: any) =>
+                        currentVals.some((v: any) => normalizeText(v) === normalizeText(o.option_text)) &&
                         isOptionNormalFalse(o)
                     );
                 }
+                return false;
+            };
+
+            const isConditionalQuestionVisible = (q: any, qIdx: number): boolean => {
+                if (!isShowOnAbnormal(q)) return true;
+                const rules = Array.isArray(q?.validation_rules) ? q.validation_rules[0] : q?.validation_rules;
+                const triggerCode = rules?.trigger_question_code;
+                const allQs = sec.questions || [];
+
+                if (triggerCode) {
+                    const target = allQs.find((item: any) => item.question_code === triggerCode);
+                    return target ? isQuestionAbnormal(target) : false;
+                }
+
+                // Default: ikuti pertanyaan pilihan (SELECT/DROPDOWN/CHECKBOX) terdekat di atasnya
+                for (let i = qIdx - 1; i >= 0; i--) {
+                    const prev = allQs[i];
+                    if (['SELECT', 'DROPDOWN', 'CHECKBOX'].includes(prev.input_type) && !isShowOnAbnormal(prev)) {
+                        return isQuestionAbnormal(prev);
+                    }
+                }
+                return allQs.some((item: any) => isQuestionAbnormal(item));
+            };
+
+            sec.questions?.forEach((q: any, qIdx: number) => {
+                const ans = getAnswer(q.id);
+                const isHiddenConditional = !isConditionalQuestionVisible(q, qIdx);
 
                 const isValueEmpty =
                     ans.value === undefined ||
@@ -335,35 +367,15 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                     (typeof ans.value === 'string' && ans.value.trim() === '') ||
                     (Array.isArray(ans.value) && ans.value.length === 0);
 
-                // Abaikan Validasi Required jika section di-skip
-                if (!isSkipped && q.is_required && isValueEmpty) {
+                // Abaikan Validasi Required jika section di-skip atau pertanyaan kondisional sedang tersembunyi
+                if (!isSkipped && !isHiddenConditional && q.is_required && isValueEmpty) {
                     clientErrors[q.id] = { ...(clientErrors[q.id] || {}), value: 'Pertanyaan ini wajib diisi' };
                     hasClientError = true;
                     sectionHasError = true;
-                } else if (!isSkipped && !isValueEmpty && (q.input_type === 'TEXT' || q.input_type === 'TEXTAREA')) {
+                } else if (!isSkipped && !isHiddenConditional && !isValueEmpty && (q.input_type === 'TEXT' || q.input_type === 'TEXTAREA')) {
                     const textRuleErr = validateTextQuestionRule(q, String(ans.value || ''));
                     if (textRuleErr) {
                         clientErrors[q.id] = { ...(clientErrors[q.id] || {}), value: textRuleErr };
-                        hasClientError = true;
-                        sectionHasError = true;
-                    }
-                }
-
-                // Abaikan Validasi Abnormal jika section di-skip
-                if (isAbnormal && !isSkipped) {
-                    if (!ans.note || ans.note.trim() === '') {
-                        clientErrors[q.id] = { ...(clientErrors[q.id] || {}), note: 'Catatan wajib diisi untuk temuan abnormal.' };
-                        hasClientError = true;
-                        sectionHasError = true;
-                    }
-                    
-                    const isPhotoEmpty =
-                        !ans.photos || ans.photos === '' ||
-                        (typeof ans.photos === 'string' && ans.photos.trim() === '') ||
-                        (Array.isArray(ans.photos) && ans.photos.length === 0);
-                    
-                    if (isPhotoEmpty) {
-                        clientErrors[q.id] = { ...(clientErrors[q.id] || {}), photos: 'Foto evidence wajib diisi untuk temuan abnormal.' };
                         hasClientError = true;
                         sectionHasError = true;
                     }
@@ -796,8 +808,49 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                 </div>
 
                 <div className="p-3 sm:p-4 lg:p-6 space-y-4 sm:space-y-5 flex-1 overflow-y-auto">
-                    {currentSection?.questions && currentSection.questions.length > 0 ? (
-                        currentSection.questions.map((question: any, qIndex: number) => {
+                    {currentSection?.questions && currentSection.questions.length > 0 ? (() => {
+                        const allSectionQuestions = currentSection.questions;
+
+                        const isQuestionAbnormal = (q: any): boolean => {
+                            const qAns = getAnswer(q.id);
+                            if (q.input_type === 'SELECT') {
+                                const selectedOpt = q.options?.find((o: any) => String(o.id) === String(qAns.value));
+                                return !!(selectedOpt && selectedOpt.is_normal === false);
+                            }
+                            if (q.input_type === 'DROPDOWN') {
+                                const selectedOpt = q.options?.find((o: any) => o.option_text === qAns.value);
+                                return !!(selectedOpt && selectedOpt.is_normal === false);
+                            }
+                            if (q.input_type === 'CHECKBOX') {
+                                const currentVals = Array.isArray(qAns.value) ? qAns.value : [];
+                                return !!q.options?.some(
+                                    (o: any) => currentVals.includes(o.option_text) && o.is_normal === false
+                                );
+                            }
+                            return false;
+                        };
+
+                        const visibleQuestions = allSectionQuestions.filter((q: any, qIdx: number) => {
+                            const rules = Array.isArray(q?.validation_rules) ? q.validation_rules[0] : q?.validation_rules;
+                            if (!rules?.show_on_abnormal) return true;
+
+                            if (rules?.trigger_question_code) {
+                                const target = allSectionQuestions.find((item: any) => item.question_code === rules.trigger_question_code);
+                                return target ? isQuestionAbnormal(target) : false;
+                            }
+
+                            // Default: ikuti pertanyaan pilihan terdekat di atasnya dalam section ini
+                            for (let i = qIdx - 1; i >= 0; i--) {
+                                const prev = allSectionQuestions[i];
+                                const prevRules = Array.isArray(prev?.validation_rules) ? prev.validation_rules[0] : prev?.validation_rules;
+                                if (['SELECT', 'DROPDOWN', 'CHECKBOX'].includes(prev.input_type) && !prevRules?.show_on_abnormal) {
+                                    return isQuestionAbnormal(prev);
+                                }
+                            }
+                            return allSectionQuestions.some((item: any) => isQuestionAbnormal(item));
+                        });
+
+                        return visibleQuestions.map((question: any, qIndex: number) => {
                             const ans = getAnswer(question.id);
 
                             let isAbnormalCard = false;
@@ -1217,115 +1270,11 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                                                 <span className="break-words">{questionErrors[question.id].value}</span>
                                             </div>
                                         )}
-
-                                        {(() => {
-                                            let isAbnormal = false;
-                                            if (question.input_type === 'SELECT') {
-                                                const selectedOpt = question.options?.find((o: any) => String(o.id) === String(ans.value));
-                                                isAbnormal = !!(selectedOpt && selectedOpt.is_normal === false);
-                                            } else if (question.input_type === 'DROPDOWN') {
-                                                const selectedOpt = question.options?.find((o: any) => o.option_text === ans.value);
-                                                isAbnormal = !!(selectedOpt && selectedOpt.is_normal === false);
-                                            } else if (question.input_type === 'CHECKBOX') {
-                                                const currentVals = Array.isArray(ans.value) ? ans.value : [];
-                                                isAbnormal = question.options?.some(
-                                                    (o: any) => currentVals.includes(o.option_text) && o.is_normal === false
-                                                );
-                                            }
-                                            if (!isAbnormal) return null;
-
-                                            return (
-                                                <div className="relative bg-gradient-to-br from-rose-50 to-orange-50 border-2 border-rose-200 rounded-2xl p-3 sm:p-5 space-y-4 shadow-sm overflow-hidden">
-                                                    <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-rose-500 to-orange-500" />
-                                                    <div className="flex items-center gap-2.5">
-                                                        <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-rose-100 border border-rose-200 flex items-center justify-center shrink-0">
-                                                            <svg className="w-4 h-4 sm:w-5 sm:h-5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                                            </svg>
-                                                        </div>
-                                                        <div className="min-w-0">
-                                                            <h3 className="text-xs sm:text-sm font-extrabold text-rose-800 uppercase tracking-wider">
-                                                                Temuan Abnormal
-                                                            </h3>
-                                                            <p className="text-[10px] sm:text-[11px] text-rose-600 font-medium">
-                                                                Wajib isi catatan & foto evidence
-                                                            </p>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="space-y-1.5">
-                                                        <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-                                                            Catatan Kerusakan <span className="text-rose-600">*</span>
-                                                        </label>
-                                                        <textarea
-                                                            rows={2}
-                                                            value={ans.note || ''}
-                                                            onChange={(e) => handleNoteChange(question.id, e.target.value)}
-                                                            placeholder="Jelaskan detail kerusakan yang ditemukan..."
-                                                            className="w-full px-3 py-2.5 text-sm bg-white border border-rose-200 rounded-xl focus:ring-2 focus:ring-rose-500 focus:border-transparent transition-all resize-y"
-                                                        />
-                                                        {questionErrors[question.id]?.note && (
-                                                            <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-xs font-medium flex items-center gap-2">
-                                                                <svg className="w-4 h-4 text-rose-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                                                </svg>
-                                                                <span className="break-words">{questionErrors[question.id].note}</span>
-                                                            </div>
-                                                        )}
-                                                    </div>
-
-                                                    <div className="space-y-2">
-                                                        <div className="flex justify-between items-center gap-2 flex-wrap">
-                                                            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-                                                                Foto Evidence <span className="text-rose-600">*</span>
-                                                            </label>
-                                                            <span className="text-[10px] text-slate-500 font-medium">
-                                                                JPG, PNG · Maks 2MB
-                                                            </span>
-                                                        </div>
-                                                        <label className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 bg-white border-2 border-dashed border-rose-300 hover:border-rose-500 hover:bg-rose-50 rounded-xl cursor-pointer transition-all">
-                                                            <svg className="w-4 h-4 sm:w-5 sm:h-5 text-rose-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                                                            </svg>
-                                                            <span className="text-[11px] sm:text-xs font-bold text-rose-700">Ambil / Pilih Foto</span>
-                                                            <input
-                                                                type="file"
-                                                                accept="image/jpeg,image/png,image/jpg"
-                                                                className="hidden"
-                                                                onChange={(e) => handleAddPhoto(question.id, e)}
-                                                            />
-                                                        </label>
-                                                        {questionErrors[question.id]?.photos && (
-                                                            <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-xs font-medium flex items-center gap-2">
-                                                                <svg className="w-4 h-4 text-rose-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                                                </svg>
-                                                                <span className="break-words">{questionErrors[question.id].photos}</span>
-                                                            </div>
-                                                        )}
-                                                        {ans.photos && typeof ans.photos === 'string' && (
-                                                            <div className="relative group w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden border-2 border-rose-200 bg-white shadow-sm mt-1">
-                                                                <img src={`/storage/${ans.photos}`} alt="Evidence" className="w-full h-full object-cover" />
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => handleRemoveEvidencePhoto(question.id)}
-                                                                    className="absolute top-1 right-1 bg-rose-600 hover:bg-rose-700 text-white rounded-full w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center text-[10px] sm:text-xs shadow-md cursor-pointer transition-colors"
-                                                                    aria-label="Hapus foto"
-                                                                >
-                                                                    ✕
-                                                                </button>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })()}
                                     </div>
                                 </div>
                             );
-                        })
-                    ) : (
+                        });
+                    })() : (
                         <div className="text-center py-16 bg-white border border-dashed border-slate-300 rounded-2xl">
                             <div className="w-14 h-14 rounded-full bg-slate-100 mx-auto flex items-center justify-center mb-3">
                                 <svg className="w-7 h-7 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">

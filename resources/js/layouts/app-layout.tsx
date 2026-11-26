@@ -2,6 +2,8 @@ import React, { useState, useEffect, ReactNode } from 'react';
 import { Link, router, usePage } from '@inertiajs/react';
 import FloatingQrButton from '../components/qr/FloatingQrButton';
 import { AlertCircle, CheckCircle2, X } from 'lucide-react';
+import { useIdleLogout } from '../hooks/use-idle-logout';
+import { useRealtimeSync } from '../hooks/use-realtime-sync';
 
 interface AppLayoutProps {
     children: ReactNode;
@@ -25,9 +27,13 @@ interface PageProps {
 }
 
 export default function AppLayout({ children }: AppLayoutProps) {
-    const pageProps = usePage<PageProps>().props;
+    const page = usePage<PageProps>();
+    const pageProps = page.props;
     const user = pageProps?.auth?.user;
     const { flash } = pageProps;
+
+    useIdleLogout(Boolean(user));
+    useRealtimeSync(page.url);
 
     const [scanAlertMessage, setScanAlertMessage] = useState<string | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);

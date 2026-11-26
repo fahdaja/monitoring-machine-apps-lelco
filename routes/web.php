@@ -103,6 +103,9 @@ Route::middleware(['auth', 'CheckUserStatus','role:ADMIN'])->group(function () {
     Route::put('/schedule-conditions/{id}', [ScheduleController::class, 'updateCondition'])->name('schedule-conditions.update');
     Route::patch('/schedule-conditions/{id}/toggle', [ScheduleController::class, 'toggleConditionStatus'])->name('schedule-conditions.toggle');
     Route::delete('/schedule-conditions/{id}', [ScheduleController::class, 'destroyCondition'])->name('schedule-conditions.destroy');
+
+    // Buat task inspeksi dadakan khusus hari ini (tanggal yang sama)
+    Route::post('/tasks/create-today', [TaskController::class, 'storeToday'])->name('tasks.storeToday');
 });
 
 Route::middleware(['auth', 'CheckUserStatus', 'role:ADMIN'])->group(function () {

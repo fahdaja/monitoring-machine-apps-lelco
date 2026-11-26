@@ -1,5 +1,6 @@
 import { router, usePage } from "@inertiajs/react";
 import { useEffect, useRef, useState } from "react";
+import { useIdleLogout } from "@/hooks/use-idle-logout";
 
 interface FormLayoutProps {
     children: React.ReactNode;
@@ -31,6 +32,8 @@ export default function FormLayout({
     onCloseOverride,
 }: FormLayoutProps) {
     const { task, form, mode, ticket } = usePage<any>().props;
+
+    useIdleLogout(!onCloseOverride);
 
     // Mode TICKET dipakai form transisi kanban (START_REPAIR / CLOSE_TICKET)
     const ticketMode = mode === 'TICKET';

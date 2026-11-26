@@ -210,9 +210,7 @@ class ScheduleController extends Controller
                 ]);
             }
 
-            Artisan::call('tasks:generate');
-
-            return redirect()->back()->with('success', 'Pengaturan jadwal berhasil dibuat dan task telah digenerate!');
+            return redirect()->back()->with('success', 'Pengaturan jadwal berhasil dibuat. Task akan digenerate otomatis pukul 00:00 WIB.');
         });
     }
 
@@ -259,10 +257,6 @@ class ScheduleController extends Controller
                 ]);
             }
 
-            if ($schedule->is_active) {
-                Artisan::call('tasks:generate');
-            }
-
             return redirect()->back()->with('success', 'Pengaturan jadwal berhasil diperbarui!');
         });
     }
@@ -277,10 +271,6 @@ class ScheduleController extends Controller
         $schedule->update([
             'is_active' => $request->boolean('is_active')
         ]);
-
-        if ($schedule->is_active) {
-            Artisan::call('tasks:generate');
-        }
 
         return redirect()->back()->with('success', 'Status jadwal berhasil diperbarui!');
     }

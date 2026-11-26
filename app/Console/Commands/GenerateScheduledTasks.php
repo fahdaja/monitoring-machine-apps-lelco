@@ -17,7 +17,7 @@ class GenerateScheduledTasks extends Command
     * WEEKLY = berulang per hari (minggu depan), MONTHLY = bulan berikutnya.
     * Lihat dueDatesFor().
     */
-   private const DAILY_HORIZON_DAYS = 7;
+   private const DAILY_HORIZON_DAYS = 1;
 
    protected $signature = 'tasks:generate';
    protected $description = 'Generate task otomatis berdasarkan pola jadwal';

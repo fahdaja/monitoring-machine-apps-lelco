@@ -118,6 +118,41 @@ const DAYS_OF_WEEK = [
 
 export default function ScheduleIndex({ schedules = [], forms = [], machines = [], conditions = [] }: Props) {
     const { auth } = usePage<any>().props;
+
+    // State modal "Buat Task Hari Ini" khusus Admin (tanggal terkunci hari ini)
+    const todayIso = new Date().toISOString().split('T')[0];
+    const [showCreateTodayModal, setShowCreateTodayModal] = useState(false);
+    const [todayMachineId, setTodayMachineId] = useState('');
+    const [todayFormId, setTodayFormId] = useState('');
+    const [todayAssignedIds, setTodayAssignedIds] = useState<number[]>([]);
+    const [isCreatingToday, setIsCreatingToday] = useState(false);
+
+    const selectedTodayMachine = machines.find((m) => String(m.id) === todayMachineId);
+
+    const handleCreateTodaySubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!todayMachineId || !todayFormId) return;
+
+        setIsCreatingToday(true);
+        router.post(
+            '/tasks/create-today',
+            {
+                machine_id: Number(todayMachineId),
+                form_id: Number(todayFormId),
+                assigned_user_ids: todayAssignedIds,
+            },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setShowCreateTodayModal(false);
+                    setTodayMachineId('');
+                    setTodayFormId('');
+                    setTodayAssignedIds([]);
+                },
+                onFinish: () => setIsCreatingToday(false),
+            }
+        );
+    };
     const isAdmin = auth?.user?.role?.toUpperCase() === 'ADMIN';
 
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -559,12 +594,21 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
                     </div>
 
                     {isAdmin && (
-                        <button
-                            onClick={openCreateModal}
-                            className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-colors shadow-sm flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap shrink-0"
-                        >
-                            + Buat Pengaturan Baru
-                        </button>
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => setShowCreateTodayModal(true)}
+                                className="w-full sm:w-auto bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-colors shadow-xs flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+                            >
+                                + Buat Task Hari Ini
+                            </button>
+                            <button
+                                onClick={openCreateModal}
+                                className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-colors shadow-sm flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+                            >
+                                + Buat Pengaturan Baru
+                            </button>
+                        </div>
                     )}
                 </div>
 
@@ -1590,6 +1634,132 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
                                             : editingCondition
                                             ? 'Simpan Perubahan'
                                             : 'Buat Kondisi'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                )}
+                {/* MODAL BUAT TASK HARI INI (TANGGAL TERKUNCI HARI INI) */}
+                {showCreateTodayModal && isAdmin && (
+                    <div
+                        role="dialog"
+                        aria-modal="true"
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4"
+                    >
+                        <div className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-200">
+                            <div className="flex items-start justify-between gap-3 mb-4">
+                                <div>
+                                    <span className="inline-block text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 mb-1.5">
+                                        Khusus Hari Ini ({todayIso})
+                                    </span>
+                                    <h3 className="text-base font-extrabold text-slate-900">Buat Task Inspeksi Hari Ini</h3>
+                                    <p className="text-xs text-slate-500 mt-0.5">
+                                        Task langsung berstatus <strong>DUE</strong> dan hanya berlaku pada tanggal hari ini.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowCreateTodayModal(false)}
+                                    className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center text-sm font-bold cursor-pointer shrink-0"
+                                >
+                                    &times;
+                                </button>
+                            </div>
+
+                            <form onSubmit={handleCreateTodaySubmit} className="space-y-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                                        Mesin <span className="text-rose-500">*</span>
+                                    </label>
+                                    <select
+                                        required
+                                        value={todayMachineId}
+                                        onChange={(e) => {
+                                            setTodayMachineId(e.target.value);
+                                            setTodayAssignedIds([]);
+                                        }}
+                                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs text-slate-900 focus:border-slate-900 focus:outline-none"
+                                    >
+                                        <option value="">-- Pilih Mesin --</option>
+                                        {machines.map((m) => (
+                                            <option key={m.id} value={m.id}>
+                                                {m.machine_code} — {m.machine_name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                                        Formulir Inspeksi <span className="text-rose-500">*</span>
+                                    </label>
+                                    <select
+                                        required
+                                        value={todayFormId}
+                                        onChange={(e) => setTodayFormId(e.target.value)}
+                                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs text-slate-900 focus:border-slate-900 focus:outline-none"
+                                    >
+                                        <option value="">-- Pilih Formulir --</option>
+                                        {forms.map((f) => (
+                                            <option key={f.id} value={f.id}>
+                                                {f.form_title} ({f.form_code})
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {selectedTodayMachine && selectedTodayMachine.pics.length > 0 && (
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                                            Target PIC (Opsional)
+                                        </label>
+                                        <p className="text-[11px] text-slate-400 mb-2">
+                                            Kosongkan jika boleh dikerjakan oleh semua PIC mesin ini.
+                                        </p>
+                                        <div className="space-y-1.5 max-h-32 overflow-y-auto border border-slate-200 rounded-xl p-2.5 bg-slate-50">
+                                            {selectedTodayMachine.pics.map((pic) => {
+                                                const checked = todayAssignedIds.includes(pic.id);
+                                                return (
+                                                    <label key={pic.id} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={checked}
+                                                            onChange={(e) => {
+                                                                if (e.target.checked) {
+                                                                    setTodayAssignedIds([...todayAssignedIds, pic.id]);
+                                                                } else {
+                                                                    setTodayAssignedIds(todayAssignedIds.filter((id) => id !== pic.id));
+                                                                }
+                                                            }}
+                                                            className="rounded border-slate-300"
+                                                        />
+                                                        <span className="font-semibold">{pic.full_name}</span>
+                                                        {pic.department && (
+                                                            <span className="text-[10px] text-slate-400">({pic.department})</span>
+                                                        )}
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-2 gap-2.5 pt-2">
+                                    <button
+                                        type="button"
+                                        disabled={isCreatingToday}
+                                        onClick={() => setShowCreateTodayModal(false)}
+                                        className="py-2 px-3 rounded-xl text-xs font-bold border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer disabled:opacity-50"
+                                    >
+                                        Batal
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={isCreatingToday || !todayMachineId || !todayFormId}
+                                        className="py-2 px-3 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white transition-colors cursor-pointer disabled:opacity-50"
+                                    >
+                                        {isCreatingToday ? 'Menyimpan...' : 'Buat Task Hari Ini'}
                                     </button>
                                 </div>
                             </form>

@@ -189,9 +189,85 @@
             'today' => $now->toDateString(),
             'tasks' => $formattedTasks,
         ];
-            return Inertia::render('tasks/index', [
-                'calendarData' => $calendarData
+        $todayCreateOptions = null;
+        if ($currentUser->hasRole(User::ROLE_ADMIN)) {
+            $todayCreateOptions = [
+                'machines' => Machine::with('pics:id,full_name,department')
+                    ->where('active_status', true)
+                    ->orderBy('machine_code')
+                    ->get()
+                    ->map(fn (Machine $m) => [
+                        'id' => $m->id,
+                        'machine_code' => $m->machine_code,
+                        'machine_name' => $m->machine_name,
+                        'location' => $m->location,
+                        'pics' => $m->pics->map(fn (User $u) => [
+                            'id' => $u->id,
+                            'full_name' => $u->full_name,
+                            'department' => $u->department,
+                        ])->values()->all(),
+                    ])->values()->all(),
+                'forms' => Form::where('is_active', true)
+                    ->where('form_type', 'PREVENTIVE')
+                    ->orderBy('form_title')
+                    ->get(['id', 'form_code', 'form_title'])
+                    ->values()
+                    ->all(),
+            ];
+        }
+
+        return Inertia::render('tasks/index', [
+            'calendarData' => $calendarData,
+            'todayCreateOptions' => $todayCreateOptions,
+        ]);
+        }
+
+        /**
+         * Admin membuat task inspeksi khusus untuk HARI INI saja (due_date = end_date = today).
+         */
+        public function storeToday(Request $request)
+        {
+            $validated = $request->validate([
+                'machine_id' => 'required|integer|exists:machines,id',
+                'form_id' => 'required|integer|exists:forms,id',
+                'assigned_user_ids' => 'nullable|array',
+                'assigned_user_ids.*' => 'integer|exists:users,id',
             ]);
+
+            $today = Carbon::today();
+            $machine = Machine::findOrFail($validated['machine_id']);
+
+            $alreadyExists = Task::where('machine_id', $machine->id)
+                ->where('form_id', $validated['form_id'])
+                ->whereDate('due_date', $today)
+                ->exists();
+
+            if ($alreadyExists) {
+                return back()->with('error', "Task untuk mesin {$machine->machine_code} dengan formulir tersebut sudah ada untuk hari ini.");
+            }
+
+            $task = Task::create([
+                'task_code' => 'TSK-' . strtoupper(Str::random(10)),
+                'machine_id' => $machine->id,
+                'form_id' => $validated['form_id'],
+                'due_date' => $today,
+                'end_date' => $today,
+                'status' => 'DUE',
+                'origin_type' => 'SCHEDULE',
+            ]);
+
+            $assignedIds = collect($validated['assigned_user_ids'] ?? [])
+                ->map(fn ($id) => (int) $id)
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
+            if (! empty($assignedIds)) {
+                $task->assignedUsers()->sync($assignedIds);
+            }
+
+            return back()->with('success', "Task inspeksi hari ini ({$task->task_code}) untuk mesin {$machine->machine_code} berhasil dibuat.");
         }
 
 
@@ -374,51 +450,81 @@
         }
     }
 
-            // 3. Validasi kondisional per pertanyaan (Wajibkan note & photos jika abnormal)
+            // 3. Kumpulkan pertanyaan yang memiliki jawaban abnormal (is_normal == false)
+            $abnormalQuestionIds = [];
             foreach ($submittedAnswers as $questionId => $answer) {
                 $question = $allQuestions->firstWhere('id', $questionId);
                 if (!$question) continue;
 
                 $value = $answer['value'] ?? null;
-                $note = trim($answer['note'] ?? '');
-                $photos = trim($answer['photos'] ?? '');
-
-                // Cek jika pertanyaan wajib (is_required) tapi kosong
                 $isEmptyValue = empty($value) && $value !== '0' && $value !== 0;
                 if (is_array($value) && count($value) === 0) {
                     $isEmptyValue = true;
                 }
-                
+                if ($isEmptyValue) continue;
+
+                $valueArray = is_array($value) ? $value : [$value];
+                $matchedAbnormalOptions = $question->options->filter(function($opt) use ($valueArray) {
+                    return (in_array($opt->id, $valueArray) || in_array($opt->option_text, $valueArray))
+                        && ($opt->is_normal === false || $opt->is_normal == 0);
+                });
+
+                if ($matchedAbnormalOptions->isNotEmpty()) {
+                    $abnormalQuestionIds[] = $question->id;
+                }
+            }
+
+            // 4. Validasi required per pertanyaan (termasuk pertanyaan kondisional show_on_abnormal per pemicu)
+            $questionsBySection = $allQuestions->groupBy('form_section_id')->map(fn ($qs) => $qs->sortBy('question_order')->values());
+
+            foreach ($submittedAnswers as $questionId => $answer) {
+                $question = $allQuestions->firstWhere('id', $questionId);
+                if (!$question) continue;
+
+                $value = $answer['value'] ?? null;
+                $isEmptyValue = empty($value) && $value !== '0' && $value !== 0;
+                if (is_array($value) && count($value) === 0) {
+                    $isEmptyValue = true;
+                }
+
+                $rules = is_array($question->validation_rules)
+                    ? ($question->validation_rules[0] ?? $question->validation_rules)
+                    : [];
+                $showOnAbnormal = !empty($rules['show_on_abnormal']);
+
+                $isTriggerAbnormal = true;
+                if ($showOnAbnormal) {
+                    $sectionQs = $questionsBySection->get($question->form_section_id, collect());
+                    $triggerCode = $rules['trigger_question_code'] ?? null;
+
+                    if ($triggerCode) {
+                        $triggerQ = $sectionQs->firstWhere('question_code', $triggerCode);
+                        $isTriggerAbnormal = $triggerQ && in_array($triggerQ->id, $abnormalQuestionIds, true);
+                    } else {
+                        // Default: ikuti pertanyaan pilihan terdekat di atasnya dalam section yang sama
+                        $qIndex = $sectionQs->search(fn ($item) => $item->id === $question->id);
+                        $nearestTrigger = null;
+                        if ($qIndex !== false) {
+                            for ($i = $qIndex - 1; $i >= 0; $i--) {
+                                $prev = $sectionQs[$i];
+                                $prevRules = is_array($prev->validation_rules) ? ($prev->validation_rules[0] ?? $prev->validation_rules) : [];
+                                if (in_array($prev->input_type, ['SELECT', 'DROPDOWN', 'CHECKBOX'], true) && empty($prevRules['show_on_abnormal'])) {
+                                    $nearestTrigger = $prev;
+                                    break;
+                                }
+                            }
+                        }
+                        $isTriggerAbnormal = $nearestTrigger
+                            ? in_array($nearestTrigger->id, $abnormalQuestionIds, true)
+                            : $sectionQs->contains(fn ($item) => in_array($item->id, $abnormalQuestionIds, true));
+                    }
+                }
+
                 $isSectionSkipped = in_array($question->form_section_id, $skippedSectionIds);
-                if ($question->is_required && !$isSectionSkipped && $isEmptyValue) {
+                $isHiddenConditional = $showOnAbnormal && !$isTriggerAbnormal;
+
+                if ($question->is_required && !$isSectionSkipped && !$isHiddenConditional && $isEmptyValue) {
                     $customErrors["answers.{$questionId}.value"] = "Pertanyaan \"{$question->question_text}\" wajib diisi.";
-                    continue;
-                }
-
-                // Cek apakah jawaban ini abnormal berdasarkan is_normal == false
-                $isAbnormal = false;
-
-                if (!$isEmptyValue) {
-                    $valueArray = is_array($value) ? $value : [$value];
-
-                    $matchedAbnormalOptions = $question->options->filter(function($opt) use ($valueArray) {
-                        return (in_array($opt->id, $valueArray) || in_array($opt->option_text, $valueArray))
-                            && ($opt->is_normal === false || $opt->is_normal == 0);
-                    });
-
-                    if ($matchedAbnormalOptions->isNotEmpty()) {
-                        $isAbnormal = true;
-                    }
-                }
-
-                // Jika abnormal, note dan photos wajib diisi!
-                if ($isAbnormal) {
-                    if (empty($note)) {
-                        $customErrors["answers.{$questionId}.note"] = 'Catatan wajib diisi untuk temuan abnormal.';
-                    }
-                    if (empty($photos)) {
-                        $customErrors["answers.{$questionId}.photos"] = 'Foto evidence wajib diisi untuk temuan abnormal.';
-                    }
                 }
             }
 
