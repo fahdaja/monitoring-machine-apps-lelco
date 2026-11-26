@@ -310,7 +310,8 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
             
             const isShowOnAbnormal = (q: any): boolean => {
                 const rules = Array.isArray(q?.validation_rules) ? q.validation_rules[0] : q?.validation_rules;
-                return Boolean(rules?.show_on_abnormal);
+                const flag = rules?.show_on_abnormal;
+                return flag === true || flag === 1 || String(flag).toLowerCase() === 'true' || String(flag) === '1';
             };
 
             const isQuestionAbnormal = (q: any): boolean => {
@@ -833,10 +834,13 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                             return false;
                         };
 
+                        const isShowOnAbnormalFlag = (val: any): boolean =>
+                            val === true || val === 1 || String(val).toLowerCase() === 'true' || String(val) === '1';
+
                         const visibleQuestions = allSectionQuestions.filter((q: any, qIdx: number) => {
                             if (qIdx === 0 || ['SELECT', 'DROPDOWN', 'CHECKBOX'].includes(q.input_type)) return true;
                             const rules = Array.isArray(q?.validation_rules) ? q.validation_rules[0] : q?.validation_rules;
-                            if (!rules?.show_on_abnormal) return true;
+                            if (!isShowOnAbnormalFlag(rules?.show_on_abnormal)) return true;
 
                             if (rules?.trigger_question_code) {
                                 const code = String(rules.trigger_question_code);

@@ -492,7 +492,7 @@
                 $rules = is_array($question->validation_rules)
                     ? ($question->validation_rules[0] ?? $question->validation_rules)
                     : [];
-                $showOnAbnormal = !empty($rules['show_on_abnormal']);
+                $showOnAbnormal = filter_var($rules['show_on_abnormal'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
                 $isTriggerAbnormal = true;
                 if ($showOnAbnormal) {

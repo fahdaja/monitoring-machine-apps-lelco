@@ -501,10 +501,13 @@ const handleNext = () => {
         return false;
     };
 
+    const isTruthyFlag = (val: any): boolean =>
+        val === true || val === 1 || String(val).toLowerCase() === 'true' || String(val) === '1';
+
     const isConditionalQuestionVisible = (q: any, qIdx: number): boolean => {
         if (qIdx === 0 || ['SELECT', 'DROPDOWN', 'CHECKBOX'].includes(q.input_type)) return true;
         const qRules = Array.isArray(q?.validation_rules) ? q.validation_rules[0] : q?.validation_rules;
-        if (!qRules?.show_on_abnormal) return true;
+        if (!isTruthyFlag(qRules?.show_on_abnormal)) return true;
 
         const triggerCode = qRules?.trigger_question_code;
         if (triggerCode) {
