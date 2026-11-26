@@ -30,8 +30,34 @@ class DashboardController extends Controller
         $isOperator = $user && $user->hasRole('OPERATOR');
         $today = Carbon::today();
 
-        // 1. Ringkasan KPI Statistik
+        // 1. Mesin Tanggung Jawab User (PIC via pivot machine_pics — untuk non-monitoring role)
+        $assignedMachines = (! $isMonitoringRole && $user)
+            ? $user->machines()
+                ->where('active_status', true)
+                ->orderBy('machine_code')
+                ->get()
+            : collect();
+
+        $assignedMachineIds = $assignedMachines->pluck('id');
+
+        // 2. Ringkasan KPI Statistik
+        //    - Operator: hanya menghitung mesin yang ditugaskan kepada dirinya (PIC)
+        //    - Role lain: seluruh mesin aktif
         $activeMachines = Machine::where('active_status', true);
+        $breakdownQuery = BreakdownTicket::where('status', '!=', TicketStatus::CLOSED->value);
+        $taskBaseQuery = Task::query();
+
+        if ($isOperator) {
+            if ($assignedMachineIds->isEmpty()) {
+                $activeMachines->whereRaw('1 = 0');
+                $breakdownQuery->whereRaw('1 = 0');
+                $taskBaseQuery->whereRaw('1 = 0');
+            } else {
+                $activeMachines->whereIn('id', $assignedMachineIds);
+                $breakdownQuery->whereIn('machine_id', $assignedMachineIds);
+                $taskBaseQuery->whereIn('machine_id', $assignedMachineIds);
+            }
+        }
 
         $summary = [
             'totalMachines' => (clone $activeMachines)->count(),
@@ -43,30 +69,20 @@ class DashboardController extends Controller
                 MachineStatus::WAITING_VENDOR->value,
                 MachineStatus::WAITING_VERIFICATION->value,
             ])->count(),
-            'openBreakdown' => BreakdownTicket::where('status', '!=', TicketStatus::CLOSED->value)->count(),
-            'inspectionDueToday' => Task::where('status', '!=', 'COMPLETED')
+            'openBreakdown' => $breakdownQuery->count(),
+            'inspectionDueToday' => (clone $taskBaseQuery)->where('status', '!=', 'COMPLETED')
                 ->whereDate('due_date', $today)
                 ->count(),
-            'inspectionOverdue' => Task::where('status', '!=', 'COMPLETED')
+            'inspectionOverdue' => (clone $taskBaseQuery)->where('status', '!=', 'COMPLETED')
                 ->where(function ($q) use ($today) {
                     $q->where('status', 'OVERDUE')
                         ->orWhereDate('due_date', '<', $today);
                 })
                 ->count(),
-            'inspectionCompletedToday' => Task::where('status', 'COMPLETED')
+            'inspectionCompletedToday' => (clone $taskBaseQuery)->where('status', 'COMPLETED')
                 ->whereDate('completed_at', $today)
                 ->count(),
         ];
-
-        // 2. Mesin Tanggung Jawab User (PIC via pivot machine_pics — untuk non-monitoring role)
-        $assignedMachines = (! $isMonitoringRole && $user)
-            ? $user->machines()
-                ->where('active_status', true)
-                ->orderBy('machine_code')
-                ->get()
-            : collect();
-
-        $assignedMachineIds = $assignedMachines->pluck('id');
 
         $myMachines = $assignedMachines->map(function (Machine $machine) {
             $status = $machine->machine_status instanceof MachineStatus

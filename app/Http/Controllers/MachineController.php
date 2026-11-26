@@ -94,7 +94,15 @@ class MachineController extends Controller
      */
     public function index(Request $request): Response
     {
-        $machines = Machine::with('pics')->latest('created_at')->get()->map(function ($m) {
+        $user = $request->user();
+        $query = Machine::with('pics')->latest('created_at');
+
+        // Operator hanya melihat daftar mesin yang ditugaskan kepada dirinya (PIC)
+        if ($user && $user->hasRole('OPERATOR')) {
+            $query->whereHas('pics', fn ($q) => $q->where('users.id', $user->id));
+        }
+
+        $machines = $query->get()->map(function ($m) {
             return [
                 'id'           => $m->id,
                 'machineCode'  => $m->machine_code,
@@ -135,6 +143,11 @@ class MachineController extends Controller
     public function show(Request $request, $id): Response
     {
         $machine = Machine::with('pics')->findOrFail($id);
+        $user = $request->user();
+
+        if ($user && $user->hasRole('OPERATOR') && ! $machine->isPic($user)) {
+            abort(403, 'Anda hanya dapat mengakses profil mesin yang ditugaskan kepada Anda.');
+        }
 
 
         // Ambil riwayat breakdown aktif dan histori penanganan

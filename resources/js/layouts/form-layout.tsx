@@ -1,5 +1,5 @@
-import { Link, usePage } from "@inertiajs/react";
-import { useState } from "react";
+import { router, usePage } from "@inertiajs/react";
+import { useEffect, useRef, useState } from "react";
 
 interface FormLayoutProps {
     children: React.ReactNode;
@@ -45,6 +45,27 @@ export default function FormLayout({
     const closeHref = ticketMode ? '/breakdowns' : '/inspection-calender';
 
     const [showConfirmModal, setShowConfirmModal] = useState(false);
+    const [showExitToast, setShowExitToast] = useState(false);
+    const allowLeaveRef = useRef(false);
+
+    useEffect(() => {
+        if (onCloseOverride) return;
+
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (allowLeaveRef.current || isSubmitting) return;
+            e.preventDefault();
+            e.returnValue = '';
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [onCloseOverride, isSubmitting]);
+
+    const handleConfirmExit = () => {
+        allowLeaveRef.current = true;
+        setShowExitToast(false);
+        router.visit(closeHref);
+    };
 
     const handleActionClick = () => {
         if (isLastSection) {
@@ -91,14 +112,56 @@ export default function FormLayout({
                         Tutup Preview
                     </button>
                 ) : (
-                    <Link
-                        href={closeHref}
-                        className="text-[11px] sm:text-xs font-bold border border-slate-700 hover:bg-slate-800 text-slate-300 px-2.5 sm:px-3 py-2 rounded-xl transition-colors whitespace-nowrap shrink-0"
+                    <button
+                        type="button"
+                        onClick={() => setShowExitToast(true)}
+                        className="text-[11px] sm:text-xs font-bold border border-slate-700 hover:bg-slate-800 text-slate-300 px-2.5 sm:px-3 py-2 rounded-xl transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                     >
                         Tutup
-                    </Link>
+                    </button>
                 )}
             </header>
+
+            {/* ============ TOAST KONFIRMASI KELUAR ============ */}
+            {showExitToast && (
+                <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[70] w-[calc(100%-1.5rem)] max-w-md animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="bg-slate-900 text-white border border-slate-700 rounded-2xl shadow-2xl p-4 flex flex-col gap-3">
+                        <div className="flex items-start gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                                </svg>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <p className="text-xs sm:text-sm font-extrabold text-white leading-snug">
+                                    Keluar dari pengisian form?
+                                </p>
+                                <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
+                                    {ticketMode
+                                        ? 'Perubahan yang belum dikirim tidak akan tersimpan. Yakin ingin keluar?'
+                                        : 'Draft tersimpan otomatis, namun Anda perlu scan QR lagi untuk melanjutkan task ini.'}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                            <button
+                                type="button"
+                                onClick={() => setShowExitToast(false)}
+                                className="py-2 px-3 rounded-xl text-xs font-bold bg-white text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
+                            >
+                                Kembali Lanjutkan
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmExit}
+                                className="py-2 px-3 rounded-xl text-xs font-bold bg-rose-600 text-white hover:bg-rose-700 transition-colors cursor-pointer"
+                            >
+                                Tetap Keluar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* ============ KONTEN ============ */}
             <div
