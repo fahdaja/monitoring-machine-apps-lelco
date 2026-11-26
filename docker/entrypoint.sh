@@ -27,49 +27,59 @@ if [ -z "${APP_KEY}" ]; then
 fi
 
 # 2. Tunggu database ----------------------------------------------------
-# compose sudah pakai depends_on + healthcheck; loop ini tetap dipasang untuk
-# skenario DB di luar container (DB_HOST=host.docker.internal / MySQL kantor).
-DB_PORT="${DB_PORT:-3306}"
+# Mendukung PostgreSQL (pgsql) maupun MySQL (mysql).
+DB_CONN="${DB_CONNECTION:-pgsql}"
+if [ "${DB_CONN}" = "pgsql" ]; then
+    DB_PORT="${DB_PORT:-5432}"
+else
+    DB_PORT="${DB_PORT:-3306}"
+fi
 
-if [ "${DB_CONNECTION}" != "sqlite" ] && [ -z "${DB_HOST}" ]; then
+if [ "${DB_CONN}" != "sqlite" ] && [ -z "${DB_HOST}" ]; then
     log "GAGAL: DB_HOST kosong. Copy .env.docker.example menjadi .env.docker,"
-    log "isi APP_KEY + kredensial MySQL, lalu jalankan ulang."
+    log "isi APP_KEY + kredensial database, lalu jalankan ulang."
     exit 1
 fi
 
 # 2a. Penjaga konsistensi kredensial -------------------------------------
-# Service app (DB_*) dan container db (MYSQL_*) membaca SATU file yang sama,
-# jadi nilai yang berbeda berarti ada baris yang keliru ketik. Semua ini
-# menyebabkan 1044/1045 yang pesannya menyesatkan karena MySQL sudah di-init
-# dengan nilai lama (MYSQL_* hanya dibaca saat data dir kosong). Password tidak
-# pernah dicetak ke log, hanya panjangnya. MYSQL_* kosong = database eksternal,
-# tidak ada yang perlu dicocokkan.
-if [ -n "${MYSQL_USER}" ] || [ -n "${MYSQL_DATABASE}" ] || [ -n "${MYSQL_PASSWORD}" ]; then
+if [ "${DB_CONN}" = "pgsql" ]; then
+    if [ -n "${POSTGRES_USER}" ] && [ "${DB_USERNAME}" != "${POSTGRES_USER}" ]; then
+        log "PERINGATAN: DB_USERNAME='${DB_USERNAME}' tetapi POSTGRES_USER='${POSTGRES_USER}'."
+    fi
+    if [ -n "${POSTGRES_PASSWORD}" ] && [ "${DB_PASSWORD}" != "${POSTGRES_PASSWORD}" ]; then
+        log "PERINGATAN: DB_PASSWORD dan POSTGRES_PASSWORD beda panjang (${#DB_PASSWORD} vs ${#POSTGRES_PASSWORD})."
+    fi
+    if [ -n "${POSTGRES_DB}" ] && [ "${DB_DATABASE}" != "${POSTGRES_DB}" ]; then
+        log "PERINGATAN: DB_DATABASE='${DB_DATABASE}' tetapi POSTGRES_DB='${POSTGRES_DB}'."
+    fi
+elif [ -n "${MYSQL_USER}" ] || [ -n "${MYSQL_DATABASE}" ] || [ -n "${MYSQL_PASSWORD}" ]; then
     if [ "${DB_USERNAME}" != "${MYSQL_USER}" ]; then
         log "PERINGATAN: DB_USERNAME='${DB_USERNAME}' tetapi MYSQL_USER='${MYSQL_USER}'."
-        log "Container db membuat user '${MYSQL_USER}'; app login sebagai '${DB_USERNAME}' -> 1045."
     fi
     if [ "${DB_PASSWORD}" != "${MYSQL_PASSWORD}" ]; then
         log "PERINGATAN: DB_PASSWORD dan MYSQL_PASSWORD beda panjang (${#DB_PASSWORD} vs ${#MYSQL_PASSWORD})."
-        log "App akan selalu ditolak MySQL kecuali password di file disamakan."
     fi
     if [ "${DB_DATABASE}" != "${MYSQL_DATABASE}" ]; then
         log "PERINGATAN: DB_DATABASE='${DB_DATABASE}' tetapi MYSQL_DATABASE='${MYSQL_DATABASE}'."
-        log "Kalau '${DB_DATABASE}' belum pernah dibuat + diberi hak, query pertama app kena 1044."
     fi
 fi
 
-if [ "${DB_CONNECTION}" != "sqlite" ] && [ -n "${DB_HOST}" ]; then
+if [ "${DB_CONN}" != "sqlite" ] && [ -n "${DB_HOST}" ]; then
     attempt=0
     db_error=''
-    # Keluaran PHP sengaja ditangkap (bukan dibuang): pesan aslinya yang
-    # membedakan DNS gagal vs connection refused vs Access denied, dan tanpa
-    # itu semua orang cuma bisa nebak dari baris "GAGAL".
     until db_error=$(php -r '
+        $conn = getenv("DB_CONNECTION") ?: "pgsql";
+        $host = getenv("DB_HOST");
+        $db   = getenv("DB_DATABASE");
         try {
-            new PDO(sprintf("mysql:host=%s;port=%s;charset=utf8mb4",
-                getenv("DB_HOST"), getenv("DB_PORT") ?: "3306"),
-                getenv("DB_USERNAME"), getenv("DB_PASSWORD"));
+            if ($conn === "pgsql") {
+                $port = getenv("DB_PORT") ?: "5432";
+                $dsn  = sprintf("pgsql:host=%s;port=%s;dbname=%s", $host, $port, $db ?: "postgres");
+            } else {
+                $port = getenv("DB_PORT") ?: "3306";
+                $dsn  = sprintf("mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4", $host, $port, $db);
+            }
+            new PDO($dsn, getenv("DB_USERNAME"), getenv("DB_PASSWORD"));
         } catch (Throwable $e) {
             fwrite(STDERR, $e->getMessage());
             exit(1);
@@ -77,64 +87,16 @@ if [ "${DB_CONNECTION}" != "sqlite" ] && [ -n "${DB_HOST}" ]; then
     ' 2>&1); do
         attempt=$((attempt + 1))
         if [ "${attempt}" -ge 40 ]; then
-            log "GAGAL: database tidak bisa dihubungi di ${DB_HOST}:${DB_PORT}."
-            log "Pesan terakhir dari PDO/MySQL: ${db_error}"
-            case "${db_error}" in
-                *getaddrinfo*|*Name\ or\ service\ not\ known*)
-                    log "Artinya: nama 'db' tidak resolve. Container db belum jalan atau"
-                    log "app-nya di-up pakai --no-deps / beda project name."
-                    ;;
-                *Connection\ refused*)
-                    log "Artinya: host ketemu tapi MySQL belum listen (crash / masih init)."
-                    ;;
-                *Access\ denied*)
-                    log "Artinya: kredensial tidak cocok. Kalau volume db-data adalah warisan"
-                    log "deploy lama, MYSQL_USER/MYSQL_PASSWORD di .env.docker DIABAIKAN oleh"
-                    log "image mysql (hanya jalan saat data dir kosong). Cek docker compose logs db."
-                    ;;
-                *Unknown\ database*)
-                    log "Artinya: database belum pernah dibuat (sama: MYSQL_DATABASE cuma saat init)."
-                    ;;
-            esac
+            log "GAGAL: database (${DB_CONN}) tidak bisa dihubungi di ${DB_HOST}:${DB_PORT}."
+            log "Pesan terakhir dari PDO: ${db_error}"
             exit 1
         fi
-        log "Menunggu database ${DB_HOST}:${DB_PORT} ... (${attempt}/40) - ${db_error}"
+        log "Menunggu database ${DB_CONN} ${DB_HOST}:${DB_PORT} ... (${attempt}/40) - ${db_error}"
         sleep 3
     done
-    log "Database terhubung."
-
-    # Tahap dua: server hidup belum berarti database-nya boleh dipakai. Kesalahan
-    # yang paling mahal adalah MYSQL_DATABASE beda nama dari DB_DATABASE: login
-    # sukses, tapi semua query Laravel mati di error 1044 dengan stack trace
-    # panjang yang tidak nunjukin akar masalahnya.
-    if [ -n "${DB_DATABASE}" ]; then
-        sel_error=$(php -r '
-            try {
-                new PDO(sprintf("mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4",
-                    getenv("DB_HOST"), getenv("DB_PORT") ?: "3306", getenv("DB_DATABASE")),
-                    getenv("DB_USERNAME"), getenv("DB_PASSWORD"));
-            } catch (Throwable $e) {
-                fwrite(STDERR, $e->getMessage());
-                exit(1);
-            }
-        ' 2>&1) || {
-            log "GAGAL: login berhasil, tapi database '${DB_DATABASE}' tidak bisa dipakai."
-            log "Detail PDO: ${sel_error}"
-            log "Penyebab paling umum: MYSQL_DATABASE di .env.docker tidak sama dengan"
-            log "DB_DATABASE. Image mysql cuma membuat + memberi hak pada MYSQL_DATABASE,"
-            log "dan itu pun hanya saat data dir volume masih kosong. Urutan benerin:"
-            log "  1. samakan kedua nama di .env.docker"
-            log "  2. docker compose down"
-            log "  3. docker volume rm <project>_db-data   <-- isi database ikut terhapus"
-            log "  4. docker compose up -d"
-            exit 1
-        }
-        log "Database '${DB_DATABASE}' bisa dipakai oleh user '${DB_USERNAME}'."
-    fi
+    log "Database ${DB_CONN} '${DB_DATABASE}' terhubung dan siap dipakai."
 
     # 3. Migrasi ---------------------------------------------------------
-    # --force wajib: tanpa ini artisan minta konfirmasi di mode non-interaktif
-    # begitu ada migration yang terdengar destruktif.
     log "php artisan migrate --force"
     php artisan migrate --force --no-interaction
 fi

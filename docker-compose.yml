@@ -60,72 +60,42 @@ services:
         condition: service_healthy
 
   db:
-    image: mysql:8.4
+    image: postgres:16-alpine
     restart: unless-stopped
-    # Charset/collation server dikunci ke utf8mb4 supaya tabel yang dibuat
-    # migration tidak pernah jatuh ke latin1 (kolom full_name & option_text
-    # berisi teks Indonesia, dan nanti bisa berisi emoji).
-    # utf8mb4 cukup di level server. Sengaja TIDAK ada
-    # --skip-character-set-client-handshake: MySQL 8.4 menolak opsi itu
-    # ("unknown option '--skip-character-set-client-handshake'" -> Aborting),
-    # dan flag itu pun tidak diperlukan karena koneksi Laravel sudah nego
-    # charset/collation sendiri (config/database.php: DB_CHARSET=utf8mb4).
-    # Zona waktu dipakai angka (+07:00), bukan nama (Asia/Jakarta): nama zona
-    # butuh paket tzdata di dalam image mysql, dan kalau tidak ada, mysqld bisa
-    # menolak start. Offset numerik selalu jalan.
-    # Catatan: tidak ada satu pun query app yang pakai NOW()/CURRENT_TIMESTAMP
-    # (semua tanggal dihitung di PHP, config/app.php timezone Asia/jakarta),
-    # jadi jam DB cuma cosmetic — tapi disamakan biar aman untuk query ke depan.
-    # Argumen PERTAMA wajib `mysqld`: docker-entrypoint.sh image mysql cuma
-    # mau inisialisasi data + start server kalau $1 == mysqld. Kalau langsung
-    # diawali bendera (--character-set-server=...), entrypoint meng-exec nama
-    # itu sebagai program -> exit 1 -> container restart terus -> unhealthy ->
-    # app tidak pernah start (depends_on service_healthy).
-    command:
-      - mysqld
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
-      - --default-time-zone=+07:00
-    # MYSQL_* dibaca dari .env.docker yang sama; app container cuma menganggap
-    # variabel ekstra yang tidak dipakai, jadi satu file untuk dua service aman.
-    # Tanpa file itu, image MySQL menolak start ("MYSQL_ROOT_PASSWORD ... must
-    # be set") — itu bukan bug compose, itu perintah untuk langkah 1.
+    environment:
+      TZ: Asia/Jakarta
+      PGTZ: Asia/Jakarta
+    # POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD dibaca dari .env.docker.
     env_file:
       - .env.docker
     ports:
-      # 127.0.0.1 itu penting di server: tanpa prefix ini Docker bind ke
-      # 0.0.0.0 dan MySQL lu kejepit dari internet (cuma nunggu bot scan).
-      # Akses dari laptop pakai SSH tunnel: ssh -L 3307:127.0.0.1:3307 user@server
-      # lalu DBeaver ke localhost:3307. Kalau MySQL lokal di server sudah pakai
-      # 3307, geser lewat DB_HOST_PORT di .env.docker.
-      - "127.0.0.1:${DB_HOST_PORT:-3307}:3306"
+      # Bind 127.0.0.1 agar PostgreSQL tidak terbuka ke jaringan publik.
+      # Akses dari laptop via SSH tunnel: ssh -L 5432:127.0.0.1:5432 user@server
+      - "127.0.0.1:${DB_HOST_PORT:-5432}:5432"
     volumes:
-      - db-data:/var/lib/mysql
+      # Volume terpisah (pg-data) agar tidak bentrok dengan volume MySQL lama.
+      - pg-data:/var/lib/postgresql/data
     healthcheck:
-      # $$ supaya $MYSQL_ROOT_PASSWORD dievaluasi di dalam container, bukan
-      # oleh interpolasi compose.
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 30
-      start_period: 40s
+      start_period: 20s
 
   # Opsional. Nyalakan: docker compose --profile tools up -d
-  # lalu buka http://localhost:8081 (login server: db).
+  # lalu buka http://localhost:8081 (System: PostgreSQL, Server: db).
   db-ui:
-    image: phpmyadmin:5
+    image: adminer:4
     profiles: ["tools"]
     restart: unless-stopped
     ports:
-      - "${PMA_PORT:-8081}:80"
+      - "${ADMINER_PORT:-8081}:8080"
     environment:
-      PMA_HOST: db
-      PMA_ARBITRARY: "1"
-      UPLOAD_LIMIT: 64M
+      ADMINER_DEFAULT_SERVER: db
     depends_on:
       db:
         condition: service_healthy
 
 volumes:
-  db-data:
+  pg-data:
   app-storage:

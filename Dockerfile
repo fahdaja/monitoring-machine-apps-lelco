@@ -17,7 +17,7 @@
 ########################  Stage 0: base PHP  ########################
 FROM php:8.3-fpm AS php-base
 
-# Lib ICU (ext intl) + libzip (ext zip). curl dipakai untuk HEALTHCHECK.
+# Lib ICU (ext intl) + libzip (ext zip) + libpq-dev (ext pdo_pgsql/pgsql). curl dipakai untuk HEALTHCHECK.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
@@ -26,7 +26,8 @@ RUN apt-get update \
         unzip \
         libicu-dev \
         libzip-dev \
-    && docker-php-ext-install -j"$(nproc)" intl zip pdo_mysql \
+        libpq-dev \
+    && docker-php-ext-install -j"$(nproc)" intl zip pdo_pgsql pgsql pdo_mysql \
     && docker-php-ext-enable opcache \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
