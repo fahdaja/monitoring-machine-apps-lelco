@@ -1194,7 +1194,7 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                                                                 ? fileRules.allowed_file_type.join(', ').toUpperCase()
                                                                 : fileRules.allowed_file_type)
                                                             : 'JPG, JPEG, PNG, WEBP';
-                                                        const maxFileSize = fileRules.max_file_size || '10MB';
+                                                        const maxFileSize = 'Auto-kompres < 300 KB';
                                                         const fileValue = ans.value;
                                                         const fileName =
                                                             typeof fileValue === 'string'

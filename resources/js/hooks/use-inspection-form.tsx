@@ -1,5 +1,6 @@
     import axios from "axios";
     import { useEffect, useState } from "react";
+    import { compressEvidenceImage } from "@/lib/compress-image";
 
     export function useInspectionForm(sections: any[], initialAnswers: Record<number, any> = {}, initialSectionIndex: number = 0, taskId?: number) {
 
@@ -289,18 +290,18 @@
                 }
             }
 
-            // 💡 3. Validasi Ukuran File Maksimal di Client-Side (default aman 5MB jika tidak diset)
-            const maxMb = fileRules.max_file_size ? parseInt(fileRules.max_file_size) : 5; 
-            const maxSizeBytes = maxMb * 1024 * 1024; 
-
-            if (file.size > maxSizeBytes) {
-                setQuestionError(questionId, 'value', `Ukuran file terlalu besar. Maksimal ${maxMb}MB.`);
-                e.target.value = '';
-                return;
+            // 💡 3. Auto-kompres foto ke < 300 KB sebelum diunggah ke server
+            let uploadFile = file;
+            if (file.type.startsWith('image/')) {
+                try {
+                    uploadFile = await compressEvidenceImage(file, 290, 1280);
+                } catch (err) {
+                    console.warn('Kompresi gambar dilewati, menggunakan file asli:', err);
+                }
             }
 
             const formData = new FormData();
-            formData.append('file', file);
+            formData.append('file', uploadFile);
             formData.append('question_id', String(questionId)); 
             formData.append('folder', 'question-files');
 

@@ -529,9 +529,8 @@ export default function FormEdit({ form, machines = [], conditionRefs = [] }: Pr
                 if (q.input_type === 'FILE') {
                     const fileRule = q.validation_rules?.[0] || {};
                     const allowedTypes = Array.isArray(fileRule.allowed_file_type) ? fileRule.allowed_file_type : [];
-                    const maxSize = String(fileRule.max_file_size || '').trim();
-                    if (allowedTypes.length === 0 || !maxSize) {
-                        const msg = `Pertanyaan File ke-${qIndex + 1} (Bagian ${sIndex + 1}) wajib memilih minimal 1 format file yang diizinkan dan ukuran maksimal file!`;
+                    if (allowedTypes.length === 0) {
+                        const msg = `Pertanyaan File ke-${qIndex + 1} (Bagian ${sIndex + 1}) wajib memilih minimal 1 format file yang diizinkan!`;
                         setErrorMessage(msg);
                         setToast({ type: 'error', title: 'Pengaturan File Belum Lengkap', description: msg });
                         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1183,15 +1182,10 @@ export default function FormEdit({ form, machines = [], conditionRefs = [] }: Pr
                                                         </div>
                                                     </div>
                                                     <div>
-                                                        <span className="font-semibold text-slate-700 block mb-1">Maksimal Ukuran:</span>
-                                                        <select
-                                                            value={q.validation_rules?.[0]?.max_file_size || ''}
-                                                            onChange={e => handleValidationRuleChange(sIndex, qIndex, 'max_file_size', e.target.value)}
-                                                            className="border border-slate-200 rounded px-2 py-1 bg-white text-xs font-semibold outline-none"
-                                                        >
-                                                            <option value="">-- Pilih Ukuran --</option>
-                                                            {FILE_SIZE_OPTIONS.map(sz => <option key={sz} value={sz}>{sz}</option>)}
-                                                        </select>
+                                                        <span className="font-semibold text-slate-700 block mb-1">Ukuran Gambar:</span>
+                                                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold">
+                                                            Auto-kompres &lt; 300 KB
+                                                        </span>
                                                     </div>
                                                 </div>
                                             </div>
