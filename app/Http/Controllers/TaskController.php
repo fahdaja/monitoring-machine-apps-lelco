@@ -226,14 +226,17 @@
          */
         public function storeToday(Request $request)
         {
+            $today = Carbon::today();
+
             $validated = $request->validate([
                 'machine_id' => 'required|integer|exists:machines,id',
                 'form_id' => 'required|integer|exists:forms,id',
+                'end_date' => ['nullable', 'date', 'after_or_equal:' . $today->toDateString()],
                 'assigned_user_ids' => 'nullable|array',
                 'assigned_user_ids.*' => 'integer|exists:users,id',
             ]);
 
-            $today = Carbon::today();
+            $endDate = ! empty($validated['end_date']) ? Carbon::parse($validated['end_date']) : $today;
             $machine = Machine::findOrFail($validated['machine_id']);
 
             $alreadyExists = Task::where('machine_id', $machine->id)
@@ -250,7 +253,7 @@
                 'machine_id' => $machine->id,
                 'form_id' => $validated['form_id'],
                 'due_date' => $today,
-                'end_date' => $today,
+                'end_date' => $endDate,
                 'status' => 'DUE',
                 'origin_type' => 'SCHEDULE',
             ]);

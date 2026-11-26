@@ -125,6 +125,7 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
     const [todayMachineSearch, setTodayMachineSearch] = useState('');
     const [todayMachineId, setTodayMachineId] = useState('');
     const [todayFormId, setTodayFormId] = useState('');
+    const [todayEndDate, setTodayEndDate] = useState(todayIso);
     const [todayAssignedIds, setTodayAssignedIds] = useState<number[]>([]);
     const [isCreatingToday, setIsCreatingToday] = useState(false);
 
@@ -150,6 +151,7 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
             {
                 machine_id: Number(todayMachineId),
                 form_id: Number(todayFormId),
+                end_date: todayEndDate || todayIso,
                 assigned_user_ids: todayAssignedIds,
             },
             {
@@ -158,6 +160,7 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
                     setShowCreateTodayModal(false);
                     setTodayMachineId('');
                     setTodayFormId('');
+                    setTodayEndDate(todayIso);
                     setTodayAssignedIds([]);
                 },
                 onFinish: () => setIsCreatingToday(false),
@@ -1774,6 +1777,23 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
                                             </option>
                                         ))}
                                     </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                                        Batas Akhir / Tenggat <span className="text-rose-500">*</span>
+                                    </label>
+                                    <input
+                                        type="date"
+                                        required
+                                        min={todayIso}
+                                        value={todayEndDate}
+                                        onChange={(e) => setTodayEndDate(e.target.value)}
+                                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs text-slate-900 focus:border-slate-900 focus:outline-none"
+                                    />
+                                    <p className="text-[10px] text-slate-400 mt-1">
+                                        Task dimulai hari ini ({todayIso}) dan berakhir pada tanggal tenggat yang dipilih.
+                                    </p>
                                 </div>
 
                                 {selectedTodayMachine && selectedTodayMachine.pics.length > 0 && (
