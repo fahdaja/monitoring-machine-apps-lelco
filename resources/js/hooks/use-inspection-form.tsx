@@ -502,6 +502,7 @@ const handleNext = () => {
     };
 
     const isConditionalQuestionVisible = (q: any, qIdx: number): boolean => {
+        if (qIdx === 0 || ['SELECT', 'DROPDOWN', 'CHECKBOX'].includes(q.input_type)) return true;
         const qRules = Array.isArray(q?.validation_rules) ? q.validation_rules[0] : q?.validation_rules;
         if (!qRules?.show_on_abnormal) return true;
 

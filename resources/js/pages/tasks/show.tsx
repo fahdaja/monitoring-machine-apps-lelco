@@ -336,6 +336,7 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
             };
 
             const isConditionalQuestionVisible = (q: any, qIdx: number): boolean => {
+                if (qIdx === 0 || ['SELECT', 'DROPDOWN', 'CHECKBOX'].includes(q.input_type)) return true;
                 if (!isShowOnAbnormal(q)) return true;
                 const rules = Array.isArray(q?.validation_rules) ? q.validation_rules[0] : q?.validation_rules;
                 const triggerCode = rules?.trigger_question_code;
@@ -833,6 +834,7 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                         };
 
                         const visibleQuestions = allSectionQuestions.filter((q: any, qIdx: number) => {
+                            if (qIdx === 0 || ['SELECT', 'DROPDOWN', 'CHECKBOX'].includes(q.input_type)) return true;
                             const rules = Array.isArray(q?.validation_rules) ? q.validation_rules[0] : q?.validation_rules;
                             if (!rules?.show_on_abnormal) return true;
 

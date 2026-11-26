@@ -43,7 +43,6 @@ class L1InjectionMoldingFormSeeder extends Seeder
                 'max_file_size' => null,
                 'expected_answer' => null,
                 'validation_error_message' => null,
-                'show_on_abnormal' => true,
             ]];
 
             $numberRule = [[
