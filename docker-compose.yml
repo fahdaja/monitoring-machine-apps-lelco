@@ -71,7 +71,7 @@ services:
     ports:
       # Bind 127.0.0.1 agar PostgreSQL tidak terbuka ke jaringan publik.
       # Akses dari laptop via SSH tunnel: ssh -L 5432:127.0.0.1:5432 user@server
-      - "127.0.0.1:${DB_HOST_PORT:-5432}:5432"
+      - "127.0.0.1:${DB_HOST_PORT:-5433}:5432"
     volumes:
       # Volume terpisah (pg-data) agar tidak bentrok dengan volume MySQL lama.
       - pg-data:/var/lib/postgresql/data
