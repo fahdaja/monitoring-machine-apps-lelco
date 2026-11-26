@@ -1082,7 +1082,7 @@ export default function FormCreate({ machines = [], defaultType = 'INSPECTION', 
                                                                         className="rounded-lg border border-rose-200 bg-rose-50/70 px-2 py-1 text-[11px] font-semibold text-rose-800 max-w-[220px] truncate focus:outline-none focus:border-rose-400"
                                                                     >
                                                                         <option value="">Pemicu: Otomatis (terdekat di atas)</option>
-                                                                        {sec.questions.slice(0, qIndex).map((prevQ, prevIdx) =>
+                                                                        {section.questions.slice(0, qIndex).map((prevQ, prevIdx) =>
                                                                             ['SELECT', 'DROPDOWN', 'CHECKBOX'].includes(prevQ.input_type) ? (
                                                                                 <option key={prevQ.question_code || `order:${prevIdx + 1}`} value={prevQ.question_code || `order:${prevIdx + 1}`}>
                                                                                     Pemicu: #{prevIdx + 1} {prevQ.question_text || 'Pertanyaan'}

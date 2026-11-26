@@ -207,8 +207,7 @@
                             'department' => $u->department,
                         ])->values()->all(),
                     ])->values()->all(),
-                'forms' => Form::where('is_active', true)
-                    ->where('form_type', 'PREVENTIVE')
+                'forms' => Form::where('form_type', 'INSPECTION')
                     ->orderBy('form_title')
                     ->get(['id', 'form_code', 'form_title'])
                     ->values()
