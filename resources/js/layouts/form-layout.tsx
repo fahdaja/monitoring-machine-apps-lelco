@@ -51,14 +51,28 @@ export default function FormLayout({
     useEffect(() => {
         if (onCloseOverride) return;
 
+        // Tambahkan history guard agar gesture swipe-back / tombol Back HP & tablet
+        // memunculkan toast konfirmasi keluar alih-alih langsung meninggalkan form
+        window.history.pushState({ formExitGuard: true }, '', window.location.href);
+
+        const handlePopState = () => {
+            if (allowLeaveRef.current || isSubmitting) return;
+            window.history.pushState({ formExitGuard: true }, '', window.location.href);
+            setShowExitToast(true);
+        };
+
         const handleBeforeUnload = (e: BeforeUnloadEvent) => {
             if (allowLeaveRef.current || isSubmitting) return;
             e.preventDefault();
             e.returnValue = '';
         };
 
+        window.addEventListener('popstate', handlePopState);
         window.addEventListener('beforeunload', handleBeforeUnload);
-        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+        return () => {
+            window.removeEventListener('popstate', handlePopState);
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+        };
     }, [onCloseOverride, isSubmitting]);
 
     const handleConfirmExit = () => {
@@ -124,7 +138,7 @@ export default function FormLayout({
 
             {/* ============ TOAST KONFIRMASI KELUAR ============ */}
             {showExitToast && (
-                <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[70] w-[calc(100%-1.5rem)] max-w-md animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] lg:top-20 lg:bottom-auto left-1/2 -translate-x-1/2 z-[70] w-[calc(100%-1.5rem)] max-w-md animate-in fade-in slide-in-from-bottom-2 lg:slide-in-from-top-2 duration-200">
                     <div className="bg-slate-900 text-white border border-slate-700 rounded-2xl shadow-2xl p-4 flex flex-col gap-3">
                         <div className="flex items-start gap-3">
                             <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
