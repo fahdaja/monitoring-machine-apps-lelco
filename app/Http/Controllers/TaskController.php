@@ -498,7 +498,12 @@
                     $triggerCode = $rules['trigger_question_code'] ?? null;
 
                     if ($triggerCode) {
-                        $triggerQ = $sectionQs->firstWhere('question_code', $triggerCode);
+                        if (is_string($triggerCode) && str_starts_with($triggerCode, 'order:')) {
+                            $idx = (int) substr($triggerCode, 6) - 1;
+                            $triggerQ = $sectionQs->get($idx);
+                        } else {
+                            $triggerQ = $sectionQs->firstWhere('question_code', $triggerCode);
+                        }
                         $isTriggerAbnormal = $triggerQ && in_array($triggerQ->id, $abnormalQuestionIds, true);
                     } else {
                         // Default: ikuti pertanyaan pilihan terdekat di atasnya dalam section yang sama

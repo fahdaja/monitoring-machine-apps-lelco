@@ -1058,7 +1058,7 @@ export default function FormCreate({ machines = [], defaultType = 'INSPECTION', 
                                                                 Wajib Diisi
                                                             </label>
                                                         )}
-                                                        {qIndex > 0 && (
+                                                        {qIndex > 0 && !['SELECT', 'DROPDOWN', 'CHECKBOX'].includes(q.input_type) && (
                                                             <div className="flex items-center gap-2 flex-wrap">
                                                                 <label className="flex items-center gap-1.5 font-semibold text-rose-700 cursor-pointer" title="Pertanyaan ini hanya tampil jika pertanyaan pemicu dijawab Abnormal (is_normal = false)">
                                                                     <input
@@ -1084,7 +1084,7 @@ export default function FormCreate({ machines = [], defaultType = 'INSPECTION', 
                                                                         <option value="">Pemicu: Otomatis (terdekat di atas)</option>
                                                                         {sec.questions.slice(0, qIndex).map((prevQ, prevIdx) =>
                                                                             ['SELECT', 'DROPDOWN', 'CHECKBOX'].includes(prevQ.input_type) ? (
-                                                                                <option key={prevQ.question_code || prevIdx} value={prevQ.question_code || ''}>
+                                                                                <option key={prevQ.question_code || `order:${prevIdx + 1}`} value={prevQ.question_code || `order:${prevIdx + 1}`}>
                                                                                     Pemicu: #{prevIdx + 1} {prevQ.question_text || 'Pertanyaan'}
                                                                                 </option>
                                                                             ) : null

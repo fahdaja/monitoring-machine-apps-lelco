@@ -342,7 +342,9 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                 const allQs = sec.questions || [];
 
                 if (triggerCode) {
-                    const target = allQs.find((item: any) => item.question_code === triggerCode);
+                    const target = String(triggerCode).startsWith('order:')
+                        ? allQs[Number(String(triggerCode).slice(6)) - 1]
+                        : allQs.find((item: any) => item.question_code === triggerCode);
                     return target ? isQuestionAbnormal(target) : false;
                 }
 
@@ -835,7 +837,10 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                             if (!rules?.show_on_abnormal) return true;
 
                             if (rules?.trigger_question_code) {
-                                const target = allSectionQuestions.find((item: any) => item.question_code === rules.trigger_question_code);
+                                const code = String(rules.trigger_question_code);
+                                const target = code.startsWith('order:')
+                                    ? allSectionQuestions[Number(code.slice(6)) - 1]
+                                    : allSectionQuestions.find((item: any) => item.question_code === code);
                                 return target ? isQuestionAbnormal(target) : false;
                             }
 
