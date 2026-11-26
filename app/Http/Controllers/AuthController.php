@@ -67,7 +67,8 @@ class AuthController extends Controller
                 'last_login_at' => now(),
             ]);
 
-            return redirect()->intended('/dashboard');
+            return redirect()->intended('/dashboard')
+                ->withCookie(cookie('portal_hint', 'inspection', 60 * 24 * 7));
         }
 
         return back()->withErrors([
@@ -108,7 +109,8 @@ class AuthController extends Controller
                 'last_login_at' => now(),
             ]);
 
-            return redirect()->intended('/dashboard');
+            return redirect()->intended('/dashboard')
+                ->withCookie(cookie('portal_hint', 'admin', 60 * 24 * 7));
         }
 
         return back()->withErrors([

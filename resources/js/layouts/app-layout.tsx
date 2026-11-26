@@ -32,7 +32,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
     const user = pageProps?.auth?.user;
     const { flash } = pageProps;
 
-    useIdleLogout(Boolean(user));
+    useIdleLogout(Boolean(user), user?.role);
     useRealtimeSync(page.url);
 
     const [scanAlertMessage, setScanAlertMessage] = useState<string | null>(null);

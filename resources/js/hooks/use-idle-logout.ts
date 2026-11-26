@@ -9,8 +9,9 @@ const STORAGE_KEY = 'lelco_last_activity_at';
  * Auto-logout global jika user tidak melakukan aktivitas selama 10 menit.
  * Menggunakan localStorage agar aktivitas di tab lain tetap tersinkronisasi.
  */
-export function useIdleLogout(enabled = true) {
+export function useIdleLogout(enabled = true, userRole?: string) {
     const loggingOutRef = useRef(false);
+    const loginPath = String(userRole || '').toUpperCase() === 'ADMIN' ? '/admin/login' : '/login';
 
     useEffect(() => {
         if (!enabled || typeof window === 'undefined') return;
@@ -65,12 +66,12 @@ export function useIdleLogout(enabled = true) {
                     {},
                     {
                         onError: () => {
-                            window.location.href = '/login';
+                            window.location.href = loginPath;
                         },
                         onFinish: () => {
-                            // Pastikan pindah ke /login walau sesi sudah kedaluwarsa di server
-                            if (window.location.pathname !== '/login') {
-                                window.location.href = '/login';
+                            // Pastikan pindah ke halaman login sesuai portal walau sesi sudah kedaluwarsa di server
+                            if (window.location.pathname !== loginPath) {
+                                window.location.href = loginPath;
                             }
                         },
                     }
@@ -82,5 +83,5 @@ export function useIdleLogout(enabled = true) {
             window.clearInterval(interval);
             events.forEach((evt) => window.removeEventListener(evt, markActivity));
         };
-    }, [enabled]);
+    }, [enabled, loginPath]);
 }

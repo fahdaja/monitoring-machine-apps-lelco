@@ -18,7 +18,8 @@ return Application::configure(basePath: dirname(__DIR__))
     )
 
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
+        $middleware->encryptCookies(except: ['appearance', 'sidebar_state', 'portal_hint']);
+        $middleware->redirectGuestsTo(fn (Request $request) => $request->cookie('portal_hint') === 'admin' ? '/admin/login' : '/login');
         $middleware->trustProxies(at: '*');
         $middleware->web(append: [
             HandleAppearance::class,

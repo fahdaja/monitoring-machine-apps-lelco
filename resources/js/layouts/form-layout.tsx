@@ -31,9 +31,9 @@ export default function FormLayout({
     titleOverride,
     onCloseOverride,
 }: FormLayoutProps) {
-    const { task, form, mode, ticket } = usePage<any>().props;
+    const { auth, task, form, mode, ticket } = usePage<any>().props;
 
-    useIdleLogout(!onCloseOverride);
+    useIdleLogout(!onCloseOverride, auth?.user?.role);
 
     // Mode TICKET dipakai form transisi kanban (START_REPAIR / CLOSE_TICKET)
     const ticketMode = mode === 'TICKET';
