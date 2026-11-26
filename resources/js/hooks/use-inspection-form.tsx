@@ -479,8 +479,60 @@ const handleNext = () => {
     // ✅ Helper 2: Normalisasi teks untuk Dropdown & Checkbox
     const normalizeText = (text: any) => String(text || '').trim().toLowerCase();
 
-    // 1. Validasi per pertanyaan secara menyeluruh
-    for (const q of questions) {
+    const isQuestionAbnormal = (q: any): boolean => {
+        const qAns = getAnswer(q.id);
+        if (q.input_type === 'SELECT') {
+            const selectedOpt = q.options?.find((o: any) => String(o.id) === String(qAns.value));
+            return !!(selectedOpt && isOptionNormalFalse(selectedOpt));
+        }
+        if (q.input_type === 'DROPDOWN') {
+            const selectedOpt = q.options?.find((o: any) =>
+                normalizeText(o.option_text) === normalizeText(qAns.value)
+            );
+            return !!(selectedOpt && isOptionNormalFalse(selectedOpt));
+        }
+        if (q.input_type === 'CHECKBOX') {
+            const currentVals = Array.isArray(qAns.value) ? qAns.value : [];
+            return !!q.options?.some((o: any) =>
+                currentVals.some((v: any) => normalizeText(v) === normalizeText(o.option_text)) &&
+                isOptionNormalFalse(o)
+            );
+        }
+        return false;
+    };
+
+    const isConditionalQuestionVisible = (q: any, qIdx: number): boolean => {
+        const qRules = Array.isArray(q?.validation_rules) ? q.validation_rules[0] : q?.validation_rules;
+        if (!qRules?.show_on_abnormal) return true;
+
+        const triggerCode = qRules?.trigger_question_code;
+        if (triggerCode) {
+            const code = String(triggerCode);
+            const target = code.startsWith('order:')
+                ? questions[Number(code.slice(6)) - 1]
+                : questions.find((item: any) => item.question_code === code);
+            return target ? isQuestionAbnormal(target) : false;
+        }
+
+        for (let i = qIdx - 1; i >= 0; i--) {
+            const prev = questions[i];
+            const prevRules = Array.isArray(prev?.validation_rules) ? prev.validation_rules[0] : prev?.validation_rules;
+            if (['SELECT', 'DROPDOWN', 'CHECKBOX'].includes(prev.input_type) && !prevRules?.show_on_abnormal) {
+                return isQuestionAbnormal(prev);
+            }
+        }
+        return questions.some((item: any) => isQuestionAbnormal(item));
+    };
+
+    // 1. Validasi per pertanyaan yang tampil di section ini
+    for (let qIdx = 0; qIdx < questions.length; qIdx++) {
+        const q = questions[qIdx];
+
+        // Abaikan pertanyaan kondisional yang sedang tersembunyi
+        if (!isConditionalQuestionVisible(q, qIdx)) {
+            continue;
+        }
+
         const ans = getAnswer(q.id);
 
         // Cek apakah nilai kosong
@@ -491,62 +543,13 @@ const handleNext = () => {
             (typeof ans.value === 'string' && ans.value.trim() === '') ||
             (Array.isArray(ans.value) && ans.value.length === 0);
 
-        // Validasi Wajib Diisi
+        // Validasi Wajib Diisi (hanya jika is_required = true)
         if (q.is_required && isValueEmpty) {
             newErrors[q.id] = {
                 ...(newErrors[q.id] || {}),
                 value: 'Pertanyaan ini wajib diisi'
             };
             hasError = true;
-        }
-
-        // ==========================================
-        // 2. VALIDASI ABNORMAL (FOTO & CATATAN)
-        // ==========================================
-        let isAbnormal = false;
-
-        if (q.input_type === 'SELECT') {
-            const selectedOpt = q.options?.find((o: any) => String(o.id) === String(ans.value));
-            isAbnormal = !!(selectedOpt && isOptionNormalFalse(selectedOpt));
-        } 
-        else if (q.input_type === 'DROPDOWN') {
-            const selectedOpt = q.options?.find((o: any) => 
-                normalizeText(o.option_text) === normalizeText(ans.value)
-            );
-            isAbnormal = !!(selectedOpt && isOptionNormalFalse(selectedOpt));
-        } 
-        else if (q.input_type === 'CHECKBOX') {
-            const currentVals = Array.isArray(ans.value) ? ans.value : [];
-            isAbnormal = !!q.options?.some((o: any) =>
-                currentVals.some((v: any) => normalizeText(v) === normalizeText(o.option_text)) && 
-                isOptionNormalFalse(o)
-            );
-        }
-
-        if (isAbnormal) {
-            // Cek Catatan
-            if (!ans.note || String(ans.note).trim() === '') {
-                newErrors[q.id] = {
-                    ...(newErrors[q.id] || {}),
-                    note: 'Catatan wajib diisi untuk temuan abnormal.'
-                };
-                hasError = true;
-            }
-
-            // Cek Foto
-            const isPhotoEmpty = 
-                !ans.photos || 
-                ans.photos === '' || 
-                (typeof ans.photos === 'string' && ans.photos.trim() === '') || 
-                (Array.isArray(ans.photos) && ans.photos.length === 0);
-
-            if (isPhotoEmpty) {
-                newErrors[q.id] = {
-                    ...(newErrors[q.id] || {}),
-                    photos: 'Foto evidence wajib diisi untuk temuan abnormal.'
-                };
-                hasError = true;
-            }
         }
 
         // ==========================================
