@@ -569,17 +569,28 @@ const handleNext = () => {
             }
         }
 
-        if ((q.input_type === 'TEXT' || q.input_type === 'TEXTAREA') && ans.value) {
-            const userAns = String(ans.value).trim().toLowerCase();
+        if ((q.input_type === 'TEXT' || q.input_type === 'TEXTAREA') && ans.value && rules.expected_answer) {
+            const rawVal = String(ans.value).trim();
+            const userAns = rawVal.toLowerCase();
             const expectedAns = String(rules.expected_answer).trim().toLowerCase();
-            if (rules.expected_answer && userAns !== expectedAns) {
+
+            let isInvalid = false;
+            if (expectedAns === 'angka') {
+                isInvalid = !/^-?\d+(?:[.,]\d+)?$/.test(rawVal);
+            } else if (expectedAns === 'huruf') {
+                isInvalid = !/^[a-zA-Z\s.,'"()\-/:;!?]+$/.test(rawVal);
+            } else {
+                isInvalid = userAns !== expectedAns;
+            }
+
+            if (isInvalid) {
                 const customErrorMsg = rules.validation_error_message && rules.validation_error_message.trim() !== ''
-                    ? rules.validation_error_message 
-                    : `Jawaban untuk "${q.question_text}" tidak sesuai dengan standar.`;
-                
+                    ? rules.validation_error_message
+                    : `Jawaban untuk "${q.question_text}" tidak sesuai dengan standar (${expectedAns}).`;
+
                 newErrors[q.id] = {
                     ...(newErrors[q.id] || {}),
-                    value: customErrorMsg 
+                    value: customErrorMsg,
                 };
                 hasError = true;
             }
