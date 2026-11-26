@@ -1680,34 +1680,81 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
 
                             <form onSubmit={handleCreateTodaySubmit} className="space-y-4">
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                                        Mesin <span className="text-rose-500">*</span>
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={todayMachineSearch}
-                                        onChange={(e) => setTodayMachineSearch(e.target.value)}
-                                        placeholder="Cari kode / nama / lokasi mesin..."
-                                        className="w-full rounded-xl border border-slate-300 px-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none mb-1.5"
-                                    />
-                                    <select
-                                        required
-                                        value={todayMachineId}
-                                        onChange={(e) => {
-                                            setTodayMachineId(e.target.value);
-                                            setTodayAssignedIds([]);
-                                        }}
-                                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs text-slate-900 focus:border-slate-900 focus:outline-none"
-                                    >
-                                        <option value="">
-                                            -- Pilih Mesin ({filteredTodayMachines.length} ditemukan) --
-                                        </option>
-                                        {filteredTodayMachines.map((m) => (
-                                            <option key={m.id} value={m.id}>
-                                                {m.machine_code} — {m.machine_name}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <div className="flex items-center justify-between mb-1.5">
+                                        <label className="text-xs font-bold text-slate-700">
+                                            Mesin <span className="text-rose-500">*</span>
+                                        </label>
+                                        <span className="text-[10px] font-semibold text-slate-400">
+                                            {filteredTodayMachines.length} mesin
+                                        </span>
+                                    </div>
+                                    <div className="border border-slate-200 rounded-xl overflow-hidden bg-white focus-within:border-slate-900 transition-colors">
+                                        <div className="relative border-b border-slate-100 bg-slate-50/70">
+                                            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                            <input
+                                                type="text"
+                                                value={todayMachineSearch}
+                                                onChange={(e) => setTodayMachineSearch(e.target.value)}
+                                                placeholder="Cari kode / nama / lokasi mesin..."
+                                                className="w-full bg-transparent pl-8 pr-7 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none"
+                                            />
+                                            {todayMachineSearch && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setTodayMachineSearch('')}
+                                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 text-xs font-bold cursor-pointer"
+                                                    aria-label="Hapus pencarian"
+                                                >
+                                                    &times;
+                                                </button>
+                                            )}
+                                        </div>
+                                        <div className="max-h-40 overflow-y-auto divide-y divide-slate-100">
+                                            {filteredTodayMachines.length > 0 ? (
+                                                filteredTodayMachines.map((m) => {
+                                                    const isSelected = String(m.id) === todayMachineId;
+                                                    return (
+                                                        <button
+                                                            key={m.id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setTodayMachineId(String(m.id));
+                                                                setTodayAssignedIds([]);
+                                                            }}
+                                                            className={`w-full text-left px-3 py-2 flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                                                                isSelected
+                                                                    ? 'bg-emerald-50 text-emerald-950'
+                                                                    : 'hover:bg-slate-50 text-slate-800'
+                                                            }`}
+                                                        >
+                                                            <div className="min-w-0">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <span className="font-mono text-[11px] font-extrabold text-slate-900 shrink-0">
+                                                                        {m.machine_code}
+                                                                    </span>
+                                                                    <span className="text-xs font-semibold truncate">
+                                                                        {m.machine_name}
+                                                                    </span>
+                                                                </div>
+                                                                {m.location && (
+                                                                    <span className="block text-[10px] text-slate-400 truncate mt-0.5">
+                                                                        {m.location}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            {isSelected && (
+                                                                <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                                                            )}
+                                                        </button>
+                                                    );
+                                                })
+                                            ) : (
+                                                <div className="py-5 text-center text-xs text-slate-400">
+                                                    Mesin tidak ditemukan.
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
 
                                 <div>
