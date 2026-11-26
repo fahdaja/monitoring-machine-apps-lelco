@@ -1202,41 +1202,50 @@ export default function FormEdit({ form, machines = [], conditionRefs = [] }: Pr
                                                     />
                                                     Wajib Diisi
                                                 </label>
-                                                {qIndex > 0 && !['SELECT', 'DROPDOWN', 'CHECKBOX'].includes(q.input_type) && (
-                                                    <div className="flex items-center gap-2 flex-wrap">
-                                                        <label className="flex items-center gap-1.5 font-semibold text-rose-700 cursor-pointer" title="Pertanyaan ini hanya tampil jika pertanyaan pemicu dijawab Abnormal (is_normal = false)">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={Boolean((q.validation_rules?.[0] as any)?.show_on_abnormal)}
-                                                                onChange={e => {
-                                                                    const currentRule = (q.validation_rules?.[0] || {}) as any;
-                                                                    handleQuestionChange(sIndex, qIndex, 'validation_rules', [{ ...currentRule, show_on_abnormal: e.target.checked }]);
-                                                                }}
-                                                                className="rounded border-rose-300 text-rose-600 w-3.5 h-3.5"
-                                                            />
-                                                            Hanya Muncul Jika Abnormal
-                                                        </label>
-                                                        {Boolean((q.validation_rules?.[0] as any)?.show_on_abnormal) && (
-                                                            <select
-                                                                value={(q.validation_rules?.[0] as any)?.trigger_question_code || ''}
-                                                                onChange={e => {
-                                                                    const currentRule = (q.validation_rules?.[0] || {}) as any;
-                                                                    handleQuestionChange(sIndex, qIndex, 'validation_rules', [{ ...currentRule, trigger_question_code: e.target.value || null }]);
-                                                                }}
-                                                                className="rounded-lg border border-rose-200 bg-rose-50/70 px-2 py-1 text-[11px] font-semibold text-rose-800 max-w-[220px] truncate focus:outline-none focus:border-rose-400"
-                                                            >
-                                                                <option value="">Pemicu: Otomatis (terdekat di atas)</option>
-                                                                {section.questions.slice(0, qIndex).map((prevQ, prevIdx) =>
-                                                                    ['SELECT', 'DROPDOWN', 'CHECKBOX'].includes(prevQ.input_type) ? (
-                                                                        <option key={prevQ.question_code || `order:${prevIdx + 1}`} value={prevQ.question_code || `order:${prevIdx + 1}`}>
-                                                                            Pemicu: #{prevIdx + 1} {prevQ.question_text || 'Pertanyaan'}
-                                                                        </option>
-                                                                    ) : null
-                                                                )}
-                                                            </select>
-                                                        )}
-                                                    </div>
-                                                )}
+                                                {qIndex > 0 && !['SELECT', 'DROPDOWN', 'CHECKBOX'].includes(q.input_type) && (() => {
+                                                    const rawFlag = (q.validation_rules?.[0] as any)?.show_on_abnormal;
+                                                    const isAbnormalOnly =
+                                                        rawFlag === true ||
+                                                        rawFlag === 1 ||
+                                                        String(rawFlag).toLowerCase() === 'true' ||
+                                                        String(rawFlag) === '1';
+
+                                                    return (
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <label className="flex items-center gap-1.5 font-semibold text-rose-700 cursor-pointer" title="Pertanyaan ini hanya tampil jika pertanyaan pemicu dijawab Abnormal (is_normal = false)">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={isAbnormalOnly}
+                                                                    onChange={e => {
+                                                                        const currentRule = (q.validation_rules?.[0] || {}) as any;
+                                                                        handleQuestionChange(sIndex, qIndex, 'validation_rules', [{ ...currentRule, show_on_abnormal: e.target.checked }]);
+                                                                    }}
+                                                                    className="rounded border-rose-300 text-rose-600 w-3.5 h-3.5"
+                                                                />
+                                                                Hanya Muncul Jika Abnormal
+                                                            </label>
+                                                            {isAbnormalOnly && (
+                                                                <select
+                                                                    value={(q.validation_rules?.[0] as any)?.trigger_question_code || ''}
+                                                                    onChange={e => {
+                                                                        const currentRule = (q.validation_rules?.[0] || {}) as any;
+                                                                        handleQuestionChange(sIndex, qIndex, 'validation_rules', [{ ...currentRule, trigger_question_code: e.target.value || null }]);
+                                                                    }}
+                                                                    className="rounded-lg border border-rose-200 bg-rose-50/70 px-2 py-1 text-[11px] font-semibold text-rose-800 max-w-[220px] truncate focus:outline-none focus:border-rose-400"
+                                                                >
+                                                                    <option value="">Pemicu: Otomatis (terdekat di atas)</option>
+                                                                    {section.questions.slice(0, qIndex).map((prevQ, prevIdx) =>
+                                                                        ['SELECT', 'DROPDOWN', 'CHECKBOX'].includes(prevQ.input_type) ? (
+                                                                            <option key={prevQ.question_code || `order:${prevIdx + 1}`} value={prevQ.question_code || `order:${prevIdx + 1}`}>
+                                                                                Pemicu: #{prevIdx + 1} {prevQ.question_text || 'Pertanyaan'}
+                                                                            </option>
+                                                                        ) : null
+                                                                    )}
+                                                                </select>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })()}
                                             </div>
                                             <div className="flex items-center gap-1 shrink-0">
                                                 <button type="button" onClick={() => duplicateQuestion(sIndex, qIndex)} className="p-1.5 text-slate-400 hover:text-emerald-600 cursor-pointer" title="Duplikat"><Copy className="w-3.5 h-3.5" /></button>
