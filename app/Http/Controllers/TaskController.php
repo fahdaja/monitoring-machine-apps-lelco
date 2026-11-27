@@ -591,18 +591,56 @@
                 if (!empty($abnormalItems)) {
         $machineId = $task->machine_id ?? $form->machine_id;
 
-        // Kumpulkan detail data abnormal dalam bentuk struktur array rapi
+        // Kumpulkan detail data abnormal beserta pertanyaan Notes (TEXT/TEXTAREA) & Evidence (FILE) pasangannya
         $problemsList = [];
         foreach ($enterpriseSnapshot['sections'] as $sec) {
-            foreach ($sec['questions'] as $q) {
+            $secQuestions = array_values($sec['questions'] ?? []);
+            $secTotal = count($secQuestions);
+
+            foreach ($secQuestions as $qIdx => $q) {
                 $abnormalOptions = collect($q['selected_options'])->where('is_normal', false);
 
                 if ($abnormalOptions->isNotEmpty()) {
+                    $note = trim((string) ($q['answer_detail']['note'] ?? ''));
+                    $rawPhotos = $q['answer_detail']['photos'] ?? null;
+                    $photoEvidence = is_array($rawPhotos) ? ($rawPhotos[0] ?? null) : ($rawPhotos ?: null);
+
+                    // Ambil jawaban dari pertanyaan lanjutan (Catatan & Upload Foto Evidence) di bawahnya dalam section yang sama
+                    $followUpNotes = [];
+                    for ($j = $qIdx + 1; $j < $secTotal; $j++) {
+                        $nextQ = $secQuestions[$j];
+                        $nextType = strtoupper((string) ($nextQ['input_type'] ?? ''));
+
+                        // Berhenti jika bertemu pertanyaan pilihan berikutnya (pemicu baru)
+                        if (in_array($nextType, ['SELECT', 'DROPDOWN', 'CHECKBOX'], true)) {
+                            break;
+                        }
+
+                        $nextVal = $nextQ['answer_detail']['value'] ?? null;
+                        if (is_array($nextVal)) {
+                            $nextVal = implode(', ', array_filter($nextVal, fn ($v) => $v !== null && $v !== ''));
+                        }
+                        $nextValStr = trim((string) $nextVal);
+                        if ($nextValStr === '') {
+                            continue;
+                        }
+
+                        if (in_array($nextType, ['TEXT', 'TEXTAREA'], true)) {
+                            $followUpNotes[] = $nextValStr;
+                        } elseif ($nextType === 'FILE' && empty($photoEvidence)) {
+                            $photoEvidence = $nextValStr;
+                        }
+                    }
+
+                    if ($note === '' && !empty($followUpNotes)) {
+                        $note = implode(' • ', $followUpNotes);
+                    }
+
                     $problemsList[] = [
                         'question_text'    => $q['question_text'],
                         'abnormal_options' => $abnormalOptions->pluck('option_text')->join(', '),
-                        'note'             => $q['answer_detail']['note'] ?? null,
-                        'photo_evidence'   => is_array($q['answer_detail']['photos']) ? ($q['answer_detail']['photos'][0] ?? null) : ($q['answer_detail']['photos'] ?? null),
+                        'note'             => $note !== '' ? $note : null,
+                        'photo_evidence'   => $photoEvidence,
                     ];
                 }
             }
