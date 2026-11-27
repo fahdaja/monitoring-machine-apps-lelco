@@ -85,7 +85,7 @@ class GenerateScheduledTasks extends Command
                        'task_code'        => 'TSK-' . strtoupper(uniqid()),
                        'due_date'         => $dueDateStr,
                        'end_date'         => $targetDate->copy()->addDays($windowDays)->format('Y-m-d'),
-                       'status'           => 'UPCOMING',
+                       'status'           => $targetDate->isToday() ? 'DUE' : 'UPCOMING',
                        'assigned_user_id' => null,
                    ]);
 
@@ -114,8 +114,9 @@ class GenerateScheduledTasks extends Command
         $dates = [];
 
         if ($schedule->frequency_type === 'DAILY') {
-            for ($i = 1; $i <= self::DAILY_HORIZON_DAYS; $i++) {
-                $dates[] = Carbon::now()->addDays($i);
+            // Saat cron jalan pukul 00:00, langsung buat task untuk HARI INI (bukan besok)
+            for ($i = 0; $i < self::DAILY_HORIZON_DAYS; $i++) {
+                $dates[] = Carbon::today()->addDays($i);
             }
         } elseif ($schedule->frequency_type === 'WEEKLY') {
             // WEEKLY = berulang mingguan berdasarkan hari (ISO 1=Senin..7=Minggu).

@@ -9,7 +9,7 @@ const CORE_REALTIME_PREFIXES = [
     '/schedules',
 ];
 
-const POLL_INTERVAL_MS = 12 * 1000; // 12 detik
+const POLL_INTERVAL_MS = 5 * 1000; // 5 detik
 
 /**
  * Sinkronisasi data otomatis (real-time) untuk halaman core aplikasi tanpa perlu refresh manual.
