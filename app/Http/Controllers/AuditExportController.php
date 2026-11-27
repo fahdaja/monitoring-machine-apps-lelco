@@ -103,6 +103,7 @@ class AuditExportController extends Controller
                 $task->origin_type === 'CONDITION' ? 'LANJUTAN' : 'RUTIN',
                 $task->due_date ? $task->due_date->format('Y-m-d') : '-',
                 $task->end_date ? $task->end_date->format('Y-m-d') : '-',
+                $task->started_at ? $task->started_at->format('Y-m-d H:i') : '-',
                 $task->completed_at ? $task->completed_at->format('Y-m-d H:i') : '-',
                 $task->status ?? '-',
                 $task->is_late ? (int) ($task->late_days ?? 0) : 0,
@@ -161,6 +162,7 @@ class AuditExportController extends Controller
 
                     $isAbnormal = ! empty($q['is_abnormal']);
                     $note = $q['answer_detail']['note'] ?? '-';
+                    $answeredAt = $q['answer_detail']['answered_at'] ?? '-';
 
                     $detailRows[] = [
                         $sub->submitted_at ? Carbon::parse($sub->submitted_at)->format('Y-m-d H:i') : '-',
@@ -174,6 +176,7 @@ class AuditExportController extends Controller
                         $q['question_text'] ?? '-',
                         $q['standard_text'] ?? '-',
                         (string) $ansVal !== '' ? (string) $ansVal : '-',
+                        $answeredAt !== '' ? (string) $answeredAt : '-',
                         $isAbnormal ? 'ABNORMAL' : 'NORMAL',
                         $note !== '' ? (string) $note : '-',
                     ];
@@ -200,7 +203,7 @@ class AuditExportController extends Controller
             ->addSheet('Ringkasan KPI', ['Metrik Audit', 'Nilai'], $summaryRows)
             ->addSheet('Inspeksi PM', [
                 'Kode Task', 'Kode Mesin', 'Nama Mesin', 'Lokasi', 'Form Inspeksi',
-                'Tipe', 'Tanggal Jadwal', 'Batas Akhir', 'Tanggal Selesai',
+                'Tipe', 'Tanggal Jadwal', 'Batas Akhir', 'Waktu Mulai', 'Tanggal Selesai',
                 'Status', 'Terlambat (Hari)', 'Petugas', 'Kode Submission',
             ], $pmRows)
             ->addSheet('Breakdown & Downtime', [
@@ -212,7 +215,7 @@ class AuditExportController extends Controller
             ->addSheet('Detail Jawaban', [
                 'Tanggal Submit', 'Kode Submission', 'Kode Task', 'Kode Mesin', 'Nama Mesin',
                 'Form Inspeksi', 'Petugas', 'Section', 'Pertanyaan', 'Standar Baku',
-                'Jawaban Aktual', 'Status Temuan', 'Catatan Temuan',
+                'Jawaban Aktual', 'Waktu Dijawab', 'Status Temuan', 'Catatan Temuan',
             ], $detailRows)
             ->addSheet('Master Mesin & PIC', [
                 'Kode Mesin', 'Nama Mesin', 'Lokasi', 'Departemen', 'Status Mesin', 'PIC Mesin',

@@ -40,6 +40,7 @@
                 $rawValue = $userAns['value'] ?? null;
                 $note = $userAns['note'] ?? '';
                 $photos = $userAns['photos'] ?? [];
+                $answeredAt = $userAns['answered_at'] ?? null;
 
                 // Mapping selected options (mendukung single value atau array untuk checkbox/dropdown)
                 $selectedOptionsSnapshot = [];
@@ -71,9 +72,10 @@
                     'is_required'      => (bool) $question->is_required,
                     'question_order'   => $question->question_order,
                     'answer_detail'    => [
-                        'value'  => $rawValue,
-                        'note'   => $note,
-                        'photos' => $photos,
+                        'value'       => $rawValue,
+                        'note'        => $note,
+                        'photos'      => $photos,
+                        'answered_at' => $answeredAt,
                     ],
                     'selected_options' => $selectedOptionsSnapshot,
                 ];
@@ -335,6 +337,10 @@
             $updateData['status'] = 'IN_PROGRESS';
         }
 
+        if (is_null($task->started_at)) {
+            $updateData['started_at'] = now();
+        }
+
         if (!empty($updateData)) {
             $task->update($updateData);
         }
@@ -361,9 +367,10 @@
 
                             if ($qId) {
                                 $initialAnswersMap[$qId] = [
-                                    'value'  => $answerDetail['value'] ?? '',
-                                    'note'   => $answerDetail['note'] ?? '',
-                                    'photos' => $answerDetail['photos'] ?? '', // String tunggal foto evidence
+                                    'value'       => $answerDetail['value'] ?? '',
+                                    'note'        => $answerDetail['note'] ?? '',
+                                    'photos'      => $answerDetail['photos'] ?? '', // String tunggal foto evidence
+                                    'answered_at' => $answerDetail['answered_at'] ?? null,
                                 ];
                             }
                         }

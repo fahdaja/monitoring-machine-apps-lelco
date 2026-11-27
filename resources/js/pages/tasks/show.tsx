@@ -116,7 +116,8 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                 payload[Number(id)] = {
                     value: val,
                     note: note,
-                    photos: photo
+                    photos: photo,
+                    answered_at: ans.answered_at || null,
                 };
             }
         });

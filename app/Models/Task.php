@@ -32,6 +32,7 @@ class Task extends Model {
         'source_submission_id',
         'due_date',
         'end_date',
+        'started_at',
         'completed_at',
         'is_late',
         'late_days',
@@ -40,6 +41,7 @@ class Task extends Model {
     protected $casts = [
         'due_date'    => 'date',
         'end_date'    => 'date',
+        'started_at'  => 'datetime',
         'completed_at' => 'datetime',
         'is_late'     => 'boolean',
         'late_days'   => 'integer',

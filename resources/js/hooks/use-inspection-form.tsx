@@ -217,14 +217,22 @@
             return answers[questionId] || { value: '', photos: [], note: '' };
         };
 
+        const formatCurrentTimestamp = () => {
+            const d = new Date();
+            const pad = (n: number) => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        };
+
         const handleValueChoice = (questionId: number, val: any, selectedOption?: any) => {
+            const answeredAt = formatCurrentTimestamp();
             setAnswers(prev => {
                 const currentAnswer = getAnswer(questionId);
                 return {
                     ...prev,
                     [questionId]: {
                         ...currentAnswer,
-                        value: val
+                        value: val,
+                        answered_at: answeredAt,
                     }
                 };
             });
@@ -318,7 +326,8 @@
                         ...prev,
                         [questionId]: { 
                             ...currentAns, 
-                            value: filePath 
+                            value: filePath,
+                            answered_at: formatCurrentTimestamp(),
                         }
                     };
                 });
