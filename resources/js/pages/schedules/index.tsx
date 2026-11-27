@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Head, useForm, usePage, router } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
+import HolidayCalendarPanel, { type HolidayItem } from '@/components/holiday-calendar-panel';
 import {
     Calendar,
     Clock,
@@ -61,6 +62,8 @@ interface ScheduleItem {
     frequency_type: string;
     selected_days?: string[];
     selected_dates?: number[];
+    working_days?: number[];
+    skip_holidays?: boolean;
     due_window_days?: number;
     is_active: boolean;
 }
@@ -104,7 +107,23 @@ interface Props {
     forms: FormItem[];
     machines: MachineOption[];
     conditions: ConditionItem[];
+    holidays?: HolidayItem[];
 }
+
+const ALL_WORKING_DAYS = ['1', '2', '3', '4', '5', '6', '7'];
+const WORKING_DAY_PRESETS = [
+    { label: 'Setiap hari', days: ALL_WORKING_DAYS },
+    { label: 'Senin–Jumat', days: ['1', '2', '3', '4', '5'] },
+    { label: 'Senin–Sabtu', days: ['1', '2', '3', '4', '5', '6'] },
+];
+const DAY_SHORT: Record<string, string> = { '1': 'Sen', '2': 'Sel', '3': 'Rab', '4': 'Kam', '5': 'Jum', '6': 'Sab', '7': 'Min' };
+
+const workingDaysLabel = (days?: (number | string)[]): string => {
+    const list = (days ?? []).map(String).sort();
+    if (list.length === 0 || list.length === 7) return 'Setiap hari';
+    const preset = WORKING_DAY_PRESETS.find((p) => p.days.join() === list.join());
+    return preset ? preset.label : list.map((d) => DAY_SHORT[d]).join(', ');
+};
 
 const DAYS_OF_WEEK = [
     { value: '1', label: 'Senin' },
@@ -116,7 +135,7 @@ const DAYS_OF_WEEK = [
     { value: '7', label: 'Minggu' },
 ];
 
-export default function ScheduleIndex({ schedules = [], forms = [], machines = [], conditions = [] }: Props) {
+export default function ScheduleIndex({ schedules = [], forms = [], machines = [], conditions = [], holidays = [] }: Props) {
     const { auth } = usePage<any>().props;
 
     // State modal "Buat Task Hari Ini" khusus Admin (tanggal terkunci hari ini)
@@ -180,6 +199,9 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
         due_window_days: '1',
         selected_days: [] as string[],
         selected_dates: [] as number[],
+        // Kalender kerja: hari kerja (khusus DAILY) & lewati hari libur
+        working_days: ALL_WORKING_DAYS as string[],
+        skip_holidays: true,
         machine_assignments: [] as { machine_id: number; assigned_user_ids: number[] }[],
     });
 
@@ -259,6 +281,8 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
             due_window_days: '1',
             selected_days: [],
             selected_dates: [],
+            working_days: ALL_WORKING_DAYS,
+            skip_holidays: true,
             machine_assignments: [],
         });
         setMachineSearch('');
@@ -273,6 +297,8 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
             due_window_days: sch.due_window_days ? sch.due_window_days.toString() : '1',
             selected_days: sch.selected_days || [],
             selected_dates: sch.selected_dates || [],
+            working_days: sch.working_days && sch.working_days.length > 0 ? sch.working_days.map(String) : ALL_WORKING_DAYS,
+            skip_holidays: sch.skip_holidays ?? true,
             machine_assignments: (sch.machines || []).map((m) => ({
                 machine_id: m.machine_id,
                 assigned_user_ids: m.assigned_user_ids || [],
@@ -726,6 +752,15 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
                                                     {sch.due_window_days} Hari
                                                 </span>
                                             </div>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-slate-500 flex items-center gap-1">
+                                                    <Calendar className="w-3 h-3" /> Kalender kerja:
+                                                </span>
+                                                <span className="font-medium text-slate-800 text-right">
+                                                    {sch.frequency_type === 'DAILY' ? workingDaysLabel(sch.working_days) : 'Sesuai pola'}
+                                                    {sch.skip_holidays ? ' · skip libur' : ''}
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
 
@@ -768,6 +803,9 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
                         </div>
                     )}
                 </div>
+
+                {/* KALENDER KERJA: DAFTAR HARI LIBUR */}
+                {isAdmin && <HolidayCalendarPanel holidays={holidays} />}
 
                 {/* SECTION KONDISI TRIGGER */}
                 <div className="pt-2">
@@ -1217,6 +1255,79 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
                                     </div>
                                 </div>
 
+                                {/* KALENDER KERJA: hari kerja (DAILY) */}
+                                {data.frequency_type === 'DAILY' && (
+                                    <div className="space-y-1.5 pt-1">
+                                        <label className="block text-xs font-bold text-slate-700">
+                                            Hari Kerja (task hanya dibuat pada hari ini) *
+                                        </label>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {WORKING_DAY_PRESETS.map((p) => {
+                                                const active = [...data.working_days].sort().join() === p.days.join();
+                                                return (
+                                                    <button
+                                                        key={p.label}
+                                                        type="button"
+                                                        onClick={() => setData('working_days', p.days)}
+                                                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border cursor-pointer ${
+                                                            active
+                                                                ? 'bg-slate-900 text-white border-slate-900'
+                                                                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                                        }`}
+                                                    >
+                                                        {p.label}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {DAYS_OF_WEEK.map((d) => {
+                                                const active = data.working_days.includes(d.value);
+                                                return (
+                                                    <button
+                                                        key={d.value}
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setData(
+                                                                'working_days',
+                                                                active
+                                                                    ? data.working_days.filter((x) => x !== d.value)
+                                                                    : [...data.working_days, d.value].sort(),
+                                                            )
+                                                        }
+                                                        className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold border transition-colors cursor-pointer ${
+                                                            active
+                                                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                                                                : 'bg-slate-50 text-slate-400 border-slate-200 line-through hover:bg-slate-100'
+                                                        }`}
+                                                    >
+                                                        {d.label}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        {data.working_days.length === 0 && (
+                                            <span className="text-[10px] text-rose-600 font-semibold block">
+                                                Pilih minimal satu hari kerja.
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* KALENDER KERJA: hari libur (semua frekuensi) */}
+                                <label className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={data.skip_holidays}
+                                        onChange={(e) => setData('skip_holidays', e.target.checked)}
+                                        className="mt-0.5 rounded w-3.5 h-3.5 text-emerald-600"
+                                    />
+                                    <span className="text-[11px] text-slate-600">
+                                        <strong className="text-slate-800">Lewati hari libur</strong> — tidak membuat task pada tanggal yang
+                                        terdaftar di Kalender Kerja (libur nasional, cuti bersama, hari besar).
+                                    </span>
+                                </label>
+
                                 {data.frequency_type === 'WEEKLY' && (
                                     <div className="space-y-1.5 pt-1">
                                         <label className="block text-xs font-bold text-slate-700">
@@ -1330,7 +1441,7 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
                                     </button>
                                     <button
                                         type="submit"
-                                        disabled={processing}
+                                        disabled={processing || (data.frequency_type === 'DAILY' && data.working_days.length === 0)}
                                         className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer disabled:opacity-50 shadow-sm"
                                     >
                                         {processing

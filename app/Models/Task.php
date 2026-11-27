@@ -109,6 +109,13 @@ class Task extends Model {
         return $this->belongsTo(TaskSubmission::class, 'source_submission_id', 'id');
     }
 
+    /** Submission final (SUBMITTED) task ini — sumber halaman record jawaban. */
+    public function finalSubmission()
+    {
+        return $this->hasOne(TaskSubmission::class, 'task_id', 'id')
+            ->ofMany(['id' => 'max'], fn ($q) => $q->where('status', 'SUBMITTED'));
+    }
+
     public function isFollowUp(): bool
     {
         return $this->origin_type === 'CONDITION';

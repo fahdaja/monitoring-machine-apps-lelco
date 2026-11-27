@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import BreakdownReportForm, { ReportForm } from '@/components/breakdown-report-form';
+import { RecordList, type RecordRow } from '@/components/record-list';
 import { triggerQrScanner } from '@/components/qr/FloatingQrButton';
 import { QRCodeCanvas } from 'qrcode.react';
 import { QrCode, Printer, Download, Copy, Check, Eye, X, Edit3, Trash2, AlertTriangle } from 'lucide-react';
@@ -70,19 +71,22 @@ export interface PreventiveInspectionItem {
     notes?: string;
     canWork?: boolean;
     isAssignedToOther?: boolean;
+    record_url?: string | null;
 }
 
 interface MachineShowProps {
     machine?: MachineDetail;
     breakdowns?: BreakdownHistoryItem[];
     tasks?: PreventiveInspectionItem[];
+    records?: RecordRow[];
     reportForm?: ReportForm | null;
 }
 
-export default function MachineShow({ 
-    machine, 
-    breakdowns = [], 
+export default function MachineShow({
+    machine,
+    breakdowns = [],
     tasks = [],
+    records = [],
     reportForm = null
 }: MachineShowProps) {
     const [showReportModal, setShowReportModal] = useState(false);
@@ -722,6 +726,16 @@ export default function MachineShow({
                                                     ) : null}
                                                 </div>
                                             )}
+
+                                            {item.status === 'COMPLETED' && item.record_url && (
+                                                <Link
+                                                    href={item.record_url}
+                                                    className="shrink-0 inline-flex w-full sm:w-auto items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 whitespace-nowrap"
+                                                >
+                                                    <Eye className="w-3.5 h-3.5 shrink-0" />
+                                                    Lihat Hasil
+                                                </Link>
+                                            )}
                                         </div>
 
                                         {(item.findings || item.notes) && (
@@ -745,6 +759,25 @@ export default function MachineShow({
                     </div>
                 </div>
 
+            </div>
+
+            {/* Riwayat seluruh form yang pernah diisi untuk mesin ini */}
+            <div className="mt-6 space-y-3">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h3 className="text-base font-bold text-slate-900">Riwayat Pengisian Form</h3>
+                        <p className="text-xs text-slate-500">
+                            Semua form yang sudah selesai diisi untuk mesin ini: inspeksi, laporan breakdown, repair, dan closing.
+                        </p>
+                    </div>
+                    <Link
+                        href={`/records?machine_id=${currentMachine.id}`}
+                        className="text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors whitespace-nowrap"
+                    >
+                        Lihat semua →
+                    </Link>
+                </div>
+                <RecordList rows={records} hideMachine emptyText="Belum ada form yang selesai diisi untuk mesin ini." />
             </div>
 
             {/* Modal Form Report Breakdown — pertanyaan diambil dari form MANUAL_REPORT */}

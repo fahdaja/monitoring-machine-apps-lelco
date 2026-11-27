@@ -12,6 +12,7 @@ use App\Http\Controllers\TaskController;
 use App\Http\Controllers\KanbanController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\AuditExportController;
+use App\Http\Controllers\SubmissionRecordController;
 use App\Http\Middleware\CheckUserStatus;
 
 // Root redirect langsung ke halaman login
@@ -36,6 +37,11 @@ Route::middleware(['auth', 'CheckUserStatus', 'role:ADMIN,OPERATOR,MAINTENANCE,S
     Route::post('/inspection-form/remove-file', [TaskController::class, 'removeFile']);
     Route::post('/inspection-form/{id}/draft', [TaskController::class, 'saveDraft']);
     Route::post('/inspection-form/{id}/submit', [TaskController::class, 'submit']);
+
+    // Record hasil pengisian form (read-only)
+    Route::get('/records', [SubmissionRecordController::class, 'index'])->name('records.index');
+    Route::get('/records/ticket/{id}', [SubmissionRecordController::class, 'showTicket'])->whereNumber('id')->name('records.ticket');
+    Route::get('/records/{id}', [SubmissionRecordController::class, 'show'])->whereNumber('id')->name('records.show');
 
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/machines', [MachineController::class, 'index'])->name('machines.index');
@@ -101,6 +107,10 @@ Route::middleware(['auth', 'CheckUserStatus','role:ADMIN'])->group(function () {
     Route::put('/schedules/{id}', [ScheduleController::class, 'update'])->name('schedules.update');
     Route::patch('/schedules/{id}/toggle', [ScheduleController::class, 'toggleStatus'])->name('schedules.toggle');
     Route::delete('/schedules/{id}', [ScheduleController::class, 'destroy'])->name('schedules.destroy');
+
+    // Kalender kerja: daftar hari libur
+    Route::post('/holidays', [ScheduleController::class, 'storeHoliday'])->name('holidays.store');
+    Route::delete('/holidays/{id}', [ScheduleController::class, 'destroyHoliday'])->name('holidays.destroy');
 
     // Kondisi trigger antar form inspeksi
     Route::get('/schedules/condition-questions/{formId}', [ScheduleController::class, 'conditionQuestions'])->name('schedules.conditionQuestions');

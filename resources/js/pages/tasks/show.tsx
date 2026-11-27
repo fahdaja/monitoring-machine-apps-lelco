@@ -5,6 +5,7 @@ import { useInspectionForm } from "@/hooks/use-inspection-form";
 import { router, usePage } from "@inertiajs/react";
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
+import { hiddenQuestionIds } from "@/lib/question-visibility";
 
 type AnswerDetail = {
     value: any;
@@ -296,74 +297,18 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
         const clientErrors: Record<number, Record<string, string>> = {};
         let firstErrorSectionIndex = -1;
 
-        const isOptionNormalFalse = (opt: any) => {
-            if (opt.is_normal === undefined || opt.is_normal === null) return false;
-            const val = String(opt.is_normal).toLowerCase();
-            return opt.is_normal === false || opt.is_normal === 0 || val === '0' || val === 'false';
-        };
-        const normalizeText = (text: any) => String(text || '').trim().toLowerCase();
-
         sections.forEach((sec, sIndex) => {
             let sectionHasError = false;
             
             // Cek apakah section ini masuk dalam daftar skipped
             const isSkipped = skippedSectionIds.includes(String(sec.id));
             
-            const isShowOnAbnormal = (q: any): boolean => {
-                const rules = Array.isArray(q?.validation_rules) ? q.validation_rules[0] : q?.validation_rules;
-                const flag = rules?.show_on_abnormal;
-                return flag === true || flag === 1 || String(flag).toLowerCase() === 'true' || String(flag) === '1';
-            };
+            // Pertanyaan dependen yang pemicunya tidak NG sedang tersembunyi → abaikan validasinya
+            const hiddenIds = hiddenQuestionIds(sec.questions || [], getAnswer);
 
-            const isQuestionAbnormal = (q: any): boolean => {
-                const qAns = getAnswer(q.id);
-                if (q.input_type === 'SELECT') {
-                    const selectedOpt = q.options?.find((o: any) => String(o.id) === String(qAns.value));
-                    return !!(selectedOpt && isOptionNormalFalse(selectedOpt));
-                }
-                if (q.input_type === 'DROPDOWN') {
-                    const selectedOpt = q.options?.find((o: any) =>
-                        normalizeText(o.option_text) === normalizeText(qAns.value)
-                    );
-                    return !!(selectedOpt && isOptionNormalFalse(selectedOpt));
-                }
-                if (q.input_type === 'CHECKBOX') {
-                    const currentVals = Array.isArray(qAns.value) ? qAns.value : [];
-                    return !!q.options?.some((o: any) =>
-                        currentVals.some((v: any) => normalizeText(v) === normalizeText(o.option_text)) &&
-                        isOptionNormalFalse(o)
-                    );
-                }
-                return false;
-            };
-
-            const isConditionalQuestionVisible = (q: any, qIdx: number): boolean => {
-                if (qIdx === 0 || ['SELECT', 'DROPDOWN', 'CHECKBOX'].includes(q.input_type)) return true;
-                if (!isShowOnAbnormal(q)) return true;
-                const rules = Array.isArray(q?.validation_rules) ? q.validation_rules[0] : q?.validation_rules;
-                const triggerCode = rules?.trigger_question_code;
-                const allQs = sec.questions || [];
-
-                if (triggerCode) {
-                    const target = String(triggerCode).startsWith('order:')
-                        ? allQs[Number(String(triggerCode).slice(6)) - 1]
-                        : allQs.find((item: any) => item.question_code === triggerCode);
-                    return target ? isQuestionAbnormal(target) : false;
-                }
-
-                // Default: ikuti pertanyaan pilihan (SELECT/DROPDOWN/CHECKBOX) terdekat di atasnya
-                for (let i = qIdx - 1; i >= 0; i--) {
-                    const prev = allQs[i];
-                    if (['SELECT', 'DROPDOWN', 'CHECKBOX'].includes(prev.input_type) && !isShowOnAbnormal(prev)) {
-                        return isQuestionAbnormal(prev);
-                    }
-                }
-                return allQs.some((item: any) => isQuestionAbnormal(item));
-            };
-
-            sec.questions?.forEach((q: any, qIdx: number) => {
+            sec.questions?.forEach((q: any) => {
                 const ans = getAnswer(q.id);
-                const isHiddenConditional = !isConditionalQuestionVisible(q, qIdx);
+                const isHiddenConditional = hiddenIds.has(String(q.id));
 
                 const isValueEmpty =
                     ans.value === undefined ||
@@ -816,51 +761,9 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                     {currentSection?.questions && currentSection.questions.length > 0 ? (() => {
                         const allSectionQuestions = currentSection.questions;
 
-                        const isQuestionAbnormal = (q: any): boolean => {
-                            const qAns = getAnswer(q.id);
-                            if (q.input_type === 'SELECT') {
-                                const selectedOpt = q.options?.find((o: any) => String(o.id) === String(qAns.value));
-                                return !!(selectedOpt && selectedOpt.is_normal === false);
-                            }
-                            if (q.input_type === 'DROPDOWN') {
-                                const selectedOpt = q.options?.find((o: any) => o.option_text === qAns.value);
-                                return !!(selectedOpt && selectedOpt.is_normal === false);
-                            }
-                            if (q.input_type === 'CHECKBOX') {
-                                const currentVals = Array.isArray(qAns.value) ? qAns.value : [];
-                                return !!q.options?.some(
-                                    (o: any) => currentVals.includes(o.option_text) && o.is_normal === false
-                                );
-                            }
-                            return false;
-                        };
-
-                        const isShowOnAbnormalFlag = (val: any): boolean =>
-                            val === true || val === 1 || String(val).toLowerCase() === 'true' || String(val) === '1';
-
-                        const visibleQuestions = allSectionQuestions.filter((q: any, qIdx: number) => {
-                            if (qIdx === 0 || ['SELECT', 'DROPDOWN', 'CHECKBOX'].includes(q.input_type)) return true;
-                            const rules = Array.isArray(q?.validation_rules) ? q.validation_rules[0] : q?.validation_rules;
-                            if (!isShowOnAbnormalFlag(rules?.show_on_abnormal)) return true;
-
-                            if (rules?.trigger_question_code) {
-                                const code = String(rules.trigger_question_code);
-                                const target = code.startsWith('order:')
-                                    ? allSectionQuestions[Number(code.slice(6)) - 1]
-                                    : allSectionQuestions.find((item: any) => item.question_code === code);
-                                return target ? isQuestionAbnormal(target) : false;
-                            }
-
-                            // Default: ikuti pertanyaan pilihan terdekat di atasnya dalam section ini
-                            for (let i = qIdx - 1; i >= 0; i--) {
-                                const prev = allSectionQuestions[i];
-                                const prevRules = Array.isArray(prev?.validation_rules) ? prev.validation_rules[0] : prev?.validation_rules;
-                                if (['SELECT', 'DROPDOWN', 'CHECKBOX'].includes(prev.input_type) && !prevRules?.show_on_abnormal) {
-                                    return isQuestionAbnormal(prev);
-                                }
-                            }
-                            return allSectionQuestions.some((item: any) => isQuestionAbnormal(item));
-                        });
+                        // Pertanyaan dependen (muncul jika pemicunya NG) — bisa berantai
+                        const hiddenIds = hiddenQuestionIds(allSectionQuestions, getAnswer);
+                        const visibleQuestions = allSectionQuestions.filter((q: any) => !hiddenIds.has(String(q.id)));
 
                         return visibleQuestions.map((question: any, qIndex: number) => {
                             const ans = getAnswer(question.id);

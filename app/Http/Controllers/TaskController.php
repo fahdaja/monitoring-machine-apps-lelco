@@ -115,10 +115,81 @@
                 . '. Hubungi admin jika penanggung jawab mesin perlu diubah.';
         }
 
+        /**
+         * ID pertanyaan dependen yang sedang tersembunyi.
+         *
+         * Pertanyaan bertanda validation_rules[0].show_on_abnormal hanya tampil jika pertanyaan
+         * pemicunya (pilihan SELECT/DROPDOWN/CHECKBOX) dijawab opsi abnormal (NG) DAN pemicu itu
+         * sendiri sedang tampil — jadi dependensi bisa berantai (Q1 NG → Q2 tampil, Q2 NG → Q3 tampil).
+         * Pemicu: trigger_question_code ("order:N" atau question_code), default pertanyaan pilihan
+         * terdekat di atasnya dalam section yang sama.
+         * Logika ini dicerminkan di resources/js/lib/question-visibility.ts.
+         *
+         * @param  iterable  $sections  FormSection dengan relasi questions
+         * @param  array<int, int>  $abnormalQuestionIds
+         * @return array<int, int>
+         */
+        private function hiddenConditionalQuestionIds($sections, array $abnormalQuestionIds): array
+        {
+            $abnormal = array_map('intval', $abnormalQuestionIds);
+            $hidden = [];
+
+            $typeOf = function ($q): string {
+                $t = $q->input_type;
+                return strtoupper($t instanceof \BackedEnum ? (string) $t->value : (string) $t);
+            };
+            $rulesOf = function ($q): array {
+                $r = $q->validation_rules;
+                if (! is_array($r)) {
+                    return [];
+                }
+                return is_array($r[0] ?? null) ? $r[0] : $r;
+            };
+            $isConditional = fn ($q) => filter_var($rulesOf($q)['show_on_abnormal'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $isChoice = fn ($q) => in_array($typeOf($q), ['SELECT', 'DROPDOWN', 'CHECKBOX'], true);
+            $isVisibleNg = fn ($q) => in_array((int) $q->id, $abnormal, true) && ! in_array((int) $q->id, $hidden, true);
+
+            foreach ($sections as $section) {
+                $qs = collect($section->questions)->sortBy('question_order')->values();
+
+                foreach ($qs as $idx => $q) {
+                    if ($idx === 0 || ! $isConditional($q)) {
+                        continue;
+                    }
+
+                    $triggerCode = $rulesOf($q)['trigger_question_code'] ?? null;
+                    $trigger = null;
+
+                    if ($triggerCode) {
+                        $trigger = (is_string($triggerCode) && str_starts_with($triggerCode, 'order:'))
+                            ? $qs->get((int) substr($triggerCode, 6) - 1)
+                            : $qs->firstWhere('question_code', $triggerCode);
+                        $visible = $trigger && (int) $trigger->id !== (int) $q->id && $isVisibleNg($trigger);
+                    } else {
+                        for ($i = $idx - 1; $i >= 0; $i--) {
+                            if ($isChoice($qs[$i])) {
+                                $trigger = $qs[$i];
+                                break;
+                            }
+                        }
+                        $visible = $trigger
+                            ? $isVisibleNg($trigger)
+                            : $qs->contains(fn ($item) => (int) $item->id !== (int) $q->id && $isVisibleNg($item));
+                    }
+
+                    if (! $visible) {
+                        $hidden[] = (int) $q->id;
+                    }
+                }
+            }
+
+            return $hidden;
+        }
+
         public function index(){
         $currentUser = auth()->user();
 
-        $query = Task::with(['machine.pics', 'form', 'user', 'sourceTask.form', 'triggerCondition', 'assignedUsers'])
+        $query = Task::with(['machine.pics', 'form', 'user', 'sourceTask.form', 'triggerCondition', 'assignedUsers', 'finalSubmission'])
             ->whereIn('status', ['UPCOMING', 'IN_PROGRESS', 'OVERDUE', 'DUE', 'COMPLETED']);
 
         // PIC departemen yang tidak terdaftar di dalam sebuah mesin tidak boleh melihat task mesin tersebut
@@ -179,6 +250,8 @@
                 'conditionCode' => $task->triggerCondition?->condition_code,
                 'canWork' => $canWork,
                 'picNames' => $machine?->picNamesText() ?? '',
+                // Record jawaban hanya ada setelah task COMPLETED
+                'recordUrl' => $task->finalSubmission ? '/records/'.$task->finalSubmission->id : null,
             ];
         });
 
@@ -484,7 +557,8 @@
             }
 
             // 4. Validasi required per pertanyaan (termasuk pertanyaan kondisional show_on_abnormal per pemicu)
-            $questionsBySection = $allQuestions->groupBy('form_section_id')->map(fn ($qs) => $qs->sortBy('question_order')->values());
+            // Pertanyaan dependen (mis. "muncul jika pertanyaan 1 = NG") yang pemicunya tidak NG → tersembunyi.
+            $hiddenQuestionIds = $this->hiddenConditionalQuestionIds($sections, $abnormalQuestionIds);
 
             foreach ($submittedAnswers as $questionId => $answer) {
                 $question = $allQuestions->firstWhere('id', $questionId);
@@ -496,46 +570,8 @@
                     $isEmptyValue = true;
                 }
 
-                $rules = is_array($question->validation_rules)
-                    ? ($question->validation_rules[0] ?? $question->validation_rules)
-                    : [];
-                $showOnAbnormal = filter_var($rules['show_on_abnormal'] ?? false, FILTER_VALIDATE_BOOLEAN);
-
-                $isTriggerAbnormal = true;
-                if ($showOnAbnormal) {
-                    $sectionQs = $questionsBySection->get($question->form_section_id, collect());
-                    $triggerCode = $rules['trigger_question_code'] ?? null;
-
-                    if ($triggerCode) {
-                        if (is_string($triggerCode) && str_starts_with($triggerCode, 'order:')) {
-                            $idx = (int) substr($triggerCode, 6) - 1;
-                            $triggerQ = $sectionQs->get($idx);
-                        } else {
-                            $triggerQ = $sectionQs->firstWhere('question_code', $triggerCode);
-                        }
-                        $isTriggerAbnormal = $triggerQ && in_array($triggerQ->id, $abnormalQuestionIds, true);
-                    } else {
-                        // Default: ikuti pertanyaan pilihan terdekat di atasnya dalam section yang sama
-                        $qIndex = $sectionQs->search(fn ($item) => $item->id === $question->id);
-                        $nearestTrigger = null;
-                        if ($qIndex !== false) {
-                            for ($i = $qIndex - 1; $i >= 0; $i--) {
-                                $prev = $sectionQs[$i];
-                                $prevRules = is_array($prev->validation_rules) ? ($prev->validation_rules[0] ?? $prev->validation_rules) : [];
-                                if (in_array($prev->input_type, ['SELECT', 'DROPDOWN', 'CHECKBOX'], true) && empty($prevRules['show_on_abnormal'])) {
-                                    $nearestTrigger = $prev;
-                                    break;
-                                }
-                            }
-                        }
-                        $isTriggerAbnormal = $nearestTrigger
-                            ? in_array($nearestTrigger->id, $abnormalQuestionIds, true)
-                            : $sectionQs->contains(fn ($item) => in_array($item->id, $abnormalQuestionIds, true));
-                    }
-                }
-
                 $isSectionSkipped = in_array($question->form_section_id, $skippedSectionIds);
-                $isHiddenConditional = $showOnAbnormal && !$isTriggerAbnormal;
+                $isHiddenConditional = in_array((int) $question->id, $hiddenQuestionIds, true);
 
                 if ($question->is_required && !$isSectionSkipped && !$isHiddenConditional && $isEmptyValue) {
                     $customErrors["answers.{$questionId}.value"] = "Pertanyaan \"{$question->question_text}\" wajib diisi.";
@@ -546,7 +582,17 @@
             if (!empty($customErrors)) {
                 return back()->withErrors($customErrors)->withInput();
             }
-            
+
+            // Jawaban sisa dari pertanyaan yang kini tersembunyi (mis. pemicu diganti NG → OK) dibuang,
+            // supaya tidak ikut tersimpan / memicu tiket breakdown.
+            if (!empty($hiddenQuestionIds) && is_array($validated['answers'] ?? null)) {
+                $validated['answers'] = array_filter(
+                    $validated['answers'],
+                    fn ($qid) => !in_array((int) $qid, $hiddenQuestionIds, true),
+                    ARRAY_FILTER_USE_KEY
+                );
+            }
+
             return DB::transaction(function () use ($request, $task, $validated) {
                 
                 try {

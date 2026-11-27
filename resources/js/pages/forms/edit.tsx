@@ -1202,7 +1202,8 @@ export default function FormEdit({ form, machines = [], conditionRefs = [] }: Pr
                                                     />
                                                     Wajib Diisi
                                                 </label>
-                                                {qIndex > 0 && !['SELECT', 'DROPDOWN', 'CHECKBOX'].includes(q.input_type) && (() => {
+                                                {/* Dependensi: berlaku untuk semua tipe (termasuk pilihan, mis. Q2 Yes/No muncul jika Q1 = NG) */}
+                                                {qIndex > 0 && section.questions.slice(0, qIndex).some(prevQ => ['SELECT', 'DROPDOWN', 'CHECKBOX'].includes(prevQ.input_type)) && (() => {
                                                     const rawFlag = (q.validation_rules?.[0] as any)?.show_on_abnormal;
                                                     const isAbnormalOnly =
                                                         rawFlag === true ||
@@ -1212,7 +1213,7 @@ export default function FormEdit({ form, machines = [], conditionRefs = [] }: Pr
 
                                                     return (
                                                         <div className="flex items-center gap-2 flex-wrap">
-                                                            <label className="flex items-center gap-1.5 font-semibold text-rose-700 cursor-pointer" title="Pertanyaan ini hanya tampil jika pertanyaan pemicu dijawab Abnormal (is_normal = false)">
+                                                            <label className="flex items-center gap-1.5 font-semibold text-rose-700 cursor-pointer" title="Pertanyaan ini hanya tampil jika pertanyaan pemicu (pilihan) dijawab opsi Abnormal / NG. Bisa berantai.">
                                                                 <input
                                                                     type="checkbox"
                                                                     checked={isAbnormalOnly}
@@ -1222,7 +1223,7 @@ export default function FormEdit({ form, machines = [], conditionRefs = [] }: Pr
                                                                     }}
                                                                     className="rounded border-rose-300 text-rose-600 w-3.5 h-3.5"
                                                                 />
-                                                                Hanya Muncul Jika Abnormal
+                                                                Hanya Muncul Jika Pemicu NG
                                                             </label>
                                                             {isAbnormalOnly && (
                                                                 <select

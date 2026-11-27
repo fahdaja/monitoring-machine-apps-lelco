@@ -28,6 +28,8 @@ export interface InspectionTask {
     // Gate PIC: false = user login bukan penanggung jawab mesin pemilik task.
     canWork?: boolean;
     picNames?: string;
+    // URL halaman record jawaban (hanya untuk task COMPLETED)
+    recordUrl?: string | null;
 }
 
 type OriginFilter = 'ALL' | 'ROUTINE' | 'FOLLOW_UP';
@@ -531,9 +533,19 @@ export default function TasksIndex({ calendarData, todayCreateOptions }: TasksIn
 
                                             if (t.status === 'COMPLETED') {
                                                 return (
-                                                    <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 w-full text-center">
-                                                        Inspeksi Selesai ✓
-                                                    </span>
+                                                    <div className="flex w-full items-center gap-2">
+                                                        <span className="flex-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 text-center">
+                                                            Inspeksi Selesai ✓
+                                                        </span>
+                                                        {t.recordUrl && (
+                                                            <Link
+                                                                href={t.recordUrl}
+                                                                className="shrink-0 text-[11px] font-bold text-white bg-slate-900 hover:bg-slate-800 px-3 py-1.5 rounded-lg"
+                                                            >
+                                                                Lihat Hasil
+                                                            </Link>
+                                                        )}
+                                                    </div>
                                                 );
                                             }
 

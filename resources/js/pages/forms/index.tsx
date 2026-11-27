@@ -284,6 +284,7 @@ export default function FormIndex({ forms, filters, typeCounts, machines = [] }:
                                                 <div className="flex items-center justify-center gap-1.5 sm:gap-2 whitespace-nowrap">
                                                     {isAdmin && (
                                                         <>
+                                                            <Link href={`/records?form_id=${f.id}`} className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-white text-slate-700 border border-slate-200 font-bold hover:bg-slate-50 transition-colors inline-block">Record</Link>
                                                             <Link href={`/forms/${f.id}/edit`} className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-900 text-white font-bold hover:bg-slate-800 transition-colors inline-block shadow-xs">Edit / Atur</Link>
                                                             <button type="button" onClick={() => setDeleteTarget({ id: f.id, form_title: f.form_title })} className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-rose-50 text-rose-600 border border-rose-200 font-bold hover:bg-rose-100 transition-colors cursor-pointer">Hapus</button>
                                                         </>

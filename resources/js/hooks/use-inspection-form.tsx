@@ -1,6 +1,7 @@
     import axios from "axios";
     import { useEffect, useState } from "react";
     import { compressEvidenceImage } from "@/lib/compress-image";
+    import { hiddenQuestionIds } from "@/lib/question-visibility";
 
     export function useInspectionForm(sections: any[], initialAnswers: Record<number, any> = {}, initialSectionIndex: number = 0, taskId?: number) {
 
@@ -489,54 +490,9 @@ const handleNext = () => {
     // ✅ Helper 2: Normalisasi teks untuk Dropdown & Checkbox
     const normalizeText = (text: any) => String(text || '').trim().toLowerCase();
 
-    const isQuestionAbnormal = (q: any): boolean => {
-        const qAns = getAnswer(q.id);
-        if (q.input_type === 'SELECT') {
-            const selectedOpt = q.options?.find((o: any) => String(o.id) === String(qAns.value));
-            return !!(selectedOpt && isOptionNormalFalse(selectedOpt));
-        }
-        if (q.input_type === 'DROPDOWN') {
-            const selectedOpt = q.options?.find((o: any) =>
-                normalizeText(o.option_text) === normalizeText(qAns.value)
-            );
-            return !!(selectedOpt && isOptionNormalFalse(selectedOpt));
-        }
-        if (q.input_type === 'CHECKBOX') {
-            const currentVals = Array.isArray(qAns.value) ? qAns.value : [];
-            return !!q.options?.some((o: any) =>
-                currentVals.some((v: any) => normalizeText(v) === normalizeText(o.option_text)) &&
-                isOptionNormalFalse(o)
-            );
-        }
-        return false;
-    };
-
-    const isTruthyFlag = (val: any): boolean =>
-        val === true || val === 1 || String(val).toLowerCase() === 'true' || String(val) === '1';
-
-    const isConditionalQuestionVisible = (q: any, qIdx: number): boolean => {
-        if (qIdx === 0 || ['SELECT', 'DROPDOWN', 'CHECKBOX'].includes(q.input_type)) return true;
-        const qRules = Array.isArray(q?.validation_rules) ? q.validation_rules[0] : q?.validation_rules;
-        if (!isTruthyFlag(qRules?.show_on_abnormal)) return true;
-
-        const triggerCode = qRules?.trigger_question_code;
-        if (triggerCode) {
-            const code = String(triggerCode);
-            const target = code.startsWith('order:')
-                ? questions[Number(code.slice(6)) - 1]
-                : questions.find((item: any) => item.question_code === code);
-            return target ? isQuestionAbnormal(target) : false;
-        }
-
-        for (let i = qIdx - 1; i >= 0; i--) {
-            const prev = questions[i];
-            const prevRules = Array.isArray(prev?.validation_rules) ? prev.validation_rules[0] : prev?.validation_rules;
-            if (['SELECT', 'DROPDOWN', 'CHECKBOX'].includes(prev.input_type) && !prevRules?.show_on_abnormal) {
-                return isQuestionAbnormal(prev);
-            }
-        }
-        return questions.some((item: any) => isQuestionAbnormal(item));
-    };
+    // Pertanyaan dependen (muncul jika pemicunya NG) — logika bersama di lib/question-visibility
+    const hiddenIds = hiddenQuestionIds(questions, getAnswer);
+    const isConditionalQuestionVisible = (q: any, _qIdx: number): boolean => !hiddenIds.has(String(q.id));
 
     // 1. Validasi per pertanyaan yang tampil di section ini
     for (let qIdx = 0; qIdx < questions.length; qIdx++) {

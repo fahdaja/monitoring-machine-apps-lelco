@@ -12,6 +12,9 @@ use App\Models\Form;
 use App\Models\FormQuestion;
 use App\Models\Machine;
 use App\Models\Task;
+use App\Models\Holiday;
+use Carbon\Carbon;
+use Carbon\CarbonPeriod;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -54,6 +57,8 @@ class ScheduleController extends Controller
                 'frequency_type' => $schedule->frequency_type,
                 'selected_days' => $schedule->selected_days ?? [],
                 'selected_dates' => $schedule->selected_dates ?? [],
+                'working_days' => $schedule->working_days ?? [],
+                'skip_holidays' => (bool) $schedule->skip_holidays,
                 'due_window_days' => $schedule->due_window_days,
                 'is_active' => $schedule->is_active,
             ];
@@ -153,6 +158,15 @@ class ScheduleController extends Controller
             'forms' => $forms,
             'machines' => $machines,
             'conditions' => $conditions,
+            // Kalender kerja: hari libur mulai awal tahun lalu agar riwayat tetap terlihat
+            'holidays' => Holiday::where('holiday_date', '>=', now()->subYear()->startOfYear())
+                ->orderBy('holiday_date')
+                ->get()
+                ->map(fn (Holiday $h) => [
+                    'id' => $h->id,
+                    'holiday_date' => $h->holiday_date->format('Y-m-d'),
+                    'name' => $h->name,
+                ])->values(),
         ]);
     }
 
@@ -173,6 +187,9 @@ class ScheduleController extends Controller
             'selected_days.*' => 'integer|between:1,7',
             'selected_dates' => 'required_if:frequency_type,MONTHLY|array',
             'selected_dates.*' => 'integer|between:1,31',
+            'working_days' => 'nullable|array',
+            'working_days.*' => 'integer|between:1,7',
+            'skip_holidays' => 'nullable|boolean',
             'machine_assignments' => 'required|array|min:1',
             'machine_assignments.*.machine_id' => 'required|integer|distinct|exists:machines,id',
             'machine_assignments.*.assigned_user_ids' => 'nullable|array',
@@ -199,6 +216,8 @@ class ScheduleController extends Controller
                 'due_window_days'  => $validate['due_window_days'],
                 'selected_days'    => $request->selected_days ?? [],
                 'selected_dates'   => $request->selected_dates ?? [],
+                'working_days'     => $this->normalizeWorkingDays($validate),
+                'skip_holidays'    => $request->boolean('skip_holidays', true),
                 'is_active'        => true,
             ]);
 
@@ -232,6 +251,9 @@ class ScheduleController extends Controller
             'selected_days.*' => 'integer|between:1,7',
             'selected_dates' => 'required_if:frequency_type,MONTHLY|array',
             'selected_dates.*' => 'integer|between:1,31',
+            'working_days' => 'nullable|array',
+            'working_days.*' => 'integer|between:1,7',
+            'skip_holidays' => 'nullable|boolean',
             'machine_assignments' => 'required|array|min:1',
             'machine_assignments.*.machine_id' => 'required|integer|distinct|exists:machines,id',
             'machine_assignments.*.assigned_user_ids' => 'nullable|array',
@@ -247,7 +269,12 @@ class ScheduleController extends Controller
                 'due_window_days' => $validate['due_window_days'],
                 'selected_days'   => $request->selected_days ?? [],
                 'selected_dates'  => $request->selected_dates ?? [],
+                'working_days'    => $this->normalizeWorkingDays($validate),
+                'skip_holidays'   => $request->boolean('skip_holidays', true),
             ]);
+
+            // Kalender kerja bisa berubah: buang task UPCOMING yang kini jatuh di hari non-kerja
+            $this->purgeNonWorkingUpcomingTasks($schedule->fresh());
 
             $schedule->scheduleMachines()->delete();
 
@@ -294,6 +321,110 @@ class ScheduleController extends Controller
         $schedule->delete();
 
         return redirect()->back()->with('success', 'Pengaturan jadwal berhasil dihapus!');
+    }
+
+    // =========================================================================
+    // KALENDER KERJA (hari kerja per jadwal & daftar hari libur)
+    // =========================================================================
+
+    /**
+     * Hari kerja hanya relevan untuk DAILY. Kosong / ketujuh hari dipilih = null (semua hari).
+     */
+    private function normalizeWorkingDays(array $validated): ?array
+    {
+        if (($validated['frequency_type'] ?? null) !== 'DAILY') {
+            return null;
+        }
+
+        $days = collect($validated['working_days'] ?? [])
+            ->map(fn ($d) => (int) $d)
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+
+        return (empty($days) || count($days) === 7) ? null : $days;
+    }
+
+    /**
+     * Hapus task UPCOMING hasil jadwal yang tanggalnya kini bukan hari kerja.
+     * Task UPCOMING belum bisa dibuka operator, jadi aman dihapus (tidak ada draft).
+     */
+    private function purgeNonWorkingUpcomingTasks(?Schedule $schedule = null): int
+    {
+        $tasks = Task::with('schedule')
+            ->where('status', 'UPCOMING')
+            ->whereNotNull('schedule_id')
+            ->where(fn ($q) => $q->whereNull('origin_type')->orWhere('origin_type', 'SCHEDULE'))
+            ->whereDate('due_date', '>=', Carbon::today())
+            ->when($schedule, fn ($q) => $q->where('schedule_id', $schedule->id))
+            ->get();
+
+        if ($tasks->isEmpty()) {
+            return 0;
+        }
+
+        $holidayMap = Holiday::mapBetween(Carbon::today(), $tasks->max('due_date'));
+        $deleted = 0;
+
+        foreach ($tasks as $task) {
+            if ($task->schedule && ! $task->schedule->isWorkingDate($task->due_date->copy(), $holidayMap)) {
+                $task->assignedUsers()->detach();
+                $task->delete();
+                $deleted++;
+            }
+        }
+
+        return $deleted;
+    }
+
+    /**
+     * Tambah hari libur (satu tanggal atau rentang, misal cuti bersama).
+     */
+    public function storeHoliday(Request $request)
+    {
+        $validated = $request->validate([
+            'holiday_date' => 'required|date',
+            'end_date' => 'nullable|date|after_or_equal:holiday_date',
+            'name' => 'required|string|max:255',
+        ]);
+
+        $start = Carbon::parse($validated['holiday_date'])->startOfDay();
+        $end = ! empty($validated['end_date']) ? Carbon::parse($validated['end_date'])->startOfDay() : $start->copy();
+
+        if ($start->diffInDays($end) > 60) {
+            throw ValidationException::withMessages([
+                'end_date' => 'Rentang hari libur maksimal 60 hari.',
+            ]);
+        }
+
+        $count = 0;
+        foreach (CarbonPeriod::create($start, $end) as $date) {
+            Holiday::updateOrCreate(
+                ['holiday_date' => $date->format('Y-m-d')],
+                ['name' => $validated['name']]
+            );
+            $count++;
+        }
+
+        $purged = $this->purgeNonWorkingUpcomingTasks();
+
+        $message = "{$count} hari libur disimpan.";
+        if ($purged > 0) {
+            $message .= " {$purged} task UPCOMING pada tanggal libur dibatalkan.";
+        }
+
+        return redirect()->back()->with('success', $message);
+    }
+
+    public function destroyHoliday($id)
+    {
+        Holiday::findOrFail($id)->delete();
+
+        // Tanggal kembali jadi hari kerja: isi ulang task yang masih dalam jangkauan generate
+        Artisan::call('tasks:generate');
+
+        return redirect()->back()->with('success', 'Hari libur dihapus.');
     }
 
     // =========================================================================

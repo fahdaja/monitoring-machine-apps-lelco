@@ -8,6 +8,7 @@ use App\Models\Form;
 use App\Models\Task;
 use App\Models\User;
 use App\Enums\FormType;
+use App\Support\SubmissionRecords;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -189,7 +190,7 @@ class MachineController extends Controller
 
             $currentUser = $request->user();
 
-            $tasks = Task::with(['form', 'user', 'assignedUsers'])
+            $tasks = Task::with(['form', 'user', 'assignedUsers', 'finalSubmission'])
                 ->where('machine_id', $machine->id)
                 ->orderByRaw("CASE
                     WHEN status = 'OVERDUE' THEN 1
@@ -249,6 +250,7 @@ class MachineController extends Controller
                         'notes'             => null,
                         'canWork'           => $canWork,
                         'isAssignedToOther' => $isAssignedToOther,
+                        'record_url'        => $task->finalSubmission ? '/records/'.$task->finalSubmission->id : null,
                     ];
                 })
                 ->values();
@@ -285,6 +287,8 @@ class MachineController extends Controller
             ],
             'breakdowns'  => $breakdowns,
             'tasks'       => $tasks,
+            // Riwayat seluruh form yang pernah diisi untuk mesin ini (inspeksi + form tiket)
+            'records'     => SubmissionRecords::rows($currentUser, ['machine_id' => $machine->id], 50)->take(50)->values(),
             'reportForm' => $this->reportFormPayload($machine->id),
         ]);
     }

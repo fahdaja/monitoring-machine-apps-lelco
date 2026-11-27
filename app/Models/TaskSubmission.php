@@ -26,7 +26,13 @@ class TaskSubmission extends Model{
 
     protected $casts = [
         'answers_values' => 'array',
+        'submitted_at'   => 'datetime',
     ];
+
+    public function escalationTicket()
+    {
+        return $this->belongsTo(BreakdownTicket::class, 'escalation_ticket_id', 'id');
+    }
 
     public function machine()
     {

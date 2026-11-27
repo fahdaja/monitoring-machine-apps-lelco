@@ -7,6 +7,7 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use App\Models\Schedule;
 use App\Models\Task;
+use App\Models\Holiday;
 use Carbon\Carbon;
 
 class GenerateScheduledTasks extends Command
@@ -29,6 +30,10 @@ class GenerateScheduledTasks extends Command
            ->get();
 
        $count = 0;
+       $skipped = 0;
+
+       // Kalender kerja: hari libur dalam jangkauan generate (paling jauh bulan depan).
+       $holidayMap = Holiday::mapBetween(Carbon::today(), Carbon::today()->addMonthsNoOverflow(2)->endOfMonth());
 
        foreach ($schedules as $schedule) {
            $windowDays = max(1, (int) ($schedule->due_window_days ?? 1));
@@ -65,6 +70,12 @@ class GenerateScheduledTasks extends Command
                foreach ($this->dueDatesFor($schedule) as $targetDate) {
                    $dueDateStr = $targetDate->format('Y-m-d');
 
+                   // Kalender kerja: lewati weekend / hari non-kerja / hari libur
+                   if (! $schedule->isWorkingDate($targetDate, $holidayMap)) {
+                       $skipped++;
+                       continue;
+                   }
+
                    // Cegah duplikat: cek task untuk form ini dan mesin ini pada tanggal yang sama
                    $existingTask = Task::where('form_id', $schedule->form_id)
                        ->where('machine_id', $machineId)
@@ -98,7 +109,7 @@ class GenerateScheduledTasks extends Command
            }
        }
 
-       $this->info("✅ {$count} task UPCOMING dibuat (daily rolling ".self::DAILY_HORIZON_DAYS." hari, weekly = minggu depan, monthly = bulan depan).");
+       $this->info("✅ {$count} task UPCOMING dibuat (daily rolling ".self::DAILY_HORIZON_DAYS." hari, weekly = minggu depan, monthly = bulan depan). {$skipped} slot dilewati (hari libur / non-kerja).");
    }
 
     /**
