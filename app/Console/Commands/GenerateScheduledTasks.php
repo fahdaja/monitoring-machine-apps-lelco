@@ -114,8 +114,8 @@ class GenerateScheduledTasks extends Command
         $dates = [];
 
         if ($schedule->frequency_type === 'DAILY') {
-            // Saat cron jalan pukul 00:00, langsung buat task untuk HARI INI (bukan besok)
-            for ($i = 0; $i < self::DAILY_HORIZON_DAYS; $i++) {
+            // Generate task UPCOMING untuk besok (H+1); besok pukul 00:01 diubah jadi DUE oleh tasks:mark-due
+            for ($i = 1; $i <= self::DAILY_HORIZON_DAYS; $i++) {
                 $dates[] = Carbon::today()->addDays($i);
             }
         } elseif ($schedule->frequency_type === 'WEEKLY') {
