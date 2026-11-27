@@ -21,8 +21,6 @@ Route::redirect('/', '/login');
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthController::class, 'create'])->name('login');
     Route::post('/login', [AuthController::class, 'store'])->middleware('throttle:10,1');
-    Route::get('/admin/login', [AuthController::class, 'adminCreate'])->name('admin.login');
-    Route::post('/admin/login', [AuthController::class, 'adminStore'])->middleware('throttle:10,1');
 });
 
 Route::post('/logout', [AuthController::class, 'destroy'])->middleware('auth');
@@ -62,18 +60,25 @@ Route::get('/machines/{machineId}', [MachineController::class, 'show'])
 
 Route::middleware(['auth', 'CheckUserStatus'])->group(function () {
     Route::get('/breakdowns', [KanbanController::class, 'index'])->name('breakdowns.index');
-    Route::post('/breakdowns/{ticketCode}/acknowledge', [KanbanController::class, 'acknowledge'])->name('breakdowns.acknowledge');
-    Route::put('/breakdowns/{ticketCode}/status', [KanbanController::class, 'updateStatus'])->name('breakdowns.updateStatus');
-    Route::post('/breakdowns/{ticketCode}/close', [KanbanController::class, 'close'])->name('breakdowns.close');
+    Route::post('/breakdowns', [KanbanController::class, 'storeReport'])->name('breakdowns.store');
+
+    // Aksi penanganan & perbaikan breakdown: hanya MAINTENANCE (dan ADMIN)
+    Route::middleware(['role:ADMIN,MAINTENANCE'])->group(function () {
+        Route::post('/breakdowns/{ticketCode}/acknowledge', [KanbanController::class, 'acknowledge'])->name('breakdowns.acknowledge');
+        Route::put('/breakdowns/{ticketCode}/status', [KanbanController::class, 'updateStatus'])->name('breakdowns.updateStatus');
+        Route::post('/breakdowns/{ticketCode}/close', [KanbanController::class, 'close'])->name('breakdowns.close');
+
+        // Form transisi kanban: repair & closing disimpan ke ticket_submissions
+        Route::get('/breakdowns/{ticketCode}/form/{context}/data', [KanbanController::class, 'ticketFormData'])->name('breakdowns.form.data');
+        Route::get('/breakdowns/{ticketCode}/form/{context}', [KanbanController::class, 'showTicketForm'])->name('breakdowns.form');
+        Route::post('/breakdowns/{ticketCode}/submissions', [KanbanController::class, 'submitTicketForm'])->name('breakdowns.submissions.store');
+    });
+
+    // Verifikasi & penutupan tiket: hanya SUPERVISOR (dan ADMIN)
     Route::put('/breakdowns/{ticketCode}/verify-close', [KanbanController::class, 'verifyClose'])
         ->middleware('role:ADMIN,SUPERVISOR')
         ->name('breakdowns.verifyClose');
 
-    // Form transisi kanban: repair & closing disimpan ke ticket_submissions
-    Route::post('/breakdowns', [KanbanController::class, 'storeReport'])->name('breakdowns.store');
-    Route::get('/breakdowns/{ticketCode}/form/{context}/data', [KanbanController::class, 'ticketFormData'])->name('breakdowns.form.data');
-    Route::get('/breakdowns/{ticketCode}/form/{context}', [KanbanController::class, 'showTicketForm'])->name('breakdowns.form');
-    Route::post('/breakdowns/{ticketCode}/submissions', [KanbanController::class, 'submitTicketForm'])->name('breakdowns.submissions.store');
     // Halaman detail tiket: submission laporan/repair/closing (read-only)
     Route::get('/breakdowns/{ticketCode}', [KanbanController::class, 'detail'])->name('breakdowns.detail');
 });

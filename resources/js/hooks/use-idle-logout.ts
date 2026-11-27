@@ -9,9 +9,9 @@ const STORAGE_KEY = 'lelco_last_activity_at';
  * Auto-logout global jika user tidak melakukan aktivitas selama 10 menit.
  * Menggunakan localStorage agar aktivitas di tab lain tetap tersinkronisasi.
  */
-export function useIdleLogout(enabled = true, userRole?: string) {
+export function useIdleLogout(enabled = true, _userRole?: string) {
     const loggingOutRef = useRef(false);
-    const loginPath = String(userRole || '').toUpperCase() === 'ADMIN' ? '/admin/login' : '/login';
+    const loginPath = '/login';
 
     useEffect(() => {
         if (!enabled || typeof window === 'undefined') return;

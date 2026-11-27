@@ -150,6 +150,7 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
   const { auth } = usePage<PageProps>().props;
   const userRole = auth?.user?.role?.toUpperCase();
   const isAdmin = userRole === 'ADMIN';
+  const canHandleBreakdown = userRole === 'ADMIN' || userRole === 'MAINTENANCE';
   const canVerify = userRole === 'ADMIN' || userRole === 'SUPERVISOR';
 
   return (
@@ -419,8 +420,8 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
 
                       {/* Tombol Aksi Berdasarkan Tahap Pipeline */}
                       <div className="space-y-2 pt-2 border-t border-slate-100">
-                   {/* 1. TAHAP REPORT */}
-  {b.pipelineStage === 'REPORT' && (
+                   {/* 1. TAHAP REPORT (hanya MAINTENANCE & ADMIN) */}
+  {b.pipelineStage === 'REPORT' && canHandleBreakdown && (
     <div className="space-y-1.5">
       {b.status === 'OPEN' && (
         <button
@@ -443,7 +444,7 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
       )}
     </div>
   )}
-               {b.pipelineStage === 'REPAIR' && (
+               {b.pipelineStage === 'REPAIR' && canHandleBreakdown && (
   <div className="space-y-2">
     {/* Baris 1: Pilihan Status Menunggu (Sparepart / Vendor) */}
     <div className="grid grid-cols-2 gap-1.5">
