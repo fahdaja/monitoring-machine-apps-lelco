@@ -609,7 +609,8 @@
                     $followUpNotes = [];
                     for ($j = $qIdx + 1; $j < $secTotal; $j++) {
                         $nextQ = $secQuestions[$j];
-                        $nextType = strtoupper((string) ($nextQ['input_type'] ?? ''));
+                        $rawNextType = $nextQ['input_type'] ?? '';
+                        $nextType = strtoupper($rawNextType instanceof \BackedEnum ? (string) $rawNextType->value : (string) $rawNextType);
 
                         // Berhenti jika bertemu pertanyaan pilihan berikutnya (pemicu baru)
                         if (in_array($nextType, ['SELECT', 'DROPDOWN', 'CHECKBOX'], true)) {
