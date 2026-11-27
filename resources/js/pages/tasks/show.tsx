@@ -117,7 +117,7 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                     value: val,
                     note: note,
                     photos: photo,
-                    answered_at: ans.answered_at || null,
+                    answered_at: detail.answered_at || null,
                 };
             }
         });
