@@ -1212,10 +1212,12 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                                                                         </svg>
                                                                     </div>
                                                                     <span className="text-xs sm:text-sm font-bold text-slate-700 group-hover:text-blue-700">
-                                                                        Klik untuk pilih berkas
+                                                                        Ambil Foto dengan Kamera
                                                                     </span>
                                                                     <input
                                                                         type="file"
+                                                                        accept="image/*"
+                                                                        capture="environment"
                                                                         className="hidden"
                                                                         onChange={(e) => handleFileUpload(question.id, e, question)}
                                                                     />

@@ -385,6 +385,8 @@ export default function DynamicFormModal({
                                                 {uploadingId === question.id ? 'Mengunggah...' : 'Pilih berkas'}
                                                 <input
                                                     type="file"
+                                                    accept="image/*"
+                                                    capture="environment"
                                                     className="hidden"
                                                     disabled={uploadingId === question.id}
                                                     onChange={(e) => {

@@ -181,8 +181,22 @@ class KanbanController extends Controller
             'verified_at' => $verifiedAt,
         ]);
 
-        // Kembalikan Status Mesin ke RUNNING secara resmi
-        Machine::where('id', $ticket->machine_id)->update(['machine_status' => 'RUNNING']);
+        // Kembalikan Status Mesin ke RUNNING jika tidak ada tiket aktif lain yang sedang down/repair
+        if ($ticket->machine_id) {
+            $hasOtherBlockingTicket = BreakdownTicket::where('machine_id', $ticket->machine_id)
+                ->where('id', '!=', $ticket->id)
+                ->where(function ($q) {
+                    $q->whereIn('status', ['UNDER_REPAIR', 'WAITING_SPAREPART', 'WAITING_VENDOR', 'READY_FOR_CLOSING'])
+                        ->orWhere(function ($sub) {
+                            $sub->where('status', 'OPEN')->where('source_type', 'MANUAL_REPORT');
+                        });
+                })
+                ->exists();
+
+            if (! $hasOtherBlockingTicket) {
+                Machine::where('id', $ticket->machine_id)->update(['machine_status' => 'RUNNING']);
+            }
+        }
 
         return redirect()->back()->with('success', 'Tiket breakdown berhasil diverifikasi dan ditutup sepenuhnya.');
     }

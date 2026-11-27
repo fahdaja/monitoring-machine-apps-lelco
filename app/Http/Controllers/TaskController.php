@@ -665,9 +665,8 @@
             'reported_by'      => auth()->id(),
         ]);
 
-        if ($machineId) {
-            Machine::where('id', $machineId)->update(['machine_status' => 'DOWN']);
-        }
+        // Temuan inspeksi L1 (AUTO_REPORT) tidak langsung mematikan mesin (tetap RUNNING);
+        // status mesin baru berubah menjadi UNDER_REPAIR saat teknisi mulai melakukan perbaikan.
         $submission->update(['escalation_ticket_id' => $ticket->id]);
     }
 
