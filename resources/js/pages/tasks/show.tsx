@@ -14,6 +14,7 @@ type AnswerDetail = {
     value: any;
     note?: string;
     photos?: string;
+    answered_at?: string | null;
 };
 
 type AnswersMap = Record<number, AnswerDetail>;

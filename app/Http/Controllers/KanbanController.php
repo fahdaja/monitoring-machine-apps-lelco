@@ -471,7 +471,10 @@ class KanbanController extends Controller
      */
     private function assertSequence(BreakdownTicket $ticket, FormType $type): void
     {
-        if ($type === FormType::START_REPAIR && ! $ticket->submissionFor(FormType::MANUAL_REPORT->value)) {
+        // Tiket AUTO_REPORT (dari inspeksi) tidak punya submission Laporan Breakdown.
+        if ($type === FormType::START_REPAIR
+            && $ticket->source_type !== 'AUTO_REPORT'
+            && ! $ticket->submissionFor(FormType::MANUAL_REPORT->value)) {
             abort(422, 'Tiket ini belum memiliki Laporan Breakdown.');
         }
 
