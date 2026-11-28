@@ -363,7 +363,8 @@ export default function DynamicFormModal({
                                     )}
 
                                     {/* Input sesuai tipe */}
-                                    {question.options.length > 0 && question.input_type !== 'DROPDOWN' ? (
+                                    {/* Pilihan hanya untuk tipe pilihan; opsi sisa saat admin mengganti tipe diabaikan */}
+                                    {question.options.length > 0 && (question.input_type === 'SELECT' || question.input_type === 'CHECKBOX') ? (
                                         <div className="flex flex-wrap gap-1.5">
                                             {question.options.map((opt) => {
                                                 const isActive = selected.some((s) => s.id === opt.id);
