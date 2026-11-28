@@ -52,6 +52,43 @@ export const isAnswerAbnormal = (q: any, getAnswer: AnswerGetter): boolean => {
     );
 };
 
+/** Teks opsi yang dipilih admin sebagai syarat tampil (kosong = aturan lama: NG apa pun). */
+export const triggerOptionTexts = (q: any): string[] => {
+    const list = questionRules(q)?.trigger_option_texts;
+    return Array.isArray(list) ? list.map((t: any) => String(t)).filter((t: string) => t.trim() !== '') : [];
+};
+
+/** Apakah jawaban pertanyaan pilihan ini memuat salah satu opsi dari daftar teks? */
+export const isAnswerOneOf = (q: any, getAnswer: AnswerGetter, texts: string[]): boolean => {
+    const value = getAnswer(q.id)?.value;
+    if (value === undefined || value === null || value === '') return false;
+    const values = (Array.isArray(value) ? value : [value]).map((v) => String(v));
+    const wanted = texts.map(norm);
+    return !!q.options?.some(
+        (o: any) =>
+            wanted.includes(norm(o.option_text)) &&
+            values.some((v) => v === String(o.id) || norm(v) === norm(o.option_text)),
+    );
+};
+
+/**
+ * Pertanyaan pemicu untuk q: trigger_question_code ("order:N" / question_code),
+ * atau pertanyaan pilihan terdekat di atasnya. Dipakai juga oleh form builder.
+ */
+export const resolveTrigger = (qs: any[], idx: number, codeKey: (q: any, i: number) => string = (x) => x.question_code): any => {
+    const q = qs[idx];
+    const code = questionRules(q)?.trigger_question_code;
+    if (code) {
+        const c = String(code);
+        const t = c.startsWith('order:') ? qs[Number(c.slice(6)) - 1] : qs.find((item, i) => codeKey(item, i) === c);
+        return t && t !== q ? t : null;
+    }
+    for (let i = idx - 1; i >= 0; i--) {
+        if (CHOICE_TYPES.includes(String(qs[i].input_type).toUpperCase())) return qs[i];
+    }
+    return null;
+};
+
 /** Set ID pertanyaan yang sedang tersembunyi dalam satu section. */
 export function hiddenQuestionIds(questions: any[], getAnswer: AnswerGetter): Set<string> {
     const hidden = new Set<string>();
@@ -62,25 +99,18 @@ export function hiddenQuestionIds(questions: any[], getAnswer: AnswerGetter): Se
         if (idx === 0 || !isConditionalQuestion(q)) return;
 
         const code = questionRules(q)?.trigger_question_code;
+        const texts = triggerOptionTexts(q);
+        const trigger = resolveTrigger(qs, idx);
         let visible: boolean;
 
-        if (code) {
-            const c = String(code);
-            const trigger = c.startsWith('order:')
-                ? qs[Number(c.slice(6)) - 1]
-                : qs.find((item) => item.question_code === c);
-            visible = !!trigger && String(trigger.id) !== String(q.id) && isVisibleNg(trigger);
+        if (trigger) {
+            // Pemicu harus tampil, lalu: jawaban = salah satu opsi pilihan admin (atau NG bila tidak dipilih)
+            visible = !hidden.has(String(trigger.id)) &&
+                (texts.length > 0 ? isAnswerOneOf(trigger, getAnswer, texts) : isAnswerAbnormal(trigger, getAnswer));
+        } else if (code) {
+            visible = false;
         } else {
-            let trigger: any = null;
-            for (let i = idx - 1; i >= 0; i--) {
-                if (CHOICE_TYPES.includes(String(qs[i].input_type).toUpperCase())) {
-                    trigger = qs[i];
-                    break;
-                }
-            }
-            visible = trigger
-                ? isVisibleNg(trigger)
-                : qs.some((item) => String(item.id) !== String(q.id) && isVisibleNg(item));
+            visible = qs.some((item) => String(item.id) !== String(q.id) && isVisibleNg(item));
         }
 
         if (!visible) hidden.add(String(q.id));

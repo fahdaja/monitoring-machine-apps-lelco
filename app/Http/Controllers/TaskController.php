@@ -119,8 +119,9 @@
          * ID pertanyaan dependen yang sedang tersembunyi.
          *
          * Pertanyaan bertanda validation_rules[0].show_on_abnormal hanya tampil jika pertanyaan
-         * pemicunya (pilihan SELECT/DROPDOWN/CHECKBOX) dijawab opsi abnormal (NG) DAN pemicu itu
-         * sendiri sedang tampil — jadi dependensi bisa berantai (Q1 NG → Q2 tampil, Q2 NG → Q3 tampil).
+         * pemicunya (pilihan SELECT/DROPDOWN/CHECKBOX) dijawab salah satu opsi di
+         * validation_rules[0].trigger_option_texts (dipilih admin; kosong = opsi abnormal/NG apa pun)
+         * DAN pemicu itu sendiri sedang tampil — jadi dependensi bisa berantai.
          * Pemicu: trigger_question_code ("order:N" atau question_code), default pertanyaan pilihan
          * terdekat di atasnya dalam section yang sama.
          * Logika ini dicerminkan di resources/js/lib/question-visibility.ts.
@@ -129,7 +130,7 @@
          * @param  array<int, int>  $abnormalQuestionIds
          * @return array<int, int>
          */
-        private function hiddenConditionalQuestionIds($sections, array $abnormalQuestionIds): array
+        private function hiddenConditionalQuestionIds($sections, array $abnormalQuestionIds, array $submittedAnswers = []): array
         {
             $abnormal = array_map('intval', $abnormalQuestionIds);
             $hidden = [];
@@ -158,13 +159,20 @@
                     }
 
                     $triggerCode = $rulesOf($q)['trigger_question_code'] ?? null;
+                    $wantedTexts = collect($rulesOf($q)['trigger_option_texts'] ?? [])
+                        ->map(fn ($t) => mb_strtolower(trim((string) $t)))
+                        ->filter(fn ($t) => $t !== '')
+                        ->values()
+                        ->all();
                     $trigger = null;
 
                     if ($triggerCode) {
                         $trigger = (is_string($triggerCode) && str_starts_with($triggerCode, 'order:'))
                             ? $qs->get((int) substr($triggerCode, 6) - 1)
                             : $qs->firstWhere('question_code', $triggerCode);
-                        $visible = $trigger && (int) $trigger->id !== (int) $q->id && $isVisibleNg($trigger);
+                        if ($trigger && (int) $trigger->id === (int) $q->id) {
+                            $trigger = null;
+                        }
                     } else {
                         for ($i = $idx - 1; $i >= 0; $i--) {
                             if ($isChoice($qs[$i])) {
@@ -172,9 +180,19 @@
                                 break;
                             }
                         }
-                        $visible = $trigger
-                            ? $isVisibleNg($trigger)
-                            : $qs->contains(fn ($item) => (int) $item->id !== (int) $q->id && $isVisibleNg($item));
+                    }
+
+                    if ($trigger) {
+                        // Pemicu harus tampil, lalu jawabannya = salah satu opsi pilihan admin
+                        // (tanpa pilihan opsi → aturan lama: opsi NG apa pun).
+                        $visible = ! in_array((int) $trigger->id, $hidden, true) && (
+                            $wantedTexts !== []
+                                ? $this->answerHasOptionText($trigger, $submittedAnswers[$trigger->id] ?? null, $wantedTexts)
+                                : in_array((int) $trigger->id, $abnormal, true)
+                        );
+                    } else {
+                        $visible = ! $triggerCode
+                            && $qs->contains(fn ($item) => (int) $item->id !== (int) $q->id && $isVisibleNg($item));
                     }
 
                     if (! $visible) {
@@ -184,6 +202,30 @@
             }
 
             return $hidden;
+        }
+
+        /**
+         * Apakah jawaban pertanyaan pilihan memuat salah satu opsi dengan teks tertentu?
+         * Nilai jawaban bisa berupa ID opsi (SELECT) atau teks opsi (DROPDOWN/CHECKBOX).
+         *
+         * @param  array<int, string>  $wantedTexts  teks opsi, sudah lowercase + trim
+         */
+        private function answerHasOptionText($question, $answer, array $wantedTexts): bool
+        {
+            $value = is_array($answer) ? ($answer['value'] ?? null) : null;
+            if ($value === null || $value === '' || $value === []) {
+                return false;
+            }
+
+            $values = array_map('strval', is_array($value) ? $value : [$value]);
+
+            return $question->options->contains(function ($opt) use ($values, $wantedTexts) {
+                $text = mb_strtolower(trim((string) $opt->option_text));
+
+                return in_array($text, $wantedTexts, true)
+                    && (in_array((string) $opt->id, $values, true)
+                        || in_array($text, array_map(fn ($v) => mb_strtolower(trim($v)), $values), true));
+            });
         }
 
         public function index(){
@@ -558,7 +600,7 @@
 
             // 4. Validasi required per pertanyaan (termasuk pertanyaan kondisional show_on_abnormal per pemicu)
             // Pertanyaan dependen (mis. "muncul jika pertanyaan 1 = NG") yang pemicunya tidak NG → tersembunyi.
-            $hiddenQuestionIds = $this->hiddenConditionalQuestionIds($sections, $abnormalQuestionIds);
+            $hiddenQuestionIds = $this->hiddenConditionalQuestionIds($sections, $abnormalQuestionIds, $submittedAnswers);
 
             foreach ($submittedAnswers as $questionId => $answer) {
                 $question = $allQuestions->firstWhere('id', $questionId);
