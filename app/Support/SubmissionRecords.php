@@ -203,9 +203,9 @@ class SubmissionRecords
                             : trim(is_array($rawValue) ? implode(', ', array_map('strval', $rawValue)) : (string) $rawValue);
 
                         // Jawaban FILE berupa path → tampil sebagai foto, bukan teks
-                        $photoPaths = collect(is_array($detail['photos'] ?? null) ? $detail['photos'] : [$detail['photos'] ?? null]);
+                        $photoPaths = collect(\App\Support\PhotoValue::list($detail['photos'] ?? null));
                         if ($inputType === 'FILE') {
-                            $photoPaths = $photoPaths->concat(is_array($rawValue) ? $rawValue : [$rawValue]);
+                            $photoPaths = $photoPaths->concat(\App\Support\PhotoValue::list($rawValue));
                             $answerText = '';
                         }
 

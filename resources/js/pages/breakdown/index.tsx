@@ -11,6 +11,7 @@ export interface BreakdownProblem {
   answer_text?: string;
   note?: string;
   photo_evidence?: string;
+  photo_evidences?: string[];
 }
 
 export interface BreakdownTicket {
@@ -301,16 +302,17 @@ export default function BreakdownIndex({ breakdowns = [] }: BreakdownIndexProps)
               &ldquo;{prob.note}&rdquo;
             </div>
           )}
-          {prob.photo_evidence && (
-            <a 
-              href={`/storage/${prob.photo_evidence}`} 
-              target="_blank" 
+          {(prob.photo_evidences?.length ? prob.photo_evidences : prob.photo_evidence ? [prob.photo_evidence] : []).map((p, i) => (
+            <a
+              key={p}
+              href={`/storage/${p}`}
+              target="_blank"
               rel="noopener noreferrer"
-              className="inline-block mt-1 text-[9px] font-bold text-blue-600 hover:underline"
+              className="inline-block mt-1 mr-2 text-[9px] font-bold text-blue-600 hover:underline"
             >
-              Lihat Foto Evidence ↗
+              Foto Evidence {i + 1} ↗
             </a>
-          )}
+          ))}
         </div>
       ))
     ) : (

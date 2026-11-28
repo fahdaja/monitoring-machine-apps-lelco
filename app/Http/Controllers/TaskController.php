@@ -39,7 +39,7 @@
 
                 $rawValue = $userAns['value'] ?? null;
                 $note = $userAns['note'] ?? '';
-                $photos = $userAns['photos'] ?? [];
+                $photos = \App\Support\PhotoValue::list($userAns['photos'] ?? null);
                 $answeredAt = $userAns['answered_at'] ?? null;
 
                 // Mapping selected options (mendukung single value atau array untuk checkbox/dropdown)
@@ -649,7 +649,7 @@
                 if ($abnormalOptions->isNotEmpty()) {
                     $note = trim((string) ($q['answer_detail']['note'] ?? ''));
                     $rawPhotos = $q['answer_detail']['photos'] ?? null;
-                    $photoEvidence = is_array($rawPhotos) ? ($rawPhotos[0] ?? null) : ($rawPhotos ?: null);
+                    $photoEvidence = \App\Support\PhotoValue::list($rawPhotos)[0] ?? null;
 
                     // Ambil jawaban dari pertanyaan lanjutan (Catatan & Upload Foto Evidence) di bawahnya dalam section yang sama
                     $followUpNotes = [];
@@ -675,7 +675,7 @@
                         if (in_array($nextType, ['TEXT', 'TEXTAREA'], true)) {
                             $followUpNotes[] = $nextValStr;
                         } elseif ($nextType === 'FILE' && empty($photoEvidence)) {
-                            $photoEvidence = $nextValStr;
+                            $photoEvidence = \App\Support\PhotoValue::list($nextValStr)[0] ?? $nextValStr;
                         }
                     }
 
@@ -880,7 +880,7 @@
                 }
 
                 $val = $question['answer_detail']['value'] ?? null;
-                $photos = $question['answer_detail']['photos'] ?? [];
+                $photos = \App\Support\PhotoValue::list($question['answer_detail']['photos'] ?? null);
                 $selectedOptions = $question['selected_options'] ?? [];
 
                 $isFilled = (is_string($val) && trim($val) !== '')

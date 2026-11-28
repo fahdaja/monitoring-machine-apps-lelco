@@ -158,6 +158,16 @@ class ScheduleController extends Controller
             'forms' => $forms,
             'machines' => $machines,
             'conditions' => $conditions,
+            // Pola form per mesin (Breakdown -> Repair -> Tutup Tiket)
+            'patternForms' => collect(self::PATTERN_COLUMNS)->map(
+                fn ($col, $type) => Form::ofType($type)->orderBy('form_title')
+                    ->get(['id', 'form_title', 'form_code'])
+            )->all(),
+            'patterns' => \App\Models\MachineFormPattern::all()->keyBy('machine_id')->map(fn ($p) => [
+                'MANUAL_REPORT' => $p->manual_report_form_id,
+                'START_REPAIR' => $p->start_repair_form_id,
+                'CLOSE_TICKET' => $p->close_ticket_form_id,
+            ])->all(),
             // Kalender kerja: hari libur mulai awal tahun lalu agar riwayat tetap terlihat
             'holidays' => Holiday::where('holiday_date', '>=', now()->subYear()->startOfYear())
                 ->orderBy('holiday_date')
@@ -415,6 +425,38 @@ class ScheduleController extends Controller
         }
 
         return redirect()->back()->with('success', $message);
+    }
+
+    private const PATTERN_COLUMNS = [
+        'MANUAL_REPORT' => 'manual_report_form_id',
+        'START_REPAIR' => 'start_repair_form_id',
+        'CLOSE_TICKET' => 'close_ticket_form_id',
+    ];
+
+    /**
+     * Simpan pola form satu mesin: tiap kolom harus form dengan kategori yang cocok.
+     */
+    public function updatePattern(Request $request, Machine $machine)
+    {
+        $rules = [];
+        foreach (self::PATTERN_COLUMNS as $type => $column) {
+            $rules[$type] = [
+                'nullable',
+                'integer',
+                Rule::exists('forms', 'id')->where('form_type', $type),
+            ];
+        }
+
+        $validated = $request->validate($rules);
+
+        $values = [];
+        foreach (self::PATTERN_COLUMNS as $type => $column) {
+            $values[$column] = $validated[$type] ?? null;
+        }
+
+        \App\Models\MachineFormPattern::updateOrCreate(['machine_id' => $machine->id], $values);
+
+        return redirect()->back()->with('success', "Pola form mesin {$machine->machine_name} disimpan.");
     }
 
     public function destroyHoliday($id)

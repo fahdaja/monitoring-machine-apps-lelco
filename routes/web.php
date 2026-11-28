@@ -108,6 +108,9 @@ Route::middleware(['auth', 'CheckUserStatus','role:ADMIN'])->group(function () {
     Route::patch('/schedules/{id}/toggle', [ScheduleController::class, 'toggleStatus'])->name('schedules.toggle');
     Route::delete('/schedules/{id}', [ScheduleController::class, 'destroy'])->name('schedules.destroy');
 
+    // Pola form per mesin
+    Route::put('/schedules/patterns/{machine}', [ScheduleController::class, 'updatePattern'])->name('schedules.patterns.update');
+
     // Kalender kerja: daftar hari libur
     Route::post('/holidays', [ScheduleController::class, 'storeHoliday'])->name('holidays.store');
     Route::delete('/holidays/{id}', [ScheduleController::class, 'destroyHoliday'])->name('holidays.destroy');

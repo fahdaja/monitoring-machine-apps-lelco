@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import DynamicFormModal from './dynamic-form-modal';
+import PreviousSubmissions, { type PreviousSubmission } from './previous-submissions';
 import type { FormAnswerInput, FormPayload } from './dynamic-form-modal';
 
 export type TicketFormContext = 'START_REPAIR' | 'CLOSE_TICKET';
@@ -53,6 +54,7 @@ export default function TicketFormModal({ ticketCode, context, onClose }: Ticket
     const [form, setForm] = useState<FormPayload | null>(null);
     const [meta, setMeta] = useState<TicketFormMeta | null>(null);
     const [initialAnswers, setInitialAnswers] = useState<Record<string, FormAnswerInput>>({});
+    const [previous, setPrevious] = useState<PreviousSubmission[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -70,6 +72,7 @@ export default function TicketFormModal({ ticketCode, context, onClose }: Ticket
                 setForm(data.form);
                 setMeta(data.meta);
                 setInitialAnswers(data.initial_answers ?? {});
+                setPrevious(data.previous_submissions ?? []);
             })
             .catch((axiosError: any) => {
                 if (cancelled) return;
@@ -123,11 +126,14 @@ export default function TicketFormModal({ ticketCode, context, onClose }: Ticket
     }
 
     const banner = meta && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
-            <span className="font-mono font-bold text-slate-700">{meta.ticket_code}</span>
-            <span>{meta.machine_code} &bull; {meta.machine_name}</span>
-            <span className="font-bold text-slate-600">{meta.status}</span>
-            {meta.submitted_at && <span className="text-emerald-700">tersimpan: {meta.submitted_at}</span>}
+        <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+                <span className="font-mono font-bold text-slate-700">{meta.ticket_code}</span>
+                <span>{meta.machine_code} &bull; {meta.machine_name}</span>
+                <span className="font-bold text-slate-600">{meta.status}</span>
+                {meta.submitted_at && <span className="text-emerald-700">tersimpan: {meta.submitted_at}</span>}
+            </div>
+            <PreviousSubmissions items={previous} />
         </div>
     );
 

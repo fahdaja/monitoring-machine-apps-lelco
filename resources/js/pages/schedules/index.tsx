@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Head, useForm, usePage, router } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import HolidayCalendarPanel, { type HolidayItem } from '@/components/holiday-calendar-panel';
+import PatternPanel from '@/components/pattern-panel';
 import {
     Calendar,
     Clock,
@@ -108,6 +109,8 @@ interface Props {
     machines: MachineOption[];
     conditions: ConditionItem[];
     holidays?: HolidayItem[];
+    patternForms?: any;
+    patterns?: any;
 }
 
 const ALL_WORKING_DAYS = ['1', '2', '3', '4', '5', '6', '7'];
@@ -135,7 +138,8 @@ const DAYS_OF_WEEK = [
     { value: '7', label: 'Minggu' },
 ];
 
-export default function ScheduleIndex({ schedules = [], forms = [], machines = [], conditions = [], holidays = [] }: Props) {
+export default function ScheduleIndex({ schedules = [], forms = [], machines = [], conditions = [], holidays = [], patternForms = {}, patterns = {} }: Props) {
+    const [pageTab, setPageTab] = useState<'schedule' | 'pola'>('schedule');
     const { auth } = usePage<any>().props;
 
     // State modal "Buat Task Hari Ini" khusus Admin (tanggal terkunci hari ini)
@@ -621,6 +625,27 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
             <Head title="Pengaturan Pola Jadwal" />
 
             <div className="space-y-6 pb-12">
+                {isAdmin && (
+                    <div className="flex gap-1 p-1 bg-slate-100 rounded-xl w-fit">
+                        {([['schedule', 'Schedule'], ['pola', 'Pola Form']] as const).map(([key, label]) => (
+                            <button
+                                key={key}
+                                type="button"
+                                onClick={() => setPageTab(key)}
+                                className={`px-4 py-2 rounded-lg text-xs font-bold cursor-pointer transition-colors ${
+                                    pageTab === key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                                }`}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                )}
+
+                {isAdmin && pageTab === 'pola' ? (
+                    <PatternPanel machines={machines} patternForms={patternForms} patterns={patterns} />
+                ) : (
+                <>
                 {/* HEADER HALAMAN */}
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
                     <div className="min-w-0">
@@ -1963,6 +1988,8 @@ export default function ScheduleIndex({ schedules = [], forms = [], machines = [
                             </form>
                         </div>
                     </div>
+                )}
+                </>
                 )}
             </div>
         </AppLayout>

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use App\Enums\MachineStatus;
 use App\Enums\CriticalityStatus;
 
@@ -111,5 +112,10 @@ class Machine extends Model
         $names = $this->pics->pluck('full_name')->filter()->implode(', ');
 
         return $names !== '' ? $names : (string) ($this->pic_department ?? '');
+    }
+
+    public function formPattern(): HasOne
+    {
+        return $this->hasOne(MachineFormPattern::class);
     }
 }

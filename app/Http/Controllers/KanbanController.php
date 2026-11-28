@@ -353,7 +353,17 @@ class KanbanController extends Controller
                             ? implode(' | ', $selectedTexts)
                             : trim(is_array($rawValue) ? implode(', ', array_map('strval', $rawValue)) : (string) $rawValue);
 
-                        $photos = collect($detail['photos'] ?? [])
+                        $isFile = strtoupper((string) ($question['input_type'] ?? '')) === 'FILE';
+                        $photoPaths = \App\Support\PhotoValue::list($detail['photos'] ?? null);
+
+                        // Jawaban FILE (satu atau banyak foto) tampil sebagai thumbnail, bukan teks path
+                        if ($isFile) {
+                            $photoPaths = array_merge($photoPaths, \App\Support\PhotoValue::list($rawValue));
+                            $answerText = '';
+                        }
+
+                        $photos = collect($photoPaths)
+                            ->unique()
                             ->map(fn ($path) => $this->photoUrl($path))
                             ->filter()
                             ->values()
@@ -436,8 +446,10 @@ class KanbanController extends Controller
         $form = Form::findTemplate($type, $ticket->machine_id);
 
         if (! $form) {
-            abort(422, "Template {$type->label()} belum tersedia. Buat dulu di menu Manajemen Form.");
+            abort(422, $this->patternMissingMessage($type));
         }
+
+        $this->assertSequence($ticket, $type);
 
         return [
             'ticket' => $ticket,
@@ -445,7 +457,45 @@ class KanbanController extends Controller
             'form' => $form,
             'submission' => $ticket->submissionFor($type->value),
             'status' => $status,
+            'previous_submissions' => $this->previousSubmissions($ticket, $type),
         ];
+    }
+
+    private function patternMissingMessage(FormType $type): string
+    {
+        return "Pola form {$type->label()} untuk mesin ini belum diatur. Atur di menu Manajemen Schedule dan Pola.";
+    }
+
+    /**
+     * Tahap wajib berurutan: Laporan Breakdown -> Mulai Repair -> Tutup Tiket.
+     */
+    private function assertSequence(BreakdownTicket $ticket, FormType $type): void
+    {
+        if ($type === FormType::START_REPAIR && ! $ticket->submissionFor(FormType::MANUAL_REPORT->value)) {
+            abort(422, 'Tiket ini belum memiliki Laporan Breakdown.');
+        }
+
+        if ($type === FormType::CLOSE_TICKET && ! $ticket->submissionFor(FormType::START_REPAIR->value)) {
+            abort(422, 'Isi Form Mulai Repair terlebih dahulu.');
+        }
+    }
+
+    /**
+     * Jawaban tahap sebelumnya (read-only) untuk ditampilkan di atas form berikutnya.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function previousSubmissions(BreakdownTicket $ticket, FormType $type): array
+    {
+        $contexts = $type === FormType::START_REPAIR
+            ? [FormType::MANUAL_REPORT]
+            : [FormType::MANUAL_REPORT, FormType::START_REPAIR];
+
+        return collect($contexts)
+            ->map(fn (FormType $t) => $this->submissionView($ticket->submissionFor($t->value)?->loadMissing('form', 'submitter')))
+            ->filter()
+            ->values()
+            ->all();
     }
 
     /**
@@ -469,6 +519,7 @@ class KanbanController extends Controller
                 'status' => $data['status'],
                 'submitted_at' => $submission?->updated_at?->format('Y-m-d H:i'),
             ],
+            'previous_submissions' => $data['previous_submissions'],
             'initial_answers' => (object) $this->mapSnapshotToAnswers($submission?->answers_values),
         ]);
     }
@@ -517,6 +568,7 @@ class KanbanController extends Controller
                 'status' => $status,
                 'submitted_at' => $submission?->updated_at?->format('Y-m-d H:i'),
             ],
+            'previousSubmissions' => $data['previous_submissions'],
             'initialAnswers' => $this->mapSnapshotToAnswers($submission?->answers_values),
         ]);
     }
@@ -540,7 +592,13 @@ class KanbanController extends Controller
         $form = Form::findTemplate($type, $ticket->machine_id);
 
         if (!$form) {
-            return back()->with('error', "Template {$type->label()} belum tersedia. Buat dulu di menu Manajemen Form.");
+            return back()->with('error', $this->patternMissingMessage($type));
+        }
+
+        try {
+            $this->assertSequence($ticket, $type);
+        } catch (HttpException $e) {
+            return back()->with('error', $e->getMessage());
         }
 
         $form->load(['sections.questions.options']);
@@ -616,6 +674,11 @@ class KanbanController extends Controller
             return back()->with('error', 'Form yang dipakai bukan kategori Laporan Breakdown.');
         }
 
+        $patternForm = Form::findTemplate(FormType::MANUAL_REPORT, (int) $validated['machine_id']);
+        if (! $patternForm || $patternForm->id !== $form->id) {
+            return back()->with('error', $this->patternMissingMessage(FormType::MANUAL_REPORT));
+        }
+
         $answers = $validated['answers'];
         $errors = $this->validateTicketAnswers($form, $answers);
 
@@ -672,7 +735,8 @@ class KanbanController extends Controller
                 $answer = $answers[$question->id] ?? [];
                 $value = $answer['value'] ?? null;
                 $note = trim((string) ($answer['note'] ?? ''));
-                $photos = trim((string) ($answer['photos'] ?? ''));
+                $photoList = \App\Support\PhotoValue::list($answer['photos'] ?? null);
+                $photos = $photoList[0] ?? '';
 
                 if ($value === null || $value === '' || (is_array($value) && count($value) === 0)) {
                     continue;
@@ -691,6 +755,7 @@ class KanbanController extends Controller
                         'answer_text' => '',
                         'note' => $note,
                         'photo_evidence' => $photos,
+                        'photo_evidences' => $photoList,
                     ];
 
                     continue;
@@ -708,6 +773,7 @@ class KanbanController extends Controller
                         'answer_text' => trim((string) (is_array($value) ? implode(', ', $value) : $value)),
                         'note' => $note,
                         'photo_evidence' => $photos,
+                        'photo_evidences' => $photoList,
                     ];
                 }
             }
@@ -846,7 +912,7 @@ class KanbanController extends Controller
 
                 $rawValue = $userAnswer['value'] ?? null;
                 $note = $userAnswer['note'] ?? '';
-                $photos = $userAnswer['photos'] ?? [];
+                $photos = \App\Support\PhotoValue::list($userAnswer['photos'] ?? null);
 
                 $selectedOptionsSnapshot = [];
                 $valueArray = is_array($rawValue) ? $rawValue : [$rawValue];

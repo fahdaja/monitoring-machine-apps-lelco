@@ -75,6 +75,17 @@ class Form extends Model
      */
     public static function findTemplate(FormType $type, ?int $machineId = null): ?self
     {
+        // Keluarga ticketing: template hanya diambil dari Pola mesin (tanpa fallback ke template terbaru).
+        if ($type->isTicketing()) {
+            if (! $machineId) {
+                return null;
+            }
+
+            $formId = MachineFormPattern::where('machine_id', $machineId)->first()?->formIdFor($type);
+
+            return $formId ? static::query()->ofType($type)->find($formId) : null;
+        }
+
         return static::query()
             ->ofType($type)
             ->when($type->requiresMachine(), fn (Builder $q) => $q->where('machine_id', $machineId))

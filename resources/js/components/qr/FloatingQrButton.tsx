@@ -414,10 +414,11 @@ export default function FloatingQrButton({ onScanSuccess }: FloatingQrButtonProp
                         : 'cursor-grab bg-slate-900 hover:bg-slate-800'
                 }`}
                 title="Tarik untuk menggeser, klik untuk scan QR"
+                aria-label="Scan QR Mesin"
             >
                 <div className="w-11 h-11 bg-white text-slate-900 rounded-full flex items-center justify-center shadow-inner pointer-events-none">
-                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4h6v6H4V4zm10 0h6v6h-6V4zM4 14h6v6H4v-6zm10 0h2v2h-2v-2zm4 0h2v2h-2v-2zm-4 4h2v2h-2v-2zm4 0h2v2h-2v-2z" />
                     </svg>
                 </div>
                 <span className="text-xs font-extrabold text-white px-2.5 hidden sm:inline pointer-events-none">

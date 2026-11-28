@@ -1,6 +1,7 @@
     import axios from "axios";
     import { useEffect, useState } from "react";
     import { compressEvidenceImage } from "@/lib/compress-image";
+    import { encodePhotos, parsePhotos } from "@/lib/photos";
     import { hiddenQuestionIds } from "@/lib/question-visibility";
 
     export function useInspectionForm(sections: any[], initialAnswers: Record<number, any> = {}, initialSectionIndex: number = 0, taskId?: number) {
@@ -352,6 +353,66 @@
             }
         };
 
+    // Multi-foto dari kamera: value pertanyaan FILE disimpan sebagai JSON array path.
+    const handleAddCameraPhoto = async (questionId: number, file: File) => {
+        let uploadFile = file;
+        try {
+            uploadFile = await compressEvidenceImage(file, 290, 1280);
+        } catch (err) {
+            console.warn('Kompresi gambar dilewati, menggunakan file asli:', err);
+        }
+
+        const formData = new FormData();
+        formData.append('file', uploadFile);
+        formData.append('question_id', String(questionId));
+        formData.append('folder', 'question-files');
+
+        try {
+            const response = await axios.post('/inspection-form/upload-temp', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            const filePath = response.data.path;
+
+            setAnswers(prev => {
+                const cur = prev[questionId] || { value: '', photos: '', note: '' };
+                return {
+                    ...prev,
+                    [questionId]: {
+                        ...cur,
+                        value: encodePhotos([...parsePhotos(cur.value), filePath]),
+                        answered_at: formatCurrentTimestamp(),
+                    }
+                };
+            });
+            clearQuestionError(questionId);
+        } catch (error: any) {
+            const serverErrors = error.response?.data?.errors;
+            const serverMsg = serverErrors?.file?.[0]
+                || error.response?.data?.message
+                || 'Gagal mengunggah foto. Periksa ukuran dan formatnya.';
+            setQuestionError(questionId, 'value', serverMsg);
+        }
+    };
+
+    const handleRemoveCameraPhoto = async (questionId: number, path: string) => {
+        try {
+            await axios.post('/inspection-form/remove-file', { path });
+        } catch (error) {
+            console.error("Gagal menghapus file fisik dari server:", error);
+        }
+
+        setAnswers(prev => {
+            const cur = prev[questionId] || { value: '', photos: '', note: '' };
+            return {
+                ...prev,
+                [questionId]: {
+                    ...cur,
+                    value: encodePhotos(parsePhotos(cur.value).filter((p) => p !== path)),
+                }
+            };
+        });
+    };
+
     const handleAddPhoto = async (questionId: number, e: React.ChangeEvent<HTMLInputElement>) => {
             const file = e.target.files?.[0];
             if (!file) return;
@@ -650,6 +711,8 @@ const handleNext = () => {
             handleFileUpload,
             handleRemoveEvidencePhoto,
             handleRemoveFile,
+            handleAddCameraPhoto,
+            handleRemoveCameraPhoto,
             handleNext,
             clearQuestionError,
         }

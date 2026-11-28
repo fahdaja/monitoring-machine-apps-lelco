@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { router } from '@inertiajs/react';
 import axios from 'axios';
+import PhotoField from '@/components/photo-field';
+import { encodePhotos, parsePhotos } from '@/lib/photos';
 
 export interface FormOption {
     id: number;
@@ -192,7 +194,19 @@ export default function DynamicFormModal({
             const { data } = await axios.post('/inspection-form/upload-temp', formData);
 
             if (data?.success && data?.path) {
-                patchAnswer(questionId, { value: data.path });
+                // Multi-foto: value disimpan sebagai JSON array path
+                setAnswers((prev) => {
+                    const cur = prev[questionId] ?? emptyAnswer();
+                    return {
+                        ...prev,
+                        [questionId]: { ...cur, value: encodePhotos([...parsePhotos(cur.value), data.path]) },
+                    };
+                });
+                setFieldErrors((prev) => {
+                    const next = { ...prev };
+                    delete next[`answers.${questionId}.value`];
+                    return next;
+                });
             }
         } catch (error: any) {
             const message = error?.response?.data?.message || 'Berkas gagal diunggah.';
@@ -202,8 +216,20 @@ export default function DynamicFormModal({
         }
     };
 
-    const removeQuestionFile = (questionId: number) => {
-        patchAnswer(questionId, { value: '' });
+    const removeQuestionPhoto = async (questionId: number, path: string) => {
+        try {
+            await axios.post('/inspection-form/remove-file', { path });
+        } catch {
+            // file mungkin sudah terhapus, state tetap dibersihkan
+        }
+
+        setAnswers((prev) => {
+            const cur = prev[questionId] ?? emptyAnswer();
+            return {
+                ...prev,
+                [questionId]: { ...cur, value: encodePhotos(parsePhotos(cur.value).filter((p) => p !== path)) },
+            };
+        });
     };
 
     const validate = (): boolean => {
@@ -380,37 +406,12 @@ export default function DynamicFormModal({
                                             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs outline-none focus:border-slate-900"
                                         />
                                     ) : question.input_type === 'FILE' ? (
-                                        <div className="space-y-2">
-                                            <label className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border-2 border-dashed border-slate-300 hover:border-slate-500 bg-slate-50 hover:bg-white text-xs font-bold text-slate-700 cursor-pointer transition-colors">
-                                                {uploadingId === question.id ? 'Mengunggah...' : 'Pilih berkas'}
-                                                <input
-                                                    type="file"
-                                                    accept="image/*"
-                                                    capture="environment"
-                                                    className="hidden"
-                                                    disabled={uploadingId === question.id}
-                                                    onChange={(e) => {
-                                                        const file = e.target.files?.[0];
-                                                        if (file) uploadQuestionFile(question.id, file);
-                                                        e.target.value = '';
-                                                    }}
-                                                />
-                                            </label>
-                                            {hasValue(answer.value) && (
-                                                <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-white border border-slate-200 text-[11px]">
-                                                    <span className="truncate font-semibold text-slate-700">
-                                                        {String(answer.value).split('/').pop()}
-                                                    </span>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => removeQuestionFile(question.id)}
-                                                        className="text-rose-600 font-bold hover:underline cursor-pointer shrink-0"
-                                                    >
-                                                        Hapus
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
+                                        <PhotoField
+                                            paths={parsePhotos(answer.value)}
+                                            uploading={uploadingId === question.id}
+                                            onAdd={(file) => uploadQuestionFile(question.id, file)}
+                                            onRemove={(path) => removeQuestionPhoto(question.id, path)}
+                                        />
                                     ) : (
                                         <input
                                             type={

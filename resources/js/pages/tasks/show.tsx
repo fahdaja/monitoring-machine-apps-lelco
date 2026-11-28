@@ -6,6 +6,9 @@ import { router, usePage } from "@inertiajs/react";
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { hiddenQuestionIds } from "@/lib/question-visibility";
+import PhotoField from "@/components/photo-field";
+import PreviousSubmissions from "@/components/previous-submissions";
+import { parsePhotos } from "@/lib/photos";
 
 type AnswerDetail = {
     value: any;
@@ -83,6 +86,8 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
         handleAddPhoto,
         handleRemoveEvidencePhoto,
         handleRemoveFile,
+        handleAddCameraPhoto,
+        handleRemoveCameraPhoto,
         progressPercentage,
         isFirstSection,
         isLastSection,
@@ -694,6 +699,11 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                                 {currentSection.section_description}
                             </p>
                         )}
+                        {ticketMode && (pageProps as any).previousSubmissions?.length > 0 && (
+                            <div className="text-slate-900 pt-1">
+                                <PreviousSubmissions items={(pageProps as any).previousSubmissions} />
+                            </div>
+                        )}
 
                         {followUpInfo && (
                             <div className="p-2.5 sm:p-3 rounded-lg bg-orange-500/10 border border-orange-400/25">
@@ -1108,44 +1118,14 @@ export default function InspectionForm({ tasks }: InspectionsFormProps) {
                                                                     : '';
                                                         return (
                                                             <div className="space-y-3">
-                                                                <label className="flex flex-col items-center justify-center gap-2 p-4 sm:p-6 border-2 border-dashed border-slate-300 hover:border-blue-500 bg-slate-50 hover:bg-blue-50/40 rounded-2xl cursor-pointer transition-all group">
-                                                                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white border border-slate-200 flex items-center justify-center group-hover:bg-blue-100 group-hover:border-blue-300 transition-colors">
-                                                                        <svg className="w-5 h-5 sm:w-6 sm:h-6 text-slate-500 group-hover:text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                                                                        </svg>
-                                                                    </div>
-                                                                    <span className="text-xs sm:text-sm font-bold text-slate-700 group-hover:text-blue-700">
-                                                                        Ambil Foto dengan Kamera
-                                                                    </span>
-                                                                    <input
-                                                                        type="file"
-                                                                        accept="image/*"
-                                                                        capture="environment"
-                                                                        className="hidden"
-                                                                        onChange={(e) => handleFileUpload(question.id, e, question)}
-                                                                    />
-                                                                </label>
+                                                                <PhotoField
+                                                                    paths={parsePhotos(fileValue)}
+                                                                    onAdd={(file) => handleAddCameraPhoto(question.id, file)}
+                                                                    onRemove={(path) => handleRemoveCameraPhoto(question.id, path)}
+                                                                />
                                                                 <p className="text-[10px] sm:text-[11px] text-slate-500 text-center">
-                                                                    Tipe: <span className="font-semibold text-slate-700">{allowedTypes}</span>
-                                                                    {maxFileSize && <> · Maks: <span className="font-semibold text-slate-700">{maxFileSize}</span></>}
+                                                                    Foto diambil langsung dari kamera · bisa lebih dari satu · auto-kompres
                                                                 </p>
-                                                                {fileValue && (
-                                                                    <div className="text-xs text-slate-700 bg-emerald-50 p-3 rounded-xl border border-emerald-200 flex justify-between items-center gap-2">
-                                                                        <span className="truncate flex items-center gap-2 min-w-0">
-                                                                            <svg className="w-4 h-4 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                                            </svg>
-                                                                            <span className="truncate font-semibold">{fileName}</span>
-                                                                        </span>
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => handleRemoveFile(question.id)}
-                                                                            className="text-rose-600 font-bold hover:underline cursor-pointer shrink-0"
-                                                                        >
-                                                                            Hapus
-                                                                        </button>
-                                                                    </div>
-                                                                )}
                                                             </div>
                                                         );
                                                     case 'DATE':
