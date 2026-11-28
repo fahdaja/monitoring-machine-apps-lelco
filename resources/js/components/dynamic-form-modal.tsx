@@ -385,7 +385,7 @@ export default function DynamicFormModal({
                                                 );
                                             })}
                                         </div>
-                                    ) : question.options.length > 0 ? (
+                                    ) : question.options.length > 0 && question.input_type === 'DROPDOWN' ? (
                                         <select
                                             value={Array.isArray(answer.value) ? answer.value[0] ?? '' : answer.value}
                                             onChange={(e) => patchAnswer(question.id, { value: e.target.value })}
