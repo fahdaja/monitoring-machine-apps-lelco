@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Head, Link } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import ZoomOutModal from '@/components/common/ZoomOutModal';
+import { formatMinutes } from '@/lib/utils';
 import { AlertTriangle, ArrowLeft, Camera, CheckCircle2, ClipboardList, StickyNote } from 'lucide-react';
 
 interface RecordQuestion {
@@ -30,6 +31,7 @@ interface Props {
         submitted_by: string;
         submitted_at?: string | null;
         started_at?: string | null;
+        fill_minutes?: number | null;
         due_date?: string | null;
         end_date?: string | null;
         is_late: boolean;
@@ -134,6 +136,10 @@ export default function RecordShow({ record, machine }: Props) {
                                 <InfoCell label="Jadwal" value={record.due_date} />
                                 <InfoCell label="Batas akhir" value={record.end_date} />
                                 <InfoCell label="Mulai dikerjakan" value={record.started_at} />
+                                <InfoCell
+                                    label="Lama pengisian"
+                                    value={formatMinutes(record.fill_minutes)}
+                                />
                                 <InfoCell
                                     label="Asal task"
                                     value={record.origin_type === 'CONDITION' ? `Lanjutan dari ${record.source_task_code ?? '-'}` : 'Jadwal rutin'}

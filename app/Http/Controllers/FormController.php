@@ -16,6 +16,7 @@ use App\Models\FormQuestion;
 use App\Models\FormOption;
 use App\Models\ScheduleCondition;
 use App\Models\Task;
+use App\Support\FormExcelTemplate;
 
 class FormController extends Controller
 {
@@ -55,6 +56,41 @@ class FormController extends Controller
         return Inertia::render('forms/create', [
             'defaultType' => FormType::normalize($request->query('category')) ?? FormType::INSPECTION->value,
         ]);
+    }
+
+    /** Download template Excel form builder (kosong + petunjuk + contoh). */
+    public function downloadTemplate()
+    {
+        return response()
+            ->download(FormExcelTemplate::writeTemplate(), 'Template-Import-Form.xlsx', [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            ])
+            ->deleteFileAfterSend(true);
+    }
+
+    /**
+     * Baca Excel terisi → struktur builder (JSON). Tidak menyimpan apa pun:
+     * hasilnya dimuat ke builder, lalu admin menyimpan lewat store() biasa.
+     */
+    public function importExcel(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:xlsx|max:5120',
+        ], [
+            'file.mimes' => 'File harus berformat .xlsx (gunakan template dari tombol Download Template).',
+        ]);
+
+        try {
+            $result = FormExcelTemplate::parse($request->file('file')->getRealPath());
+        } catch (\RuntimeException $e) {
+            return response()->json(['errors' => [$e->getMessage()]], 422);
+        }
+
+        if ($result['errors']) {
+            return response()->json(['errors' => $result['errors']], 422);
+        }
+
+        return response()->json($result);
     }
 
     /**

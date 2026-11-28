@@ -157,8 +157,8 @@ class MachineController extends Controller
         ->latest('reported_at')
         ->get()
         ->map(function ($ticket) use ($request) {
-            $closed_at = now();
-            $downtime = $ticket->reported_at ? $ticket->reported_at->diffInMinutes($closed_at) : 0;
+            // Tiket closed: downtime sampai closed_at; masih open: lama open sampai sekarang
+            $downtime = $ticket->reported_at ? (int) $ticket->reported_at->diffInMinutes($ticket->closed_at ?? now()) : 0;
 
             $problemText = collect($ticket->problems ?? [])
                 ->map(function ($p) {

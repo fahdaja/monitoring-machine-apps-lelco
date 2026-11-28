@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import axios from 'axios';
 import { Head, Link, router, useForm } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import { compressQuestionImage } from '@/lib/compress-image';
@@ -141,6 +142,44 @@ export default function FormCreate({ machines = [], defaultType = 'INSPECTION', 
     const [previewAnswers, setPreviewAnswers] = useState<Record<string, any>>({});
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [toastMessage, setToastMessage] = useState<ToastPayload | null>(null);
+    const [isImporting, setIsImporting] = useState(false);
+
+    // Import Excel: server hanya membaca file → hasilnya dimuat ke builder, disimpan lewat tombol Simpan biasa
+    const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        e.target.value = ''; // file yang sama bisa dipilih ulang setelah diperbaiki
+        if (!file) return;
+
+        const hasContent = data.sections.some(s => s.questions.some(q => q.question_text.trim() !== ''));
+        if (hasContent && !confirm('Isi builder saat ini akan diganti dengan isi file Excel. Lanjutkan?')) return;
+
+        setIsImporting(true);
+        setErrorMessage(null);
+        try {
+            const body = new FormData();
+            body.append('file', file);
+            const { data: result } = await axios.post('/forms/import-excel', body);
+            setData(prev => ({
+                ...prev,
+                metadata: { ...prev.metadata, ...result.metadata },
+                sections: result.sections,
+            }));
+            setActiveSectionIndex(0);
+            setToastMessage({
+                type: 'success',
+                title: 'Import berhasil',
+                description: `${result.sections.reduce((n: number, s: any) => n + s.questions.length, 0)} pertanyaan dimuat. Periksa lalu klik Simpan.`,
+            });
+        } catch (err: any) {
+            const errors: string[] = err?.response?.data?.errors
+                ? (Array.isArray(err.response.data.errors) ? err.response.data.errors : Object.values(err.response.data.errors).flat() as string[])
+                : ['Gagal membaca file. Pastikan memakai template .xlsx.'];
+            setErrorMessage(`Import gagal:\n• ${errors.slice(0, 15).join('\n• ')}${errors.length > 15 ? `\n…dan ${errors.length - 15} kesalahan lain` : ''}`);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        } finally {
+            setIsImporting(false);
+        }
+    };
 
     useEffect(() => {
         if (toastMessage) {
@@ -151,7 +190,7 @@ export default function FormCreate({ machines = [], defaultType = 'INSPECTION', 
 
     useEffect(() => {
         if (errorMessage) {
-            const timer = setTimeout(() => setErrorMessage(null), 4000);
+            const timer = setTimeout(() => setErrorMessage(null), errorMessage.length > 120 ? 20000 : 4000);
             return () => clearTimeout(timer);
         }
     }, [errorMessage]);
@@ -512,7 +551,7 @@ export default function FormCreate({ machines = [], defaultType = 'INSPECTION', 
             {/* ERROR — responsive */}
             {errorMessage && (
                 <div className="fixed z-50 bottom-4 right-4 left-4 sm:left-auto sm:bottom-5 sm:right-5 sm:max-w-md bg-rose-600 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2.5 text-xs font-bold border border-rose-700">
-                    <span className="break-words">⚠️ {errorMessage}</span>
+                    <span className="break-words whitespace-pre-line cursor-pointer" title="Klik untuk menutup" onClick={() => setErrorMessage(null)}>⚠️ {errorMessage}</span>
                 </div>
             )}
 
@@ -522,7 +561,18 @@ export default function FormCreate({ machines = [], defaultType = 'INSPECTION', 
                     <h1 className="text-lg sm:text-xl font-bold text-slate-800 tracking-tight">Builder Template Form</h1>
                     <p className="text-[11px] sm:text-xs text-slate-500">Rancang cetak biru (blueprint) pertanyaan inspeksi mesin.</p>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    {/* Unduh biasa (bukan Inertia Link) karena responsnya file .xlsx */}
+                    <a
+                        href="/forms/import-template"
+                        className="flex-1 sm:flex-none px-3 sm:px-3.5 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold transition-colors text-center"
+                    >
+                        Download Template
+                    </a>
+                    <label className={`flex-1 sm:flex-none px-3 sm:px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition-colors text-center cursor-pointer ${isImporting ? 'opacity-50 pointer-events-none' : ''}`}>
+                        {isImporting ? 'Mengimport...' : 'Import Excel'}
+                        <input type="file" accept=".xlsx" className="hidden" onChange={handleImportExcel} />
+                    </label>
                     <button
                         type="button"
                         onClick={() => { setPreviewSectionId(0); setPreviewHistory([]); setPreviewAnswers({}); setIsPreviewOpen(true); }}

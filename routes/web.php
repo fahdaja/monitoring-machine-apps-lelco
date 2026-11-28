@@ -93,6 +93,8 @@ Route::middleware(['auth', 'CheckUserStatus'])->group(function () {
 Route::middleware(['auth', 'CheckUserStatus','role:ADMIN'])->group(function () {
     Route::get('forms', [FormController::class, 'index'])->name('forms.index');
     Route::get('/forms/create', [FormController::class, 'create'])->name('forms.create');
+    Route::get('/forms/import-template', [FormController::class, 'downloadTemplate'])->name('forms.importTemplate');
+    Route::post('/forms/import-excel', [FormController::class, 'importExcel'])->name('forms.importExcel');
     Route::post('/forms', [FormController::class, 'store'])->name('forms.store');
     Route::get('/forms/{id}/edit', [FormController::class, 'edit'])->name('forms.edit');
     Route::put('/forms/{id}', [FormController::class, 'update'])->name('forms.update');

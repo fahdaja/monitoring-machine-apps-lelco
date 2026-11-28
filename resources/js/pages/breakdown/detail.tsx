@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../layouts/app-layout';
+import { formatMinutes } from '@/lib/utils';
 import {
     ArrowLeft,
     Camera,
@@ -68,9 +69,12 @@ interface Props {
         detail_url: string;
     };
     people: { reporter: string; assignee: string; verifier?: string | null };
-    timeline: { label: string; at?: string | null; actor?: string | null }[];
+    timeline: { label: string; at?: string | null; actor?: string | null; minutes_from_prev?: number | null }[];
+    open_minutes?: number | null;
+    is_open?: boolean;
     submissions: SubmissionView[];
 }
+
 
 const STATUS_TONE: Record<string, string> = {
     OPEN: 'bg-rose-100 text-rose-700 border-rose-200',
@@ -116,7 +120,7 @@ function TextBlock({ label, value, tone = 'slate' }: { label: string; value?: st
     );
 }
 
-export default function BreakdownTicketDetail({ ticket, machine, people, timeline, submissions }: Props) {
+export default function BreakdownTicketDetail({ ticket, machine, people, timeline, open_minutes, is_open, submissions }: Props) {
     const [zoom, setZoom] = useState<string | null>(null);
     const [showVerifyModal, setShowVerifyModal] = useState(false);
     const [isVerifying, setIsVerifying] = useState(false);
@@ -181,8 +185,8 @@ export default function BreakdownTicketDetail({ ticket, machine, people, timelin
                     <InfoCell label="Prioritas" value={ticket.priority} />
                     <InfoCell label="Dilaporkan" value={ticket.reported_at} />
                     <InfoCell
-                        label="Downtime"
-                        value={`${ticket.breakdown_minutes ?? ticket.downtime_minutes ?? 0} menit`}
+                        label={is_open ? 'Downtime (masih berjalan)' : 'Total downtime'}
+                        value={<span className={is_open ? 'text-rose-700' : ''}>{formatMinutes(open_minutes)}</span>}
                     />
                     <InfoCell label="Pelapor" value={people.reporter} />
                     <InfoCell label="Teknisi" value={people.assignee} />
@@ -210,7 +214,14 @@ export default function BreakdownTicketDetail({ ticket, machine, people, timelin
                             <li key={`${step.label}-${index}`} className="flex items-start gap-3">
                                 <span className="mt-1.5 w-2 h-2 rounded-full bg-slate-900 shrink-0" />
                                 <div className="flex-1 flex flex-wrap items-center justify-between gap-2">
-                                    <span className="text-xs font-bold text-slate-700">{step.label}</span>
+                                    <span className="text-xs font-bold text-slate-700">
+                                        {step.label}
+                                        {step.minutes_from_prev !== null && step.minutes_from_prev !== undefined && (
+                                            <span className="ml-2 text-[10px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-full px-2 py-0.5">
+                                                +{formatMinutes(step.minutes_from_prev)}
+                                            </span>
+                                        )}
+                                    </span>
                                     <span className="text-[11px] text-slate-500">
                                         {step.at ?? '-'}
                                         {step.actor ? ` • ${step.actor}` : ''}

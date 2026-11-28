@@ -186,9 +186,11 @@ class KanbanController extends Controller
             $hasOtherBlockingTicket = BreakdownTicket::where('machine_id', $ticket->machine_id)
                 ->where('id', '!=', $ticket->id)
                 ->where(function ($q) {
-                    $q->whereIn('status', ['UNDER_REPAIR', 'WAITING_SPAREPART', 'WAITING_VENDOR', 'READY_FOR_CLOSING'])
+                    // Status tiket (bukan status mesin): tiket yang sedang direpair / menunggu
+                    $q->whereIn('status', ['IN_PROGRESS', 'WAITING_SPAREPART', 'WAITING_VENDOR', 'READY_FOR_CLOSING'])
                         ->orWhere(function ($sub) {
-                            $sub->where('status', 'OPEN')->where('source_type', 'MANUAL_REPORT');
+                            // Laporan manual membuat mesin DOWN sejak OPEN, termasuk setelah diterima teknisi
+                            $sub->whereIn('status', ['OPEN', 'ACKNOWLEDGED'])->where('source_type', 'MANUAL_REPORT');
                         });
                 })
                 ->exists();
@@ -263,15 +265,42 @@ class KanbanController extends Controller
                 'assignee' => $ticket->assignee?->full_name ?? '-',
                 'verifier' => $ticket->verifier?->full_name,
             ],
-            'timeline' => array_values(array_filter([
-                ['label' => 'Laporan masuk', 'at' => $ticket->reported_at?->format('d M Y H:i'), 'actor' => $ticket->reporter?->full_name],
-                $ticket->acknowledged_at ? ['label' => 'Diterima teknisi', 'at' => $ticket->acknowledged_at->format('d M Y H:i'), 'actor' => $ticket->assignee?->full_name] : null,
-                $ticket->started_repair_at ? ['label' => 'Repair dimulai', 'at' => $ticket->started_repair_at->format('d M Y H:i'), 'actor' => $ticket->assignee?->full_name] : null,
-                $ticket->closed_at ? ['label' => 'Siap diverifikasi', 'at' => $ticket->closed_at->format('d M Y H:i'), 'actor' => $ticket->assignee?->full_name] : null,
-                $ticket->verified_at ? ['label' => 'Tiket diverifikasi & ditutup', 'at' => $ticket->verified_at->format('d M Y H:i'), 'actor' => $ticket->verifier?->full_name] : null,
-            ])),
+            'timeline' => $this->timeline($ticket),
+            // Downtime = laporan → repair selesai (closed_at), sama dengan breakdown_minutes, Excel & MTTR.
+            // Belum selesai → masih berjalan sampai sekarang.
+            'open_minutes' => $ticket->reported_at
+                ? (int) $ticket->reported_at->diffInMinutes($ticket->closed_at ?? now())
+                : null,
+            'is_open' => $ticket->closed_at === null,
             'submissions' => $submissions,
         ]);
+    }
+
+    /**
+     * Linimasa tiket + durasi tiap tahap (menit sejak tahap sebelumnya).
+     */
+    private function timeline(BreakdownTicket $ticket): array
+    {
+        $steps = array_values(array_filter([
+            ['label' => 'Laporan masuk', 'time' => $ticket->reported_at, 'actor' => $ticket->reporter?->full_name],
+            ['label' => 'Repair dimulai', 'time' => $ticket->started_at, 'actor' => $ticket->assignee?->full_name],
+            ['label' => 'Siap diverifikasi', 'time' => $ticket->closed_at, 'actor' => $ticket->assignee?->full_name],
+            ['label' => 'Tiket diverifikasi & ditutup', 'time' => $ticket->verified_at, 'actor' => $ticket->verifier?->full_name],
+        ], fn ($s) => $s['time'] !== null));
+
+        $prev = null;
+
+        return array_map(function ($s) use (&$prev) {
+            $row = [
+                'label' => $s['label'],
+                'at' => $s['time']->format('d M Y H:i'),
+                'actor' => $s['actor'],
+                'minutes_from_prev' => $prev ? (int) $prev->diffInMinutes($s['time']) : null,
+            ];
+            $prev = $s['time'];
+
+            return $row;
+        }, $steps);
     }
 
     /**

@@ -105,6 +105,8 @@ class AuditExportController extends Controller
                 $task->end_date ? $task->end_date->format('Y-m-d') : '-',
                 $task->started_at ? $task->started_at->format('Y-m-d H:i') : '-',
                 $task->completed_at ? $task->completed_at->format('Y-m-d H:i') : '-',
+                // Lama pengisian: form pertama dibuka → submit (termasuk jeda)
+                $task->started_at && $task->completed_at ? (int) $task->started_at->diffInMinutes($task->completed_at) : '-',
                 $task->status ?? '-',
                 $task->is_late ? (int) ($task->late_days ?? 0) : 0,
                 $sub?->user?->full_name ?? $task->user?->full_name ?? '-',
@@ -204,7 +206,7 @@ class AuditExportController extends Controller
             ->addSheet('Inspeksi PM', [
                 'Kode Task', 'Kode Mesin', 'Nama Mesin', 'Lokasi', 'Form Inspeksi',
                 'Tipe', 'Tanggal Jadwal', 'Batas Akhir', 'Waktu Mulai', 'Tanggal Selesai',
-                'Status', 'Terlambat (Hari)', 'Petugas', 'Kode Submission',
+                'Lama Pengisian (Menit)', 'Status', 'Terlambat (Hari)', 'Petugas', 'Kode Submission',
             ], $pmRows)
             ->addSheet('Breakdown & Downtime', [
                 'Kode Tiket', 'Kode Mesin', 'Nama Mesin', 'Lokasi', 'Kategori',

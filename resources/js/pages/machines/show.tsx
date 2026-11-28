@@ -3,6 +3,7 @@ import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import BreakdownReportForm, { ReportForm } from '@/components/breakdown-report-form';
 import { RecordList, type RecordRow } from '@/components/record-list';
+import { formatMinutes } from '@/lib/utils';
 import { triggerQrScanner } from '@/components/qr/FloatingQrButton';
 import { QRCodeCanvas } from 'qrcode.react';
 import { QrCode, Printer, Download, Copy, Check, Eye, X, Edit3, Trash2, AlertTriangle } from 'lucide-react';
@@ -152,13 +153,6 @@ export default function MachineShow({
         link.click();
     };
 
-    const formatDowntime = (minutes: number): string => {
-    const m = Math.round(Number(minutes || 0)); // Dibulatkan agar tidak ada desimal panjang
-    if (m < 60) return `${m} min`;
-    const h = Math.floor(m / 60);
-    const r = m % 60;
-    return `${h}j ${r}m`;
-  };
 
 
     const handlePrintSticker = () => {
@@ -601,7 +595,19 @@ export default function MachineShow({
         <span>Selesai: <strong className="text-slate-700">-</strong></span>
     )}
     
-    <span>Total Downtime: <strong className="text-slate-900">{formatDowntime(b.breakdownMinutes)}</strong></span>
+    {b.closed_at ? (
+        <span>Total Downtime: <strong className="text-slate-900">{formatMinutes(b.breakdownMinutes)}</strong></span>
+    ) : (
+        <span className="font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-full px-2 py-0.5">
+            Open {formatMinutes(b.breakdownMinutes)}
+        </span>
+    )}
+
+    {b.detail_url && (
+        <Link href={b.detail_url} className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50">
+            <Eye className="w-3.5 h-3.5" /> Detail
+        </Link>
+    )}
 </div>
 
 {/* Bagian Root Cause & Corrective Action menggunakan span */}

@@ -104,6 +104,9 @@ class SubmissionRecordController extends Controller
                 'submitted_by' => $submission->user?->full_name ?? '-',
                 'submitted_at' => $submission->submitted_at?->format('d M Y H:i'),
                 'started_at' => $task->started_at?->format('d M Y H:i'),
+                'fill_minutes' => $task->started_at && $submission->submitted_at
+                    ? (int) $task->started_at->diffInMinutes($submission->submitted_at)
+                    : null,
                 'due_date' => $task->due_date?->format('d M Y'),
                 'end_date' => $task->end_date?->format('d M Y'),
                 'is_late' => (bool) $task->is_late,
